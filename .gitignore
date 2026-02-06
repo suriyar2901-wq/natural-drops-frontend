@@ -1,41 +1,102 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
+# Dependencies
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Expo
 .expo/
+.expo-shared/
 dist/
 web-build/
-expo-env.d.ts
 
 # Native
-.kotlin/
 *.orig.*
 *.jks
 *.p8
 *.p12
 *.key
 *.mobileprovision
+*.orig.*
+*.orig
 
 # Metro
 .metro-health-check*
 
-# debug
+# Debug
 npm-debug.*
 yarn-debug.*
 yarn-error.*
 
 # macOS
 .DS_Store
-*.pem
 
-# local env files
-.env*.local
+# Temporary files created by Metro to check the health of the file watcher
+.metro-health-check*
 
-# typescript
-*.tsbuildinfo
+# OSX
+.DS_Store
 
-# generated native folders
-/ios
-/android
+# Xcode
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+project.xcworkspace
+
+# Android/IntelliJ
+build/
+.idea
+.gradle
+local.properties
+*.iml
+*.hprof
+
+# Android
+*.apk
+*.aab
+
+# Bundle artifacts
+*.jsbundle
+
+# CocoaPods
+ios/Pods/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Testing
+coverage/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary
+*.tmp
+*.temp

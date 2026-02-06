@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "react-native-frontend",
-    "slug": "react-native-frontend",
+    "name": "Natural Drops",
+    "slug": "natural-drops-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,21 +10,48 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#4A90E2"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.naturaldrops.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app needs camera access to scan QR codes",
+        "NSLocationWhenInUseUsageDescription": "This app needs location access to provide delivery services",
+        "NSMicrophoneUsageDescription": "This app does not use the microphone"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#4A90E2"
       },
+      "package": "com.naturaldrops.mobile",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-barcode-scanner",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Natural Drops to access your camera to scan QR codes"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Natural Drops to use your location for delivery services"
+        }
+      ]
+    ]
   }
 }
