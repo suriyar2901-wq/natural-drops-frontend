@@ -1,18 +1,68 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, Platform } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import { colors, typography, spacing } from '../../theme';
-import { Card, Loading } from '../../components/common';
+import { BillEditModal, Button, Card, Loading } from '../../components/common';
 import { useGetMenuItemsQuery } from '../../store/api/menuApi';
+import { useUpdateOrderBillMutation } from '../../store/api/orderApi';
 import { MenuItem, Order } from '../../types';
-import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { canEditOrderBill, formatCurrency, formatDateTime } from '../../utils/formatters';
+import { DeliverySlotBadge } from '../../components/common/DeliverySlotBadge';
+import { useAuth } from '../../hooks';
+import { storageService } from '../../services/storage.service';
+import { showErrorAlert, showSuccessAlert } from '../../utils/alert';
 
 const VideoTag: any = Platform.OS === 'web' ? 'video' : null;
 
 export const OrderDetailScreen = () => {
   const route = useRoute<any>();
-  const order: Order | undefined = route?.params?.order;
+  const routeOrder: Order | undefined = route?.params?.order;
+  const [order, setOrder] = useState<Order | undefined>(routeOrder);
+  const [billModalVisible, setBillModalVisible] = useState(false);
+  const [sellerName, setSellerName] = useState('seller');
+  const { isAdmin } = useAuth();
   const { data: menuItems, isLoading } = useGetMenuItemsQuery();
+  const [updateOrderBill, { isLoading: updatingBill }] = useUpdateOrderBillMutation();
+
+  useEffect(() => {
+    setOrder(routeOrder);
+  }, [routeOrder]);
+
+  useEffect(() => {
+    const loadSellerName = async () => {
+      try {
+        const user = await storageService.getUserData();
+        const name = (user as any)?.username || (user as any)?.fullName || (user as any)?.name;
+        if (name) setSellerName(String(name));
+      } catch (_e) {
+        // ignore
+      }
+    };
+    loadSellerName();
+  }, []);
+
+  const canEditBill = !!order && isAdmin() && canEditOrderBill(order);
+
+  const handleSaveBill = async (finalBillAmount: number, billingNotes: string) => {
+    if (!order) return;
+    const buyerNotified = order.paymentStatus === 'PARTIALLY_PAID';
+    try {
+      const updatedOrder = await updateOrderBill({
+        id: order.id,
+        data: {
+          finalBillAmount,
+          billingNotes,
+          billedBy: sellerName,
+        },
+      }).unwrap();
+      setOrder(updatedOrder);
+      setBillModalVisible(false);
+      showSuccessAlert(buyerNotified ? 'Bill updated. The buyer has been notified.' : 'Bill updated successfully');
+    } catch (e: any) {
+      const msg = e?.data?.message || e?.message || 'Failed to update bill';
+      showErrorAlert(msg);
+    }
+  };
 
   const menuMap = useMemo(() => {
     const map = new Map<number, MenuItem>();
@@ -43,16 +93,21 @@ export const OrderDetailScreen = () => {
         {!!order.buyerPhone && <Text style={styles.muted}>{order.buyerPhone}</Text>}
         <Text style={styles.sectionLabel}>Delivery Address</Text>
         <Text style={styles.text}>{order.deliveryAddress || order.buyerAddress || 'Not specified'}</Text>
-        
         <Text style={styles.sectionLabel}>
           {order.finalBillAmount ? 'Final Bill Amount' : 'Total Amount'}
         </Text>
         <Text style={styles.total}>
           {formatCurrency(order.finalBillAmount || order.total || (order as any).totalAmount)}
         </Text>
+        <DeliverySlotBadge order={order} />
         {order.finalBillAmount && order.finalBillAmount !== order.total && (
           <Text style={styles.originalAmount}>
             Original: {formatCurrency(order.total)}
+          </Text>
+        )}
+        {order.paymentStatus === 'PARTIALLY_PAID' && order.finalBillAmount != null && order.total > order.finalBillAmount && (
+          <Text style={styles.balanceAmount}>
+            Balance: {formatCurrency(order.total - order.finalBillAmount)}
           </Text>
         )}
         
@@ -76,6 +131,19 @@ export const OrderDetailScreen = () => {
             <Text style={styles.paymentPendingText}>
               ⚠️ Payment pending. Please contact seller or support.
             </Text>
+          </View>
+        )}
+
+        {canEditBill && (
+          <Button
+            title="Edit Bill"
+            onPress={() => setBillModalVisible(true)}
+            style={styles.editBillButton}
+          />
+        )}
+        {isAdmin() && order.paymentStatus === 'PAID' && (
+          <View style={styles.lockedBanner}>
+            <Text style={styles.lockedText}>This bill is fully paid and cannot be edited.</Text>
           </View>
         )}
         
@@ -154,6 +222,14 @@ export const OrderDetailScreen = () => {
           </Card>
         );
       })}
+
+      <BillEditModal
+        visible={billModalVisible}
+        order={order}
+        onClose={() => setBillModalVisible(false)}
+        onSave={handleSaveBill}
+        isLoading={updatingBill}
+      />
     </ScrollView>
   );
 };
@@ -235,6 +311,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     textDecorationLine: 'line-through',
   },
+  balanceAmount: {
+    marginTop: spacing.xs,
+    fontSize: typography.fontSize.md,
+    color: colors.warning,
+    fontWeight: typography.fontWeight.bold,
+  },
   paymentStatusBadge: {
     marginTop: spacing.md,
     paddingHorizontal: spacing.sm,
@@ -266,6 +348,20 @@ const styles = StyleSheet.create({
   paymentPendingText: {
     fontSize: typography.fontSize.sm,
     color: '#856404',
+    fontWeight: typography.fontWeight.medium,
+  },
+  editBillButton: {
+    marginTop: spacing.md,
+  },
+  lockedBanner: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    backgroundColor: '#E8F5E9',
+    borderRadius: 8,
+  },
+  lockedText: {
+    fontSize: typography.fontSize.sm,
+    color: '#2E7D32',
     fontWeight: typography.fontWeight.medium,
   },
   deliveryStatusContainer: {

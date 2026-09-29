@@ -72,6 +72,15 @@ export const useAuth = () => {
           isAccountStatusError: false,
         };
       }
+
+      if (error.status === 401) {
+        return {
+          success: false,
+          error: error.data?.message || 'Invalid username or password',
+          isAccountStatusError: false,
+          errorCode: 'INVALID_CREDENTIALS',
+        };
+      }
       
       // Check if it's an account status error (403 Forbidden with account status message)
       const errorMessage = error.data?.message || error.message || 'Login failed';
@@ -101,13 +110,6 @@ export const useAuth = () => {
   const register = async (userData: RegisterRequest) => {
     try {
       const user = await registerMutation(userData).unwrap();
-      
-      // Save to storage
-      await storageService.setUserData(user);
-      
-      // Update Redux state (no token from backend, using session)
-      dispatch(setCredentials({ user, token: undefined }));
-      
       return { success: true, user };
     } catch (error: any) {
       console.error('Registration error:', error);
@@ -218,7 +220,7 @@ export const useAuth = () => {
         const isActiveValue = userData.isActive;
         // Treat undefined, null, or true as active. Only explicit false means inactive.
         const isActiveBoolean = isActiveValue !== false;
-        const isInactive = userData.role !== 'admin' && !isActiveBoolean;
+        const isInactive = userData.role === 'seller' && !isActiveBoolean;
         
         if (isInactive) {
           // User is inactive (Seller/Buyer only) - clear auth and redirect to inactive screen

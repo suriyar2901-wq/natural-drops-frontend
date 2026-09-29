@@ -1,8 +1,41 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, Linking } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { HeaderBrand } from '../components/common';
+import { useGetShopCompanyQuery } from '../store/api/shopApi';
+import { useGetBuyerAccountSummaryQuery } from '../store/api/buyerAccountApi';
 import { NavigationContainer, CommonActions } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+
+type IonName = React.ComponentProps<typeof Ionicons>['name'];
+
+const TAB_ICON_SIZE = 22;
+
+const tabIcon =
+  (outline: IonName, filled: IonName) =>
+  ({ color, focused }: { color: string; size: number; focused: boolean }) =>
+    (
+      <View style={styles.tabIconBox}>
+        <Ionicons
+          name={focused ? filled : outline}
+          size={TAB_ICON_SIZE}
+          color={color}
+          style={styles.tabIconGlyph}
+        />
+      </View>
+    );
+
+const hiddenTabOptions = {
+  tabBarButton: () => null,
+  tabBarItemStyle: {
+    display: 'none' as const,
+    width: 0,
+    maxWidth: 0,
+    flex: 0,
+    overflow: 'hidden' as const,
+  },
+};
 
 // Auth Screens
 import { LoginScreen } from '../screens/auth/LoginScreen';
@@ -18,6 +51,17 @@ import { CartScreen } from '../screens/buyer/CartScreen';
 import { OrdersScreen } from '../screens/buyer/OrdersScreen';
 import { ProfileScreen } from '../screens/buyer/ProfileScreen';
 import { QRScannerScreen } from '../screens/buyer/QRScannerScreen';
+import { BuyerPaymentsScreen } from '../screens/buyer/BuyerPaymentsScreen';
+import { BuyerEmptyCansScreen } from '../screens/buyer/BuyerEmptyCansScreen';
+import { ShopCustomersScreen } from '../screens/shop/ShopCustomersScreen';
+import { AddShopCustomerScreen } from '../screens/shop/AddShopCustomerScreen';
+import { ShopCustomerDetailScreen } from '../screens/shop/ShopCustomerDetailScreen';
+import { RecordShopPaymentScreen } from '../screens/shop/RecordShopPaymentScreen';
+import { ShopEmptyCansScreen } from '../screens/shop/ShopEmptyCansScreen';
+import { IssuedCansScreen } from '../screens/shop/IssuedCansScreen';
+import { PhoneOrderScreen } from '../screens/shop/PhoneOrderScreen';
+import { ShopProfileScreen } from '../screens/shop/ShopProfileScreen';
+import { ShopBuyersScreen } from '../screens/shop/ShopBuyersScreen';
 import { OrderDetailScreen } from '../screens/common/OrderDetailScreen';
 import { ProductDetailScreen } from '../screens/common/ProductDetailScreen';
 
@@ -27,10 +71,19 @@ import { OrderManagementScreen } from '../screens/admin/OrderManagementScreen';
 import { MenuManagementScreen } from '../screens/admin/MenuManagementScreen';
 import { UserManagementScreen } from '../screens/admin/UserManagementScreen';
 import { AppSettingsScreen } from '../screens/admin/AppSettingsScreen';
+import { SellerListScreen } from '../screens/admin/SellerListScreen';
+import { AddSellerScreen } from '../screens/admin/AddSellerScreen';
+import { SellerDetailScreen } from '../screens/admin/SellerDetailScreen';
+import { EditSellerScreen } from '../screens/admin/EditSellerScreen';
+import { ActivatePaymentScreen } from '../screens/admin/ActivatePaymentScreen';
+import { SubscriptionListScreen } from '../screens/admin/SubscriptionListScreen';
+import { PaymentListScreen } from '../screens/admin/PaymentListScreen';
 
 import { colors, spacing, typography } from '../theme';
+import { SellerSubscriptionGate } from '../components/common/SellerSubscriptionGate';
 import { useAuth } from '../hooks';
-import { useGetUnreadAdminNotificationCountQuery } from '../store/api/notificationApi';
+import { useGetUnreadAdminNotificationCountQuery, useGetUnreadBuyerNotificationCountQuery } from '../store/api/notificationApi';
+import { NotificationHistoryScreen } from '../screens/common/NotificationHistoryScreen';
 import { useGetCustomerContactNumberQuery } from '../store/api/settingsApi';
 
 const Stack = createStackNavigator();
@@ -46,7 +99,11 @@ import { navigationRef } from './navigationRef';
 
 // Header Right Component with Username and Logout
 const HeaderRight = ({ navigation }: any) => {
-  const { user, logout } = useAuth();
+  const { user, logout, isBuyer } = useAuth();
+  const buyer = isBuyer();
+  const { data: buyerUnread = 0 } = useGetUnreadBuyerNotificationCountQuery(user?.id || 0, { skip: !user?.id || !buyer });
+  const { data: sellerUnread = 0 } = useGetUnreadAdminNotificationCountQuery(undefined, { skip: !user || buyer });
+  const unread = buyer ? buyerUnread : sellerUnread;
   const { data: customerPhone } = useGetCustomerContactNumberQuery();
 
   const performLogout = async () => {
@@ -92,22 +149,6 @@ const HeaderRight = ({ navigation }: any) => {
   };
 
   const handleLogout = () => {
-    console.log('Logout button clicked');
-    
-    // For web, use window.confirm as Alert.alert onPress callbacks don't work reliably
-    if (Platform.OS === 'web') {
-      console.log('Web platform detected, using window.confirm');
-      const confirmed = (window as any).confirm('Are you sure you want to logout?');
-      if (confirmed) {
-        console.log('Logout confirmed by user (web), starting logout process');
-        performLogout();
-      } else {
-        console.log('Logout cancelled by user (web)');
-      }
-      return;
-    }
-    
-    // For native platforms, use Alert.alert
     try {
       console.log('Showing logout confirmation alert (native)...');
       Alert.alert(
@@ -201,6 +242,18 @@ const HeaderRight = ({ navigation }: any) => {
     <View style={styles.headerRight}>
       <Text style={styles.username}>{user?.username || 'User'}</Text>
       <TouchableOpacity
+        onPress={() => navigation.getParent()?.navigate('NotificationHistory') || navigation.navigate('NotificationHistory')}
+        style={styles.phoneButton}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.phoneIcon}>🔔</Text>
+        {unread > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+      <TouchableOpacity
         onPress={async () => {
           try {
             const phone = (customerPhone || '').trim();
@@ -246,29 +299,11 @@ const HeaderRight = ({ navigation }: any) => {
 };
 
 // Buyer Tab Navigator
-const BuyerTabs = ({ navigation }: any) => (
-  <Tab.Navigator
-    screenOptions={{
-      tabBarActiveTintColor: colors.primary,
-      tabBarInactiveTintColor: colors.textSecondary,
-      headerStyle: { backgroundColor: colors.primary },
-      headerTintColor: colors.white,
-      headerRight: () => <HeaderRight navigation={navigation} />,
-    }}
-  >
-    <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Shop', tabBarLabel: 'Shop' }} />
-    <Tab.Screen name="Orders" component={OrdersScreen} options={{ title: 'My Orders', tabBarLabel: 'My Orders' }} />
-    <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile', tabBarLabel: 'Profile' }} />
-  </Tab.Navigator>
-);
-
-// Admin Tab Navigator
-const AdminTabs = ({ navigation }: any) => {
-  const { isStrictAdmin } = useAuth();
-  // Get notification count for badge
-  const { data: unreadCount = 0 } = useGetUnreadAdminNotificationCountQuery(
-    undefined
-  );
+const BuyerTabs = ({ navigation }: any) => {
+  const { data: account } = useGetBuyerAccountSummaryQuery();
+  const shopName = account?.companyName || account?.sellerBusiness;
+  const shopPhoto = account?.sellerProfilePhoto;
+  const shopBrand = <HeaderBrand name={shopName} photo={shopPhoto} light />;
 
   return (
   <Tab.Navigator
@@ -280,33 +315,131 @@ const AdminTabs = ({ navigation }: any) => {
       headerRight: () => <HeaderRight navigation={navigation} />,
     }}
   >
-    <Tab.Screen name="Dashboard" component={AdminDashboardScreen} />
+    <Tab.Screen
+      name="Home"
+      component={HomeScreen}
+      options={{
+        title: 'Shop',
+        tabBarLabel: 'Shop',
+        tabBarIcon: tabIcon('storefront-outline', 'storefront'),
+        headerTitle: () => shopBrand,
+      }}
+    />
+    <Tab.Screen
+      name="Orders"
+      component={OrdersScreen}
+      options={{
+        title: 'My Orders',
+        tabBarLabel: 'My Orders',
+        tabBarIcon: tabIcon('receipt-outline', 'receipt'),
+        headerLeft: () => <View style={styles.headerBrandWrap}>{shopBrand}</View>,
+      }}
+    />
+    <Tab.Screen
+      name="Profile"
+      component={ProfileScreen}
+      options={{
+        title: 'Profile',
+        tabBarLabel: 'Profile',
+        tabBarIcon: tabIcon('person-outline', 'person'),
+        headerLeft: () => <View style={styles.headerBrandWrap}>{shopBrand}</View>,
+      }}
+    />
+  </Tab.Navigator>
+  );
+};
+
+// Admin Tab Navigator
+const AdminTabs = ({ navigation }: any) => {
+  const { user, isStrictAdmin, isSeller } = useAuth();
+  const { data: shopCompany } = useGetShopCompanyQuery(undefined, { skip: !isSeller() });
+  const sellerBrand = (
+    <HeaderBrand
+      name={shopCompany?.companyName}
+      photo={shopCompany?.profilePhoto || user?.profilePhoto}
+      light
+    />
+  );
+  // Get notification count for badge
+  const { data: unreadCount = 0 } = useGetUnreadAdminNotificationCountQuery(
+    undefined
+  );
+
+  return (
+  <Tab.Navigator
+    screenOptions={{
+      tabBarActiveTintColor: colors.primary,
+      tabBarInactiveTintColor: colors.textSecondary,
+      tabBarLabelPosition: 'below-icon',
+      tabBarItemStyle: styles.adminTabItem,
+      tabBarLabelStyle: styles.adminTabLabel,
+      tabBarIconStyle: styles.adminTabIcon,
+      headerStyle: { backgroundColor: colors.primary },
+      headerTintColor: colors.white,
+      headerRight: () => <HeaderRight navigation={navigation} />,
+    }}
+  >
+    <Tab.Screen
+      name="Dashboard"
+      component={AdminDashboardScreen}
+      options={{
+        tabBarIcon: tabIcon('grid-outline', 'grid'),
+        headerTitle: () => isSeller() ? sellerBrand : <Text style={styles.headerTitleText}>Dashboard</Text>,
+      }}
+    />
       <Tab.Screen 
         name="OrderManagement" 
         component={OrderManagementScreen} 
         options={{ 
           title: 'Orders',
+          tabBarIcon: tabIcon('receipt-outline', 'receipt'),
           tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          headerLeft: () => isSeller() ? <View style={styles.headerBrandWrap}>{sellerBrand}</View> : undefined,
         }} 
       />
-    <Tab.Screen name="MenuManagement" component={MenuManagementScreen} options={{ title: 'Products' }} />
+    <Tab.Screen
+      name="MenuManagement"
+      component={MenuManagementScreen}
+      options={{
+        title: 'Products',
+        tabBarIcon: tabIcon('cube-outline', 'cube'),
+        headerLeft: () => isSeller() ? <View style={styles.headerBrandWrap}>{sellerBrand}</View> : undefined,
+      }}
+    />
     {/* Users tab - Only visible for ADMIN role, not for SELLER */}
     {isStrictAdmin() && (
       <Tab.Screen 
         name="UserManagement" 
         component={UserManagementScreen} 
-        options={{ title: 'Users' }} 
+        options={{ title: 'Users', tabBarIcon: tabIcon('people-outline', 'people') }} 
       />
     )}
-    <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile', tabBarLabel: 'Profile' }} />
-      <Tab.Screen
-        name="AppSettings"
-        component={AppSettingsScreen}
-        options={{
-          title: 'App Settings',
-          tabBarButton: () => null,
-        }}
-      />
+    <Tab.Screen
+      name="Profile"
+      component={ProfileScreen}
+      options={{
+        title: 'Profile',
+        tabBarLabel: 'Profile',
+        tabBarIcon: tabIcon('person-outline', 'person'),
+        headerLeft: () => isSeller() ? <View style={styles.headerBrandWrap}>{sellerBrand}</View> : undefined,
+      }}
+    />
+      {isStrictAdmin() && (
+        <>
+          <Tab.Screen
+            name="AppSettings"
+            component={AppSettingsScreen}
+            options={{ title: 'App Settings', ...hiddenTabOptions }}
+          />
+          <Tab.Screen name="SellerList" component={SellerListScreen} options={{ title: 'Sellers', ...hiddenTabOptions }} />
+          <Tab.Screen name="AddSeller" component={AddSellerScreen} options={{ title: 'Add Seller', ...hiddenTabOptions }} />
+          <Tab.Screen name="SellerDetail" component={SellerDetailScreen} options={{ title: 'Seller Details', ...hiddenTabOptions }} />
+          <Tab.Screen name="EditSeller" component={EditSellerScreen} options={{ title: 'Edit Seller', ...hiddenTabOptions }} />
+          <Tab.Screen name="ActivatePayment" component={ActivatePaymentScreen} options={{ title: 'Payment Activation', ...hiddenTabOptions }} />
+          <Tab.Screen name="SubscriptionList" component={SubscriptionListScreen} options={{ title: 'Subscriptions', ...hiddenTabOptions }} />
+          <Tab.Screen name="PaymentList" component={PaymentListScreen} options={{ title: 'Payments', ...hiddenTabOptions }} />
+        </>
+      )}
   </Tab.Navigator>
 );
 };
@@ -336,11 +469,13 @@ export const AppNavigator = () => {
         console.log('✅ NavigationContainer is ready');
       }}
     >
+      <>
       <Stack.Navigator
         initialRouteName="Login"
         screenOptions={{
           headerStyle: { backgroundColor: colors.primary },
           headerTintColor: colors.white,
+          gestureEnabled: Platform.OS !== 'web',
         }}
       >
         {/* Authentication Screens - Start here */}
@@ -398,6 +533,11 @@ export const AppNavigator = () => {
           component={CartScreen}
           options={{ title: 'Cart' }}
         />
+        <Stack.Screen
+          name="NotificationHistory"
+          component={NotificationHistoryScreen}
+          options={{ title: 'Notification History' }}
+        />
 
         {/* Buyer PDP */}
         <Stack.Screen
@@ -427,12 +567,108 @@ export const AppNavigator = () => {
           component={QRScannerScreen}
           options={{ title: 'Scan QR Code' }}
         />
+        <Stack.Screen
+          name="ShopCustomers"
+          component={ShopCustomersScreen}
+          options={{ title: 'Shop Customers' }}
+        />
+        <Stack.Screen
+          name="AddShopCustomer"
+          component={AddShopCustomerScreen}
+          options={{ title: 'Customer' }}
+        />
+        <Stack.Screen
+          name="ShopCustomerDetail"
+          component={ShopCustomerDetailScreen}
+          options={{ title: 'Customer Details' }}
+        />
+        <Stack.Screen
+          name="RecordShopPayment"
+          component={RecordShopPaymentScreen}
+          options={{ title: 'Record Payment' }}
+        />
+        <Stack.Screen
+          name="ShopEmptyCans"
+          component={ShopEmptyCansScreen}
+          options={{ title: 'Empty Cans' }}
+        />
+        <Stack.Screen
+          name="IssuedCans"
+          component={IssuedCansScreen}
+          options={{ title: '20 Litre Cans' }}
+        />
+        <Stack.Screen
+          name="PhoneOrder"
+          component={PhoneOrderScreen}
+          options={{ title: 'Phone Order' }}
+        />
+        <Stack.Screen
+          name="ShopProfile"
+          component={ShopProfileScreen}
+          options={{ title: 'Shop Profile' }}
+        />
+        <Stack.Screen
+          name="ShopBuyers"
+          component={ShopBuyersScreen}
+          options={{ title: 'My Buyers' }}
+        />
+        <Stack.Screen
+          name="BuyerPayments"
+          component={BuyerPaymentsScreen}
+          options={{ title: 'My Payments' }}
+        />
+        <Stack.Screen
+          name="BuyerEmptyCans"
+          component={BuyerEmptyCansScreen}
+          options={{ title: 'My Empty Cans' }}
+        />
       </Stack.Navigator>
+      <SellerSubscriptionGate />
+      </>
     </NavigationContainer>
   );
 };
 
 const styles = StyleSheet.create({
+  tabIconBox: {
+    width: TAB_ICON_SIZE,
+    height: TAB_ICON_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabIconGlyph: {
+    width: TAB_ICON_SIZE,
+    height: TAB_ICON_SIZE,
+    lineHeight: TAB_ICON_SIZE,
+    textAlign: 'center',
+  },
+  adminTabItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 0,
+    minWidth: 0,
+  },
+  adminTabIcon: {
+    width: TAB_ICON_SIZE,
+    height: TAB_ICON_SIZE,
+    marginTop: 4,
+  },
+  adminTabLabel: {
+    fontSize: 10,
+    lineHeight: 12,
+    textAlign: 'center',
+    marginTop: 2,
+    width: '100%',
+  },
+  headerBrandWrap: {
+    marginLeft: spacing.md,
+  },
+  headerTitleText: {
+    color: colors.white,
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+  },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -445,6 +681,7 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   phoneButton: {
+    position: 'relative',
     width: 34,
     height: 34,
     borderRadius: 17,
@@ -458,6 +695,23 @@ const styles = StyleSheet.create({
   phoneIcon: {
     fontSize: 16,
     color: colors.white,
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  badgeText: {
+    color: colors.white,
+    fontSize: 10,
+    fontWeight: typography.fontWeight.bold,
   },
   logoutButton: {
     backgroundColor: colors.error, // Red background

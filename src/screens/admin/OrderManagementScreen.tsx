@@ -21,9 +21,12 @@ import {
   useMarkAdminNotificationAsReadMutation
 } from '../../store/api/notificationApi';
 import { Order, OrderStatus } from '../../types';
-import { formatCurrency, formatDateTime, formatOrderStatus } from '../../utils/formatters';
+import { canEditOrderBill, formatCurrency, formatDateTime, formatOrderStatus } from '../../utils/formatters';
+import { DeliverySlotBadge } from '../../components/common/DeliverySlotBadge';
 import { ORDER_STATUS_COLORS } from '../../utils/constants';
 import { showAlert, showSuccessAlert, showErrorAlert, showConfirmAlert } from '../../utils/alert';
+import { useAuth } from '../../hooks';
+import { useGetShopBuyersQuery } from '../../store/api/shopApi';
 
 export const OrderManagementScreen = () => {
   // Note: navigation is passed by React Navigation; used for Order Details.
@@ -89,6 +92,8 @@ export const OrderManagementScreen = () => {
     };
   }, [selectedFilter, fromDate, toDate]);
 
+  const { isSeller, isStrictAdmin } = useAuth();
+  const { data: myBuyers = [] } = useGetShopBuyersQuery(undefined, { skip: !isSeller() || isStrictAdmin() });
   const { data: orders, isLoading, refetch, error } = useGetAllOrdersQuery(queryArgs);
   const [updateOrderStatus, { isLoading: updating }] = useUpdateOrderStatusMutation();
   const [confirmOrder, { isLoading: confirming }] = useConfirmOrderMutation();
@@ -170,7 +175,6 @@ export const OrderManagementScreen = () => {
       }).unwrap();
       
       console.log('✅ Auto-delivered order:', result);
-      showSuccessAlert('Order automatically marked as delivered.');
       await refetch();
     } catch (error: any) {
       console.error('❌ Auto-deliver error:', error);
@@ -187,9 +191,12 @@ export const OrderManagementScreen = () => {
   // Use useMemo to prevent unnecessary recalculations and ensure proper updates
   const filteredOrders = useMemo(() => {
     if (!orders) return [];
-    // Backend already applies status + date filters via query params
+    if (isSeller() && !isStrictAdmin()) {
+      const buyerIds = new Set((myBuyers || []).map((buyer) => Number(buyer.id)));
+      return orders.filter((order) => buyerIds.has(Number(order.buyerId)));
+    }
     return orders;
-  }, [orders, selectedFilter]);
+  }, [orders, selectedFilter, myBuyers, isSeller, isStrictAdmin]);
 
   const hasDateRange = !!fromDate && !!toDate;
 
@@ -381,7 +388,8 @@ export const OrderManagementScreen = () => {
           billedBy: sellerName,
         },
       }).unwrap();
-      showSuccessAlert('Bill updated successfully');
+      const buyerNotified = billingOrder.paymentStatus === 'PARTIALLY_PAID';
+      showSuccessAlert(buyerNotified ? 'Bill updated. The buyer has been notified.' : 'Bill updated successfully');
       setBillModalVisible(false);
       // Store the updated order to show "Move to Delivery" button
       setOrderWithUpdatedBill(updatedOrder);
@@ -673,6 +681,7 @@ export const OrderManagementScreen = () => {
             <Text style={styles.totalAmount}>
               {formatCurrency(item.finalBillAmount || item.total)}
             </Text>
+            <DeliverySlotBadge order={item} />
             {item.finalBillAmount && item.finalBillAmount !== item.total && (
               <Text style={styles.originalAmount}>
                 Original: {formatCurrency(item.total)}
@@ -811,8 +820,7 @@ export const OrderManagementScreen = () => {
             )}
             {isProcessing && (
               <>
-                {/* Only show bill button for processing orders (not delivered) */}
-                {item.status !== 'delivered' && (
+                {canEditOrderBill(item) && (
                   <TouchableOpacity
                     style={[styles.actionButton, styles.billButton, getActionButtonStyle()]}
                     onPress={() => {
@@ -891,6 +899,18 @@ export const OrderManagementScreen = () => {
                   )}
                 </TouchableOpacity>
               </>
+            )}
+            {!isProcessing && canEditOrderBill(item) && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.billButton, getActionButtonStyle()]}
+                onPress={() => {
+                  setBillingOrder(item);
+                  setBillModalVisible(true);
+                  setOrderWithUpdatedBill(null);
+                }}
+              >
+                <Text style={styles.billButtonText}>💰 Edit Bill</Text>
+              </TouchableOpacity>
             )}
           </View>
         </View>

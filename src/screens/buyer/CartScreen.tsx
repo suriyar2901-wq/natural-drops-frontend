@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Platform, TextInput } from 'react-native';
 import { colors, typography, spacing } from '../../theme';
 import { Card, Button, LocationSelectionModal } from '../../components/common';
 import { useCart, useAuth } from '../../hooks';
 import { useCreateOrderMutation } from '../../store/api/orderApi';
-import { formatCurrency } from '../../utils/formatters';
+import { formatClockAmPm, formatCurrency } from '../../utils/formatters';
 import { CartItem, CreateOrderRequest } from '../../types';
 import { useDispatch } from 'react-redux';
 import { calculateTotals } from '../../store/slices/cartSlice';
@@ -20,6 +20,11 @@ export const CartScreen = ({ navigation }: any) => {
   const [deliveryLatitude, setDeliveryLatitude] = useState<number | undefined>();
   const [deliveryLongitude, setDeliveryLongitude] = useState<number | undefined>();
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const [deliveryChoice, setDeliveryChoice] = useState<'Today' | 'Tomorrow' | 'Date'>('Today');
+  const [customDate, setCustomDate] = useState('');
+  const [deliveryTime, setDeliveryTime] = useState('10:00');
+  const [hourDraft, setHourDraft] = useState('10');
+  const [minuteDraft, setMinuteDraft] = useState('00');
 
   // Recalculate totals if items exist but total is invalid
   useEffect(() => {
@@ -91,6 +96,72 @@ export const CartScreen = ({ navigation }: any) => {
   };
 
 
+  const toYmd = (offsetDays: number) => {
+    const date = new Date();
+    date.setHours(12, 0, 0, 0);
+    date.setDate(date.getDate() + offsetDays);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const today = toYmd(0);
+  const scheduledDate = deliveryChoice === 'Today' ? today : deliveryChoice === 'Tomorrow' ? toYmd(1) : customDate;
+  const hourSlots = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`);
+  const minutesOf = (value: string) => {
+    const [hour, minute] = value.split(':').map(Number);
+    return hour * 60 + minute;
+  };
+  const nowMinutes = () => {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  };
+  const isFutureSlot = (date: string, time: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return false;
+    if (date < today) return false;
+    if (date > today) return true;
+    return minutesOf(time) > nowMinutes();
+  };
+  const earliestToday = (() => {
+    const now = new Date(Date.now() + 60 * 1000);
+    if (now.getDate() !== new Date().getDate()) return '';
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  })();
+
+  const clockParts = (value: string) => {
+    const [hourRaw, minuteRaw] = (value || '09:00').slice(0, 5).split(':');
+    const hour24 = Number(hourRaw);
+    const minute = Number(minuteRaw);
+    return {
+      hour12: hour24 % 12 || 12,
+      minute: Number.isNaN(minute) ? 0 : minute,
+      suffix: (hour24 >= 12 ? 'PM' : 'AM') as 'AM' | 'PM',
+    };
+  };
+  const applyClock = (hour12: number, minute: number, suffix: 'AM' | 'PM') => {
+    const safeHour = Math.min(12, Math.max(1, hour12));
+    const safeMinute = Math.min(59, Math.max(0, minute));
+    let hour24 = safeHour % 12;
+    if (suffix === 'PM') hour24 += 12;
+    const value = `${String(hour24).padStart(2, '0')}:${String(safeMinute).padStart(2, '0')}`;
+    if (scheduledDate && !isFutureSlot(scheduledDate, value)) return false;
+    setDeliveryTime(value);
+    return true;
+  };
+
+  useEffect(() => {
+    if (!scheduledDate || isFutureSlot(scheduledDate, deliveryTime)) return;
+    const next = hourSlots.find((slot) => isFutureSlot(scheduledDate, slot));
+    if (next) setDeliveryTime(next);
+  }, [scheduledDate, deliveryTime]);
+
+  useEffect(() => {
+    const parts = clockParts(deliveryTime);
+    setHourDraft(String(parts.hour12));
+    setMinuteDraft(String(parts.minute).padStart(2, '0'));
+  }, [deliveryTime]);
+
   const handleCheckout = () => {
     if (items.length === 0) {
       Alert.alert('Empty Cart', 'Please add items to cart before checkout');
@@ -99,6 +170,15 @@ export const CartScreen = ({ navigation }: any) => {
 
     if (!user) {
       Alert.alert('Not Logged In', 'Please login to place an order');
+      return;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate) || scheduledDate < today) {
+      Alert.alert('Delivery date', 'Choose today or a future date. Past dates are not allowed.');
+      return;
+    }
+    if (!isFutureSlot(scheduledDate, deliveryTime)) {
+      Alert.alert('Delivery time', 'Choose a future time. Past time is not allowed.');
       return;
     }
 
@@ -189,6 +269,8 @@ export const CartScreen = ({ navigation }: any) => {
         latitude: validLatitude,
         longitude: validLongitude,
         total: finalTotal,
+        scheduledDeliveryDate: scheduledDate,
+        deliveryTime,
         items: orderItems,
       };
 
@@ -208,7 +290,7 @@ export const CartScreen = ({ navigation }: any) => {
       navigateToShop();
       Alert.alert(
         'Order Placed',
-        `Your order #${order.id} has been placed successfully!\n\nTotal: ${formatCurrency(total)}`
+        `Your order #${order.id} has been placed successfully!\n\nDelivery: ${scheduledDate.split('-').reverse().join('/')} at ${formatClockAmPm(deliveryTime)}\nTotal: ${formatCurrency(total)}`
       );
     } catch (error: any) {
       console.error('❌ Order creation failed:', error);
@@ -235,13 +317,6 @@ export const CartScreen = ({ navigation }: any) => {
       // Instantly navigate back to Shop (no redirecting screen)
       navigateToShop();
     };
-
-    // Web: Alert.alert callbacks are unreliable; use window.confirm
-    if (Platform.OS === 'web') {
-      const confirmed = (window as any).confirm('Are you sure you want to clear the cart?');
-      if (confirmed) doClear();
-      return;
-    }
 
     Alert.alert('Clear Cart', 'Are you sure you want to clear the cart?', [
       { text: 'Cancel', style: 'cancel' },
@@ -342,6 +417,135 @@ export const CartScreen = ({ navigation }: any) => {
                 <Text style={styles.totalLabel}>Total</Text>
                 <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
               </View>
+            </Card>
+            <Card style={styles.deliveryCard}>
+              <Text style={styles.deliveryTitle}>When should we deliver?</Text>
+              <View style={styles.choiceRow}>
+                {(['Today', 'Tomorrow', 'Date'] as const).map((choice) => (
+                  <TouchableOpacity
+                    key={choice}
+                    style={[styles.choice, deliveryChoice === choice && styles.choiceActive]}
+                    onPress={() => setDeliveryChoice(choice)}
+                  >
+                    <Text style={[styles.choiceText, deliveryChoice === choice && styles.choiceTextActive]}>{choice}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {deliveryChoice === 'Date' && Platform.OS === 'web' && (
+                <View style={styles.dateField}>
+                  <Text style={styles.dateValue}>
+                    {customDate ? customDate.split('-').reverse().join('/') : 'Select date'}
+                  </Text>
+                  <Text style={styles.dateIcon}>📅</Text>
+                  {React.createElement('input', {
+                    type: 'date',
+                    min: today,
+                    value: customDate,
+                    onChange: (event: any) => {
+                      const value = event.target.value;
+                      if (value && value < today) return;
+                      setCustomDate(value);
+                    },
+                    style: {
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      width: '100%',
+                      height: '100%',
+                      opacity: 0,
+                      cursor: 'pointer',
+                      boxSizing: 'border-box',
+                    },
+                  })}
+                </View>
+              )}
+              {deliveryChoice === 'Date' && Platform.OS !== 'web' && (
+                <Text style={styles.deliveryHint}>Choose today or any future date. Past dates stay blocked.</Text>
+              )}
+              <Text style={styles.deliveryHint}>Time</Text>
+              {scheduledDate === today && !earliestToday ? (
+                <Text style={styles.deliveryHint}>No time left today. Choose Tomorrow or another date.</Text>
+              ) : (
+                <View style={styles.clockBox}>
+                  <View style={styles.clockField}>
+                    <Text style={styles.clockLabel}>Hour</Text>
+                    <TextInput
+                      value={hourDraft}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      onChangeText={(text) => {
+                        const digits = text.replace(/\D/g, '').slice(0, 2);
+                        setHourDraft(digits);
+                        const hour = Number(digits);
+                        const ready = digits.length === 2 || (digits.length === 1 && hour >= 2);
+                        if (ready && hour >= 1 && hour <= 12) {
+                          applyClock(hour, clockParts(deliveryTime).minute, clockParts(deliveryTime).suffix);
+                        }
+                      }}
+                      onBlur={() => {
+                        const hour = Number(hourDraft);
+                        const parts = clockParts(deliveryTime);
+                        if (!hour || hour < 1 || hour > 12 || !applyClock(hour, parts.minute, parts.suffix)) {
+                          setHourDraft(String(parts.hour12));
+                        }
+                      }}
+                      style={styles.clockInput}
+                    />
+                  </View>
+                  <Text style={styles.clockColon}>:</Text>
+                  <View style={styles.clockField}>
+                    <Text style={styles.clockLabel}>Min</Text>
+                    <TextInput
+                      value={minuteDraft}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      onChangeText={(text) => {
+                        const digits = text.replace(/\D/g, '').slice(0, 2);
+                        setMinuteDraft(digits);
+                        if (digits.length === 2) {
+                          const parts = clockParts(deliveryTime);
+                          applyClock(parts.hour12, Number(digits), parts.suffix);
+                        }
+                      }}
+                      onBlur={() => {
+                        const minute = Number(minuteDraft);
+                        const parts = clockParts(deliveryTime);
+                        if (minuteDraft === '' || minute > 59 || !applyClock(parts.hour12, minute || 0, parts.suffix)) {
+                          setMinuteDraft(String(parts.minute).padStart(2, '0'));
+                        }
+                      }}
+                      style={styles.clockInput}
+                    />
+                  </View>
+                  <View style={styles.ampmRow}>
+                    {(['AM', 'PM'] as const).map((suffix) => {
+                      const active = clockParts(deliveryTime).suffix === suffix;
+                      return (
+                        <TouchableOpacity
+                          key={suffix}
+                          style={[styles.ampmButton, active && styles.choiceActive]}
+                          onPress={() => {
+                            const parts = clockParts(deliveryTime);
+                            const hour = Number(hourDraft) || parts.hour12;
+                            const minute = minuteDraft === '' ? parts.minute : Number(minuteDraft);
+                            if (!applyClock(hour, minute, suffix)) {
+                              setHourDraft(String(parts.hour12));
+                              setMinuteDraft(String(parts.minute).padStart(2, '0'));
+                            }
+                          }}
+                        >
+                          <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{suffix}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+              <Text style={styles.deliveryHint}>
+                {scheduledDate && isFutureSlot(scheduledDate, deliveryTime)
+                  ? `Delivery on ${scheduledDate.split('-').reverse().join('/')} at ${formatClockAmPm(deliveryTime)}. Seller and you get an alert one day before.`
+                  : 'Pick a future date and a future time.'}
+              </Text>
             </Card>
           </View>
         }
@@ -444,6 +648,9 @@ const styles = StyleSheet.create({
   },
   summaryContainer: {
     marginTop: spacing.md,
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -470,6 +677,24 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
   },
+  deliveryCard: { marginTop: spacing.md, padding: spacing.md, width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden', alignSelf: 'stretch' },
+  deliveryTitle: { fontWeight: typography.fontWeight.bold, color: colors.textPrimary, marginBottom: spacing.sm },
+  deliveryHint: { color: colors.textSecondary, marginTop: spacing.sm },
+  dateField: { marginTop: spacing.sm, width: '100%', maxWidth: '100%', minWidth: 0, alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: colors.border, borderRadius: 8, backgroundColor: colors.white, paddingVertical: 10, paddingHorizontal: 12, position: 'relative', overflow: 'hidden' },
+  dateValue: { color: colors.textPrimary, fontSize: typography.fontSize.base },
+  dateIcon: { fontSize: 18, marginLeft: spacing.sm },
+  clockBox: { marginTop: spacing.sm, flexDirection: 'row', alignItems: 'flex-end', width: '100%', maxWidth: '100%', minWidth: 0 },
+  clockField: { width: 72, minWidth: 0 },
+  clockLabel: { fontSize: typography.fontSize.xs, color: colors.textSecondary, marginBottom: 4 },
+  clockInput: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 8, fontSize: typography.fontSize.lg, textAlign: 'center', backgroundColor: colors.white, color: colors.textPrimary },
+  clockColon: { fontSize: typography.fontSize.xl, fontWeight: typography.fontWeight.bold, color: colors.textPrimary, marginHorizontal: spacing.sm, marginBottom: 10 },
+  ampmRow: { flexDirection: 'row', marginLeft: spacing.sm, marginBottom: 2 },
+  ampmButton: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: colors.white, marginLeft: 4 },
+  choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  choice: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, backgroundColor: colors.white },
+  choiceActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  choiceText: { color: colors.textPrimary },
+  choiceTextActive: { color: colors.white, fontWeight: typography.fontWeight.semibold },
   totalValue: {
     fontSize: typography.fontSize.xl,
     fontWeight: typography.fontWeight.bold,

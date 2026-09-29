@@ -6,7 +6,7 @@ import { colors, typography, spacing } from '../../theme';
 import { Card, Button, Input, DatePicker } from '../../components/common';
 import { AutocompleteInput, AutocompleteOption } from '../../components/common/AutocompleteInput';
 import { useAuth } from '../../hooks';
-import { useUpdateUserMutation } from '../../store/api/userApi';
+import { useUpdateOwnProfileMutation } from '../../store/api/userApi';
 import { useGetCurrentUserQuery } from '../../store/api/authApi';
 import { UpdateUserRequest, User, Gender } from '../../types';
 import { validators, validationMessages } from '../../utils/validators';
@@ -35,7 +35,7 @@ interface FormErrors {
 }
 
 export const ProfileScreen = () => {
-  const { user } = useAuth();
+  const { user, isBuyer, isSeller, isAdmin } = useAuth();
   const navigation = useNavigation();
   const dispatch = useDispatch<AppDispatch>();
   const [isEditMode, setIsEditMode] = useState(false);
@@ -52,7 +52,7 @@ export const ProfileScreen = () => {
   const [isLoadingPincode, setIsLoadingPincode] = useState(false);
   const [pincodeError, setPincodeError] = useState<string>('');
   
-  const [updateUser] = useUpdateUserMutation();
+  const [updateUser] = useUpdateOwnProfileMutation();
   const { refetch: refetchCurrentUser } = useGetCurrentUserQuery();
 
   // Form state with all new fields
@@ -338,11 +338,7 @@ export const ProfileScreen = () => {
         landmark: formData.landmark.trim() || undefined,
       };
 
-      // Call update API
-      const updatedUser = await updateUser({
-        id: user.id,
-        data: updateRequest,
-      }).unwrap();
+      const updatedUser = await updateUser(updateRequest).unwrap();
 
       // Refresh user data from backend
       try {
@@ -752,6 +748,63 @@ export const ProfileScreen = () => {
               </View>
 
               <View style={styles.securitySection}>
+                {(isSeller() || isAdmin()) && (
+                  <>
+                    <Button
+                      title="My Buyers"
+                      onPress={() => navigation.navigate('ShopBuyers' as never)}
+                      variant="outline"
+                      fullWidth
+                      style={styles.changePasswordButton}
+                    />
+                    <Button
+                      title="Shop Customers"
+                      onPress={() => navigation.navigate('ShopCustomers' as never)}
+                      variant="outline"
+                      fullWidth
+                      style={styles.changePasswordButton}
+                    />
+                    <Button
+                      title="20 Litre Cans"
+                      onPress={() => navigation.navigate('IssuedCans' as never)}
+                      variant="outline"
+                      fullWidth
+                      style={styles.changePasswordButton}
+                    />
+                    <Button
+                      title="Phone Order"
+                      onPress={() => navigation.navigate('PhoneOrder' as never)}
+                      variant="outline"
+                      fullWidth
+                      style={styles.changePasswordButton}
+                    />
+                    <Button
+                      title="Shop Profile / QR"
+                      onPress={() => navigation.navigate('ShopProfile' as never)}
+                      variant="outline"
+                      fullWidth
+                      style={styles.changePasswordButton}
+                    />
+                  </>
+                )}
+                {isBuyer() && (
+                  <>
+                    <Button
+                      title="My Payments"
+                      onPress={() => navigation.navigate('BuyerPayments' as never)}
+                      variant="outline"
+                      fullWidth
+                      style={styles.changePasswordButton}
+                    />
+                    <Button
+                      title="My Empty Cans"
+                      onPress={() => navigation.navigate('BuyerEmptyCans' as never)}
+                      variant="outline"
+                      fullWidth
+                      style={styles.changePasswordButton}
+                    />
+                  </>
+                )}
                 <Button
                   title="Change Password"
                   onPress={() => navigation.navigate('ChangePassword')}

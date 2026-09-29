@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, typography, spacing } from '../../theme';
 import { Card, Loading, OrderTimer } from '../../components/common';
@@ -14,6 +14,8 @@ import { Order, OrderStatus } from '../../types';
 import { formatCurrency, formatDateTime, formatOrderStatus } from '../../utils/formatters';
 import { ORDER_STATUS_COLORS } from '../../utils/constants';
 import { useNotifications } from '../../hooks/useNotifications';
+import { NotificationPreview } from '../../components/common/NotificationPreview';
+import { DeliverySlotBadge } from '../../components/common/DeliverySlotBadge';
 
 export const OrdersScreen = ({ navigation }: any) => {
   const { user } = useAuth();
@@ -39,6 +41,7 @@ export const OrdersScreen = ({ navigation }: any) => {
     }
   );
   const [markAsRead] = useMarkBuyerNotificationAsReadMutation();
+  const [preview, setPreview] = useState<any>(null);
   const { showNotification } = useNotifications();
   const previousCountRef = useRef<number>(0);
   const previousNotificationsRef = useRef<any[]>([]);
@@ -77,14 +80,14 @@ export const OrdersScreen = ({ navigation }: any) => {
       console.log(`🔔 ${newNotificationsCount} new notification(s) received`);
       showNotification(
         'Order Update!',
-        `You have ${newNotificationsCount} new order update${newNotificationsCount > 1 ? 's' : ''}`,
+        notifications?.[0]?.message || `You have ${newNotificationsCount} new order update${newNotificationsCount > 1 ? 's' : ''}`,
         { type: 'order' }
       );
       // Refetch orders when notification count increases
       refetch();
     }
     previousCountRef.current = unreadCount;
-  }, [unreadCount, showNotification, refetch]);
+  }, [unreadCount, showNotification, refetch, notifications]);
 
   // Debug logging
   useEffect(() => {
@@ -109,11 +112,11 @@ export const OrdersScreen = ({ navigation }: any) => {
   }, [notifications]);
 
 
-  const handleNotificationPress = async (notification: any) => {
+  const handleReadPreview = async () => {
+    if (!preview) return;
     try {
-      await markAsRead(notification.id);
-      // Optionally navigate to order details
-      // navigation.navigate('OrderDetail', { orderId: notification.orderId });
+      await markAsRead(preview.id);
+      setPreview(null);
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
@@ -176,6 +179,7 @@ export const OrdersScreen = ({ navigation }: any) => {
             <Text style={styles.totalAmount}>
               {formatCurrency(item.finalBillAmount || item.total || item.totalAmount)}
             </Text>
+            <DeliverySlotBadge order={item} />
             {item.finalBillAmount && item.finalBillAmount !== item.total && (
               <Text style={styles.originalAmount}>
                 Original: {formatCurrency(item.total)}
@@ -228,32 +232,22 @@ export const OrdersScreen = ({ navigation }: any) => {
   return (
     <View style={styles.container}>
       {/* Notifications Section */}
-      {notifications && notifications.length > 0 && (
-        <View style={styles.notificationsSection}>
-          <View style={styles.notificationsHeader}>
-            <Text style={styles.notificationsTitle}>🔔 Order Updates ({unreadCount})</Text>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.notificationsScroll}>
-            {notifications.slice(0, 5).map((notification) => (
-              <TouchableOpacity
-                key={notification.id}
-                style={[
-                  styles.notificationCard,
-                  !notification.isRead && styles.notificationCardUnread
-                ]}
-                onPress={() => handleNotificationPress(notification)}
-              >
-                <Text style={styles.notificationMessage} numberOfLines={2}>
-                  {notification.message}
-                </Text>
-                <Text style={styles.notificationTime}>
-                  {formatDateTime(notification.createdAt)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+      {unreadCount > 0 && (
+        <TouchableOpacity style={styles.noticeBar} onPress={() => setPreview(notifications?.[0])}>
+          <Text style={styles.noticeText}>
+            {unreadCount} new update{unreadCount > 1 ? 's' : ''}
+          </Text>
+          <Text style={styles.noticeAction}>Open</Text>
+        </TouchableOpacity>
       )}
+      <NotificationPreview
+        visible={!!preview}
+        message={preview?.message || ''}
+        createdAt={preview?.createdAt}
+        isRead={false}
+        onClose={() => setPreview(null)}
+        onRead={handleReadPreview}
+      />
 
       <FlatList
         data={orders || []}
@@ -456,47 +450,28 @@ const styles = StyleSheet.create({
     color: colors.error,
     marginTop: spacing.sm,
   },
-  notificationsSection: {
+  noticeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    margin: spacing.md,
+    marginBottom: 0,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 999,
     backgroundColor: colors.white,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  notificationsHeader: {
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.sm,
+  noticeText: {
+    color: colors.textPrimary,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
   },
-  notificationsTitle: {
-    fontSize: typography.fontSize.lg,
+  noticeAction: {
+    color: colors.primary,
+    fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.bold,
-    color: colors.textPrimary,
-  },
-  notificationsScroll: {
-    paddingHorizontal: spacing.md,
-  },
-  notificationCard: {
-    backgroundColor: colors.gray50,
-    padding: spacing.md,
-    borderRadius: spacing.md,
-    marginRight: spacing.sm,
-    minWidth: 250,
-    maxWidth: 300,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-  },
-  notificationCardUnread: {
-    backgroundColor: colors.gray100,
-    borderLeftColor: colors.error,
-  },
-  notificationMessage: {
-    fontSize: typography.fontSize.base,
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-    fontWeight: typography.fontWeight.medium,
-  },
-  notificationTime: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
   },
 });
 

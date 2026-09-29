@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Modal, TouchableOpacity } from 'react-native';
 import { colors, typography, spacing } from '../../theme';
 import { Button, Input } from '../../components/common';
 import { useResetPasswordMutation } from '../../store/api/authApi';
@@ -17,6 +17,7 @@ export const ResetPasswordScreen = ({ navigation, route }: any) => {
     newPassword?: string; 
     confirmPassword?: string;
   }>({});
+  const [popup, setPopup] = useState<{ title: string; message: string; goLogin?: boolean } | null>(null);
 
   // Detect platform and handle token from URL (for web)
   const isMobile = Platform.OS !== 'web';
@@ -102,21 +103,20 @@ export const ResetPasswordScreen = ({ navigation, route }: any) => {
         confirmPassword,
       }).unwrap();
 
-      Alert.alert(
-        'Success',
-        'Your password has been reset successfully. Please login with your new password.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              navigation.replace('Login');
-            },
-          },
-        ]
-      );
+      setPopup({
+        title: 'Password reset successful',
+        message: 'Your password has been reset successfully. Please login with your new password.',
+        goLogin: true,
+      });
     } catch (error: any) {
-      const errorMessage = error?.message || error?.data?.message || 'Failed to reset password. Please try again.';
-      Alert.alert('Error', errorMessage, [{ text: 'OK' }]);
+      const errorMessage = error?.data?.message || error?.message || 'Failed to reset password. Please try again.';
+      const expired = errorMessage.toLowerCase().includes('expired');
+      setPopup({
+        title: expired ? 'Link expired' : 'Password reset failed',
+        message: expired
+          ? 'This reset link is valid for 15 minutes only. Please ask for a new invite link.'
+          : errorMessage,
+      });
     }
   };
 
@@ -129,7 +129,7 @@ export const ResetPasswordScreen = ({ navigation, route }: any) => {
         <View style={styles.header}>
           <Text style={styles.title}>Reset Password</Text>
           <Text style={styles.subtitle}>
-            Enter your reset {isMobile ? 'OTP' : 'token'} and choose a new password
+            This link is valid for 15 minutes. Enter a new password to continue.
           </Text>
         </View>
 
@@ -195,6 +195,27 @@ export const ResetPasswordScreen = ({ navigation, route }: any) => {
           />
         </View>
       </ScrollView>
+
+      <Modal visible={!!popup} transparent animationType="fade" onRequestClose={() => setPopup(null)}>
+        <View style={styles.popupOverlay}>
+          <View style={styles.popupCard}>
+            <Text style={styles.popupTitle}>{popup?.title}</Text>
+            <Text style={styles.popupMessage}>{popup?.message}</Text>
+            <TouchableOpacity
+              style={styles.popupButton}
+              onPress={() => {
+                const goLogin = popup?.goLogin;
+                setPopup(null);
+                if (goLogin) {
+                  navigation.replace('Login');
+                }
+              }}
+            >
+              <Text style={styles.popupButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -232,6 +253,45 @@ const styles = StyleSheet.create({
   },
   backButton: {
     marginTop: spacing.sm,
+  },
+  popupOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  popupCard: {
+    backgroundColor: colors.white,
+    borderRadius: spacing.md,
+    width: '100%',
+    maxWidth: 400,
+    padding: spacing.lg,
+  },
+  popupTitle: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  popupMessage: {
+    fontSize: typography.fontSize.base,
+    color: colors.textSecondary,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  popupButton: {
+    backgroundColor: colors.primary,
+    borderRadius: spacing.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  popupButtonText: {
+    color: colors.white,
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
   },
 });
 

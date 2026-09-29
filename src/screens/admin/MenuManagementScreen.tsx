@@ -33,6 +33,7 @@ export const MenuManagementScreen = () => {
   const [addProductVideo] = useAddProductVideoMutation();
   const [deleteProductVideo] = useDeleteProductVideoMutation();
   const { user } = useAuth();
+  const isAdminAccount = user?.role === 'admin';
   const route = useRoute<any>();
 
   console.log('📦 MenuManagement - products:', products);
@@ -82,40 +83,21 @@ export const MenuManagementScreen = () => {
     description: '',
   });
 
-  const handleDelete = async (id: number, name: string) => {
-    // Use web-compatible confirmation for web platform
-    if (Platform.OS === 'web') {
-      const confirmed = (window as any).confirm(`Are you sure you want to delete "${name}"?`);
-      if (!confirmed) {
-        return;
-      }
-    } else {
-      // For native, use Alert.alert
-      return new Promise<void>((resolve) => {
-        Alert.alert(
-          'Delete Product',
-          `Are you sure you want to delete "${name}"?`,
-          [
-            { 
-              text: 'Cancel', 
-              style: 'cancel',
-              onPress: () => resolve(),
-            },
-            {
-              text: 'Delete',
-              style: 'destructive',
-              onPress: async () => {
-                await performDelete(id, name);
-                resolve();
-              },
-            },
-          ]
-        );
-      });
-    }
-    
-    // For web, directly perform delete
-    await performDelete(id, name);
+  const handleDelete = (id: number, name: string) => {
+    Alert.alert(
+      'Delete Product',
+      `Are you sure you want to delete "${name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            performDelete(id, name);
+          },
+        },
+      ]
+    );
   };
 
   const performDelete = async (id: number, name: string) => {
@@ -125,11 +107,7 @@ export const MenuManagementScreen = () => {
       console.log('✅ Delete successful');
       
       // Show success message
-      if (Platform.OS === 'web') {
-        (window as any).alert('Product deleted successfully');
-      } else {
-        Alert.alert('Success', 'Product deleted successfully');
-      }
+      Alert.alert('Success', 'Product deleted successfully');
       
       // Force refresh the product list
       await refetch();
@@ -139,11 +117,7 @@ export const MenuManagementScreen = () => {
       console.error('❌ Error details:', error.data || error.message);
       const errorMessage = error?.data?.message || error?.message || 'Unknown error';
       
-      if (Platform.OS === 'web') {
-        (window as any).alert(`Failed to delete product: ${errorMessage}`);
-      } else {
-        Alert.alert('Error', `Failed to delete product: ${errorMessage}`);
-      }
+      Alert.alert('Error', `Failed to delete product: ${errorMessage}`);
     }
   };
 
@@ -304,11 +278,7 @@ export const MenuManagementScreen = () => {
         console.log('🖼️ Updated images array:', updatedItem.images);
         
         // Show success message
-        if (Platform.OS === 'web') {
-          (window as any).alert('Product updated successfully');
-        } else {
-          Alert.alert('Success', 'Product updated successfully');
-        }
+        Alert.alert('Success', 'Product updated successfully');
         
         // Force refresh the product list to show updated image
         console.log('🔄 Refetching product list after update...');
@@ -349,11 +319,7 @@ export const MenuManagementScreen = () => {
         }
         
         // Show success message
-        if (Platform.OS === 'web') {
-          (window as any).alert('Product created successfully');
-        } else {
-          Alert.alert('Success', 'Product created successfully');
-        }
+        Alert.alert('Success', 'Product created successfully');
         
         // Force refresh the product list
         await refetch();
@@ -366,11 +332,7 @@ export const MenuManagementScreen = () => {
       console.error('❌ Save product error:', error);
       const errorMessage = error?.data?.message || error?.message || 'Failed to save product';
       
-      if (Platform.OS === 'web') {
-        (window as any).alert(`Error: ${errorMessage}`);
-      } else {
-        Alert.alert('Error', errorMessage);
-      }
+      Alert.alert('Error', errorMessage);
     }
   };
 
@@ -400,10 +362,6 @@ export const MenuManagementScreen = () => {
   };
 
   const showMsg = (title: string, message: string) => {
-    if (Platform.OS === 'web') {
-      (window as any).alert(message);
-      return;
-    }
     Alert.alert(title, message);
   };
 
@@ -613,6 +571,9 @@ export const MenuManagementScreen = () => {
             <View style={styles.productHeader}>
               <View style={styles.productInfo}>
                 <Text style={styles.productName}>{item.name}</Text>
+                {isAdminAccount && !!item.sellerName && (
+                  <Text style={styles.sellerName} numberOfLines={1}>Seller: {item.sellerName}</Text>
+                )}
                 {!!item.description?.trim() && (
                   <Text style={styles.productDescription} numberOfLines={2}>
                     {item.description.trim()}
@@ -1069,6 +1030,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.semibold,
     color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  sellerName: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary,
     marginBottom: spacing.xs,
   },
   productDescription: {

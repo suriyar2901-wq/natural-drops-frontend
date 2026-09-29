@@ -59,6 +59,15 @@ export const settingsApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Settings'],
     }),
+
+    updateSettings: builder.mutation<void, Record<string, string>>({
+      query: (settings) => ({
+        url: '/settings',
+        method: 'PUT',
+        body: settings,
+      }),
+      invalidatesTags: ['Settings'],
+    }),
   }),
 });
 
@@ -69,6 +78,7 @@ export const {
   useUpdateCustomerContactNumberMutation,
   useGetCustomerSupportEmailQuery,
   useUpdateCustomerSupportEmailMutation,
+  useUpdateSettingsMutation,
 } = settingsApi;
 
 

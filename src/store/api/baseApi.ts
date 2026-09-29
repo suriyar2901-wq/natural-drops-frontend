@@ -42,8 +42,20 @@ const customBaseQuery: BaseQueryFn<
         // Skip refresh for auth endpoints to avoid infinite loop
         const url = typeof args === 'string' ? args : args.url;
         if (url && (url.includes('/auth/login') || url.includes('/auth/refresh-token'))) {
-          // Don't try to refresh on login/refresh endpoints
-          return result;
+          const errorData = error.data as any;
+          const errorMessage = errorData?.message
+            || (typeof errorData === 'string' ? errorData : '')
+            || 'Invalid username or password';
+          return {
+            ...result,
+            error: {
+              ...error,
+              data: {
+                message: errorMessage,
+                status: error.status,
+              },
+            },
+          };
         }
         
         try {
@@ -104,11 +116,13 @@ const customBaseQuery: BaseQueryFn<
                                 errorMessage.toLowerCase().includes('deactivated');
         
         if (isInactiveError) {
-          // Account is inactive - redirect to inactive screen
-          // Import navigationRef dynamically to avoid circular dependencies
-          const { navigationRef } = require('../../navigation/navigationRef');
-          if (navigationRef.isReady()) {
-            navigationRef.navigate('AccountInactive' as never);
+          const { storageService } = require('../../services/storage.service');
+          const storedUser = await storageService.getUserData();
+          if (storedUser?.role === 'seller') {
+            const { navigationRef } = require('../../navigation/navigationRef');
+            if (navigationRef.isReady()) {
+              navigationRef.navigate('AccountInactive' as never);
+            }
           }
         }
       }
@@ -207,7 +221,7 @@ const customBaseQuery: BaseQueryFn<
 export const baseApi = createApi({
   reducerPath: 'api',
   baseQuery: customBaseQuery,
-  tagTypes: ['Auth', 'User', 'Menu', 'Order', 'Notification', 'BuyerNotification', 'Settings'],
+  tagTypes: ['Auth', 'User', 'Menu', 'Order', 'Notification', 'BuyerNotification', 'Settings', 'PlatformAdmin', 'Shop', 'BuyerAccount'],
   endpoints: () => ({}),
 });
 

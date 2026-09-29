@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image, Modal, TouchableOpacity } from 'react-native';
 import { colors, typography, spacing } from '../../theme';
 import { Button, Input, CustomerServiceModal } from '../../components/common';
 import { useAuth } from '../../hooks';
-import { validators, validationMessages } from '../../utils/validators';
+import { validators } from '../../utils/validators';
 
 // Natural Drops logo for login screen
 // Using require() for React Native compatibility (works on both web and native)
@@ -117,6 +117,11 @@ export const LoginScreen = ({ navigation }: any) => {
   const [localLoading, setLocalLoading] = useState(false);
   const [showCustomerServiceModal, setShowCustomerServiceModal] = useState(false);
   const [accountStatusMessage, setAccountStatusMessage] = useState('');
+  const [errorPopup, setErrorPopup] = useState<{ title: string; message: string } | null>(null);
+
+  const showErrorPopup = (title: string, message: string) => {
+    setErrorPopup({ title, message });
+  };
 
   // CSS styles for logo wrapper - injected for web
   useEffect(() => {
@@ -194,17 +199,14 @@ export const LoginScreen = ({ navigation }: any) => {
 
     if (!validators.required(username)) {
       console.log('   ❌ Username validation failed');
-      newErrors.username = validationMessages.required;
+      newErrors.username = 'Username is required';
     } else {
       console.log('   ✅ Username validation passed');
     }
 
     if (!validators.required(password)) {
       console.log('   ❌ Password required validation failed');
-      newErrors.password = validationMessages.required;
-    } else if (!validators.password(password)) {
-      console.log('   ❌ Password format validation failed');
-      newErrors.password = validationMessages.password;
+      newErrors.password = 'Password is required';
     } else {
       console.log('   ✅ Password validation passed');
     }
@@ -238,6 +240,7 @@ export const LoginScreen = ({ navigation }: any) => {
       console.error('❌ [LoginScreen] VALIDATION FAILED');
       console.error('   Validation errors:', errors);
       console.error('═══════════════════════════════════════════════════════');
+      showErrorPopup('Login Failed', 'Please enter your username and password.');
       return;
     }
 
@@ -285,7 +288,7 @@ export const LoginScreen = ({ navigation }: any) => {
         const isActiveValue = result.user.isActive;
         // Treat undefined, null, or true as active. Only explicit false means inactive.
         const isActiveBoolean = isActiveValue !== false;
-        const isInactive = result.user.role !== 'admin' && !isActiveBoolean;
+        const isInactive = result.user.role === 'seller' && !isActiveBoolean;
         
         if (isInactive) {
           // User is inactive (Seller/Buyer only) - redirect to inactive screen
@@ -333,29 +336,16 @@ export const LoginScreen = ({ navigation }: any) => {
           setAccountStatusMessage(result.error || 'Your account access is restricted.');
           setShowCustomerServiceModal(true);
         } else {
-          // Show regular error message for other errors
-          const errorMessage = result.error || 'Please check your credentials';
+          const isInvalidCredentials = result.errorCode === 'INVALID_CREDENTIALS'
+            || (result.error || '').toLowerCase().includes('invalid username')
+            || (result.error || '').toLowerCase().includes('invalid password');
+          const errorMessage = isInvalidCredentials
+            ? 'Invalid username or password. Please check your details and try again.'
+            : (result.error || 'Please check your credentials');
           const title = errorMessage.includes('connect to server') || errorMessage.includes('backend server')
             ? 'Connection Error'
             : 'Login Failed';
-          
-          Alert.alert(
-            title,
-            errorMessage,
-            [
-              {
-                text: 'OK',
-                style: 'default',
-              },
-              // Add retry button for connection errors
-              ...(errorMessage.includes('connect to server') || errorMessage.includes('backend server')
-                ? [{
-                    text: 'Retry',
-                    onPress: () => handleLogin(),
-                  }]
-                : []),
-            ]
-          );
+          showErrorPopup(title, errorMessage);
         }
       }
     } catch (error: any) {
@@ -364,11 +354,7 @@ export const LoginScreen = ({ navigation }: any) => {
       console.error('   Error message:', error?.message || 'No error message');
       console.error('   Error stack:', error?.stack || 'No stack trace');
       console.error('   Full error object:', error);
-      Alert.alert(
-        'Login Error',
-        'An unexpected error occurred. Please try again.',
-        [{ text: 'OK' }]
-      );
+      showErrorPopup('Login Error', 'An unexpected error occurred. Please try again.');
     } finally {
       console.log('🏁 [LoginScreen] Login process completed, resetting loading state');
       setLocalLoading(false);
@@ -501,6 +487,28 @@ export const LoginScreen = ({ navigation }: any) => {
         message={accountStatusMessage}
         onClose={() => setShowCustomerServiceModal(false)}
       />
+
+      <Modal
+        visible={!!errorPopup}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setErrorPopup(null)}
+      >
+        <View style={styles.popupOverlay}>
+          <View style={styles.popupCard}>
+            <Text style={styles.popupTitle}>{errorPopup?.title || 'Login Failed'}</Text>
+            <Text style={styles.popupMessage}>
+              {errorPopup?.message || 'Invalid username or password. Please try again.'}
+            </Text>
+            <TouchableOpacity
+              style={styles.popupButton}
+              onPress={() => setErrorPopup(null)}
+            >
+              <Text style={styles.popupButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -615,6 +623,45 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  popupOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  popupCard: {
+    backgroundColor: colors.white,
+    borderRadius: spacing.md,
+    width: '100%',
+    maxWidth: 400,
+    padding: spacing.lg,
+  },
+  popupTitle: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  popupMessage: {
+    fontSize: typography.fontSize.base,
+    color: colors.textSecondary,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  popupButton: {
+    backgroundColor: colors.primary,
+    borderRadius: spacing.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  popupButtonText: {
+    color: colors.white,
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
   },
 });
 

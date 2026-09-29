@@ -1,3 +1,14 @@
+/** Paid bills are locked. Unpaid and partially paid bills stay editable, including after delivery. */
+export const canEditOrderBill = (order: {
+  status?: string;
+  paymentStatus?: string;
+} | null | undefined): boolean => {
+  if (!order || order.status === 'canceled') return false;
+  if (order.paymentStatus === 'PAID') return false;
+  if (order.paymentStatus === 'PARTIALLY_PAID' || order.paymentStatus === 'UNPAID') return true;
+  return order.status === 'processing';
+};
+
 // Currency formatter
 export const formatCurrency = (amount: number | undefined | null): string => {
   if (amount === undefined || amount === null || isNaN(amount)) {
@@ -12,6 +23,26 @@ export const formatPhone = (phone: string): string => {
     return `+91 ${phone.slice(0, 5)} ${phone.slice(5)}`;
   }
   return phone;
+};
+
+export const formatClockAmPm = (time: string): string => {
+  const match = String(time).match(/(\d{1,2}):(\d{2})/);
+  if (!match) return '';
+  const hours = Number(match[1]);
+  const minutes = match[2];
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12;
+  return `${displayHours}:${minutes} ${suffix}`;
+};
+
+export const formatDeliverySlot = (order: {
+  scheduledDeliveryDate?: string;
+  estimatedDelivery?: string;
+} | null | undefined): string => {
+  if (!order?.scheduledDeliveryDate) return '';
+  const date = String(order.scheduledDeliveryDate).slice(0, 10).split('-').reverse().join('/');
+  const time = order.estimatedDelivery ? formatClockAmPm(String(order.estimatedDelivery).slice(11, 16)) : '';
+  return time ? `Delivery on ${date} at ${time}` : `Delivery on ${date}`;
 };
 
 // Date formatter

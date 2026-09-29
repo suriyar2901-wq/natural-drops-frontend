@@ -5,6 +5,7 @@ import { Button } from './Button';
 import { Input } from './Input';
 import { Order, PaymentStatus } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
+import { DeliverySlotBadge } from './DeliverySlotBadge';
 
 interface BillEditModalProps {
   visible: boolean;
@@ -52,10 +53,10 @@ export const BillEditModal: React.FC<BillEditModalProps> = ({
 
   if (!order) return null;
 
-  // Prevent editing bill for delivered orders
-  const isDelivered = order.status === 'delivered';
+  const isPaid = order.paymentStatus === 'PAID';
+  const isPartial = order.paymentStatus === 'PARTIALLY_PAID';
   const amount = parseFloat(finalBillAmount) || 0;
-  const isValid = !isNaN(amount) && amount > 0 && amount <= order.total && !isDelivered;
+  const isValid = !isNaN(amount) && amount > 0 && amount <= order.total && !isPaid;
 
   return (
     <Modal
@@ -74,10 +75,18 @@ export const BillEditModal: React.FC<BillEditModalProps> = ({
           </View>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-            {isDelivered && (
+            <DeliverySlotBadge order={order} />
+            {isPaid && (
               <View style={styles.warningBanner}>
                 <Text style={styles.warningText}>
-                  ⚠️ This order is already delivered. Bill cannot be edited.
+                  This bill is fully paid and cannot be edited.
+                </Text>
+              </View>
+            )}
+            {isPartial && (
+              <View style={styles.infoBanner}>
+                <Text style={styles.infoText}>
+                  This bill is partially paid. Saving will send a message to the buyer. Once the amount matches the original total, the bill becomes fully paid and cannot be edited again.
                 </Text>
               </View>
             )}
@@ -105,7 +114,7 @@ export const BillEditModal: React.FC<BillEditModalProps> = ({
                 placeholder="Enter final bill amount"
                 keyboardType="decimal-pad"
                 placeholderTextColor={colors.gray400}
-                editable={!isDelivered}
+                editable={!isPaid}
               />
               {amount > order.total && (
                 <Text style={styles.errorText}>
@@ -114,6 +123,12 @@ export const BillEditModal: React.FC<BillEditModalProps> = ({
               )}
               {amount <= 0 && finalBillAmount !== '' && (
                 <Text style={styles.errorText}>Bill amount must be greater than 0</Text>
+              )}
+              {amount > 0 && amount < order.total && (
+                <View style={styles.balanceBox}>
+                  <Text style={styles.balanceLabel}>Balance amount</Text>
+                  <Text style={styles.balanceValue}>{formatCurrency(order.total - amount)}</Text>
+                </View>
               )}
             </View>
 
@@ -141,7 +156,7 @@ export const BillEditModal: React.FC<BillEditModalProps> = ({
                 numberOfLines={4}
                 placeholderTextColor={colors.gray400}
                 textAlignVertical="top"
-                editable={!isDelivered}
+                editable={!isPaid}
               />
             </View>
           </ScrollView>
@@ -154,9 +169,9 @@ export const BillEditModal: React.FC<BillEditModalProps> = ({
               style={styles.cancelButton}
             />
             <Button
-              title={isDelivered ? "Read Only" : (isLoading ? "Saving..." : "Save Bill")}
+              title={isPaid ? "Fully Paid" : (isLoading ? "Saving..." : "Save Bill")}
               onPress={handleSave}
-              disabled={!isValid || isLoading || isDelivered}
+              disabled={!isValid || isLoading || isPaid}
               style={styles.saveButton}
             />
           </View>
@@ -258,6 +273,27 @@ const styles = StyleSheet.create({
     color: colors.error,
     marginTop: spacing.xs,
   },
+  balanceBox: {
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderRadius: 8,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: colors.warning,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  balanceLabel: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textPrimary,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  balanceValue: {
+    fontSize: typography.fontSize.lg,
+    color: colors.warning,
+    fontWeight: typography.fontWeight.bold,
+  },
   paymentStatusPreview: {
     marginTop: spacing.md,
     padding: spacing.md,
@@ -316,6 +352,19 @@ const styles = StyleSheet.create({
   warningText: {
     fontSize: typography.fontSize.sm,
     color: '#856404',
+    fontWeight: typography.fontWeight.medium,
+  },
+  infoBanner: {
+    backgroundColor: '#E3F2FD',
+    padding: spacing.md,
+    borderRadius: 8,
+    marginBottom: spacing.md,
+    borderLeftWidth: 4,
+    borderLeftColor: '#1976D2',
+  },
+  infoText: {
+    fontSize: typography.fontSize.sm,
+    color: '#0D47A1',
     fontWeight: typography.fontWeight.medium,
   },
 });

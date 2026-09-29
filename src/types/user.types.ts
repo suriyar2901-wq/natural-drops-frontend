@@ -46,6 +46,8 @@ export interface User {
   state?: string;
   pincode?: string;
   landmark?: string;
+  linkedSellerId?: number;
+  companyCode?: string;
 }
 
 export interface LoginRequest {
@@ -74,6 +76,8 @@ export interface RegisterRequest {
   landmark?: string;
   // Legacy field (optional, will be built from structured fields if not provided)
   address?: string;
+  companyName?: string;
+  companyCode?: string;
 }
 
 export interface AuthResponse {

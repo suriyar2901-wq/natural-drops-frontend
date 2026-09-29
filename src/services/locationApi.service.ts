@@ -17,6 +17,15 @@ export interface LocationSuggestion {
   state?: string;
 }
 
+export interface PincodeSuggestion {
+  pincode: string;
+  name: string;
+  displayName: string;
+  city: string;
+  district: string;
+  state: string;
+}
+
 class LocationApiService {
   private cache: Map<string, PincodeLocation> = new Map();
   private suggestionCache: Map<string, LocationSuggestion[]> = new Map();
@@ -69,6 +78,44 @@ class LocationApiService {
     } catch (error) {
       console.error('Error fetching pincode location:', error);
       return null;
+    }
+  }
+
+  async getPincodeSuggestions(pincode: string): Promise<PincodeSuggestion[]> {
+    if (!pincode || pincode.length !== 6) {
+      return [];
+    }
+
+    try {
+      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+      if (!response.ok) {
+        return [];
+      }
+      const data = await response.json();
+      if (!data || !data[0] || data[0].Status !== 'Success' || !data[0].PostOffice) {
+        return [];
+      }
+      return data[0].PostOffice.map((office: any) => {
+        const city = office.Block || office.Name || office.District || '';
+        const district = office.District || '';
+        const state = office.State || '';
+        return {
+          pincode,
+          name: pincode,
+          displayName: `${pincode} • ${office.Name || city}${district ? `, ${district}` : ''}${state ? `, ${state}` : ''}`,
+          city,
+          district,
+          state,
+        };
+      });
+    } catch (error) {
+      console.error('Error fetching pincode suggestions:', error);
+      return [];
     }
   }
 

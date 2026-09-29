@@ -34,6 +34,8 @@ export interface MenuItem {
   stockQuantity: number;
   lowStockThreshold?: number;
   rate: number;
+  sellerId?: number | null;
+  sellerName?: string | null;
   createdAt: string;
   updatedAt: string;
   images?: ProductImage[];

@@ -358,6 +358,9 @@ export const ProductDetailScreen = ({ navigation }: any) => {
 
         <View style={styles.detailsWrap}>
           <Text style={styles.name}>{(product as any).name}</Text>
+          {isAdmin && !!(product as any).sellerName && (
+            <Text style={styles.meta}>Seller: {(product as any).sellerName}</Text>
+          )}
           <Text style={styles.price}>{formatCurrency((product as any).rate || (product as any).price || 0)}</Text>
           <Text style={styles.meta}>
             Category: {(product as any).category || '—'}
@@ -457,11 +460,6 @@ export const ProductDetailScreen = ({ navigation }: any) => {
                       }
                     };
 
-                    if (Platform.OS === 'web') {
-                      const ok = (window as any).confirm('Delete this product?');
-                      if (ok) doDelete();
-                      return;
-                    }
                     Alert.alert('Delete Product', 'Are you sure you want to delete this product?', [
                       { text: 'Cancel', style: 'cancel' },
                       { text: 'Delete', style: 'destructive', onPress: doDelete },

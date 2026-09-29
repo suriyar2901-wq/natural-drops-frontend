@@ -5,6 +5,7 @@ export interface AdminNotification {
   customerName: string;
   total: number;
   itemCount: number;
+  message?: string;
   isRead: boolean;
   createdAt: string;
 }

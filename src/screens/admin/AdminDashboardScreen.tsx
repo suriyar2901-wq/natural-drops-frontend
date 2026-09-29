@@ -1,20 +1,32 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import { colors, typography, spacing } from '../../theme';
-import { Card, Loading, DatePicker } from '../../components/common';
+import { Card, Loading, DatePicker, StatusPill, DashboardRevenueChart, EarningsPieChart, HeaderBrand } from '../../components/common';
 import { useAuth } from '../../hooks';
 import { useGetDashboardStatsQuery } from '../../store/api/dashboardApi';
+import { useGetPlatformDashboardQuery } from '../../store/api/platformAdminApi';
+import { useCreateTodayRegularOrdersMutation, useGetRegularOrderPromptQuery, useGetSellerSubscriptionQuery, useGetShopCompanyQuery, useGetShopInboxQuery, useMarkShopInboxReadMutation, useSubscribeSellerMutation } from '../../store/api/shopApi';
+import { showErrorToast, showSuccessToast } from '../../utils/toast';
 import { 
   useGetUnreadAdminNotificationsQuery, 
   useGetUnreadAdminNotificationCountQuery,
   useMarkAdminNotificationAsReadMutation 
 } from '../../store/api/notificationApi';
-import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { formatCurrency } from '../../utils/formatters';
+import { NotificationPreview } from '../../components/common/NotificationPreview';
 import { useNotifications } from '../../hooks/useNotifications';
 import { DashboardQueryParams, OrderStatus } from '../../types';
 
 export const AdminDashboardScreen = ({ navigation }: any) => {
-  const { user, isStrictAdmin } = useAuth();
+  const { user, isStrictAdmin, isSeller } = useAuth();
+  const { data: sellerSub } = useGetSellerSubscriptionQuery(undefined, { skip: !isSeller() });
+  const { data: shopCompany } = useGetShopCompanyQuery(undefined, { skip: !isSeller() });
+  const { data: shopInbox = [] } = useGetShopInboxQuery(undefined, { skip: !isSeller() });
+  const { data: regularPrompt } = useGetRegularOrderPromptQuery(undefined, { skip: !isSeller() });
+  const [createRegularOrders, { isLoading: creatingRegular }] = useCreateTodayRegularOrdersMutation();
+  const [markInboxRead] = useMarkShopInboxReadMutation();
+  const [dismissedInboxIds, setDismissedInboxIds] = useState<number[]>([]);
+  const [renewSeller, { isLoading: renewing }] = useSubscribeSellerMutation();
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
   const [dateFilterParams, setDateFilterParams] = useState<DashboardQueryParams | undefined>(undefined);
@@ -57,6 +69,8 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
     undefined
   );
   const [markAsRead] = useMarkAdminNotificationAsReadMutation();
+  const [preview, setPreview] = useState<any>(null);
+  const [inboxPreview, setInboxPreview] = useState<any>(null);
   const { showNotification } = useNotifications();
   const previousCountRef = useRef<number>(0);
 
@@ -66,6 +80,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
   const totalRevenue = dashboardStats?.totalRevenue || 0;
   const productsCount = dashboardStats?.productsCount || 0;
   const dateRangeLabel = dashboardStats?.dateRangeLabel || 'All Time';
+  const { data: platform } = useGetPlatformDashboardQuery('this_month', { skip: !isStrictAdmin() });
   
   // When no filter, show today's orders; when filtered, show orders in range
   const ordersInRange = dateFilterParams 
@@ -76,23 +91,15 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
   useEffect(() => {
     if (unreadCount > previousCountRef.current && previousCountRef.current > 0) {
       const newNotificationsCount = unreadCount - previousCountRef.current;
+      const latestMessage = notifications?.[0]?.message;
       showNotification(
-        'New Order Received!',
-        `You have ${newNotificationsCount} new order${newNotificationsCount > 1 ? 's' : ''} from customer${newNotificationsCount > 1 ? 's' : ''}`,
+        latestMessage ? 'Delivery reminder' : 'New Order Received!',
+        latestMessage || `You have ${newNotificationsCount} new order${newNotificationsCount > 1 ? 's' : ''} from customer${newNotificationsCount > 1 ? 's' : ''}`,
         { type: 'order' }
       );
     }
     previousCountRef.current = unreadCount;
-  }, [unreadCount, showNotification]);
-
-  const handleNotificationPress = async (notification: any) => {
-    try {
-      await markAsRead(notification.id);
-      navigation.navigate('OrderManagement');
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
-    }
-  };
+  }, [unreadCount, showNotification, notifications]);
 
   // Auto-fetch when both dates are selected
   useEffect(() => {
@@ -163,8 +170,24 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
-        <Text style={styles.greeting}>Welcome, {user?.fullName}!</Text>
-        <Text style={styles.role}>Admin Dashboard</Text>
+        {isSeller() ? (
+          <>
+            <View style={styles.shopBrand}>
+              <HeaderBrand
+                name={shopCompany?.companyName}
+                photo={shopCompany?.profilePhoto || user?.profilePhoto}
+                light
+              />
+            </View>
+            <Text style={styles.greeting}>Welcome, {user?.fullName || user?.username}!</Text>
+            <Text style={styles.role}>Seller Dashboard</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.greeting}>Welcome, {user?.fullName}!</Text>
+            <Text style={styles.role}>Admin Dashboard</Text>
+          </>
+        )}
           </View>
           {unreadCount > 0 && (
             <TouchableOpacity
@@ -176,6 +199,78 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
           )}
         </View>
       </View>
+
+      {isSeller() && shopCompany?.companyCode && (
+        <Card style={styles.companyCard}>
+          <Text style={styles.reminderTitle}>Your company code</Text>
+          <Text style={styles.companyCode}>{shopCompany.companyCode}</Text>
+          <Text style={styles.reminderCopy}>
+            Buyers who register with this code see only your products. Buyers: {shopCompany.buyerCount}
+          </Text>
+          <TouchableOpacity
+            style={styles.reminderButton}
+            onPress={() => navigation.getParent()?.navigate('ShopBuyers') || navigation.navigate('ShopBuyers')}
+          >
+            <Text style={styles.reminderButtonText}>View buyers</Text>
+          </TouchableOpacity>
+        </Card>
+      )}
+
+      {isSeller() && (regularPrompt?.buyerCount || 0) > 0 && (
+        <Card style={styles.reminderCard}>
+          <Text style={styles.reminderTitle}>Today's regular orders</Text>
+          <Text style={styles.reminderCopy}>
+            Create regular orders for {regularPrompt?.buyerNames?.join(', ')}? Seller and buyer both get a notification.
+          </Text>
+          <TouchableOpacity
+            style={styles.reminderButton}
+            disabled={creatingRegular}
+            onPress={async () => {
+              try {
+                const result = await createRegularOrders().unwrap();
+                showSuccessToast(`${result.created} regular order${result.created === 1 ? '' : 's'} created`);
+              } catch (error: any) {
+                showErrorToast(error?.data?.message || 'Could not create regular orders');
+              }
+            }}
+          >
+            <Text style={styles.reminderButtonText}>{creatingRegular ? 'Creating...' : 'Yes, create orders'}</Text>
+          </TouchableOpacity>
+        </Card>
+      )}
+
+      {isSeller() && shopInbox.filter((item) => !item.isRead && !dismissedInboxIds.includes(item.id)).length > 0 && (
+        <TouchableOpacity
+          style={styles.noticeBar}
+          onPress={() => setInboxPreview(shopInbox.find((item) => !item.isRead && !dismissedInboxIds.includes(item.id)))}
+        >
+          <Text style={styles.noticeText}>
+            {shopInbox.filter((item) => !item.isRead && !dismissedInboxIds.includes(item.id)).length} new message
+            {shopInbox.filter((item) => !item.isRead && !dismissedInboxIds.includes(item.id)).length > 1 ? 's' : ''}
+          </Text>
+          <Text style={styles.noticeAction}>Open</Text>
+        </TouchableOpacity>
+      )}
+
+      {isSeller() && sellerSub?.showExpiryReminder && sellerSub.canWork && (
+        <Card style={styles.reminderCard}>
+          <Text style={styles.reminderTitle}>Subscription reminder</Text>
+          <Text style={styles.reminderCopy}>{sellerSub.reminderMessage}</Text>
+          <TouchableOpacity
+            style={styles.reminderButton}
+            onPress={async () => {
+              try {
+                await renewSeller({ plan: sellerSub.plan || 'MONTHLY', method: 'UPI' }).unwrap();
+                showSuccessToast('Subscription renewed. Reminder cleared.');
+              } catch (error: any) {
+                showErrorToast(error?.data?.message || 'Could not renew subscription');
+              }
+            }}
+          >
+            <Text style={styles.reminderButtonText}>{renewing ? 'Renewing…' : 'Renew now'}</Text>
+          </TouchableOpacity>
+        </Card>
+      )}
 
       {/* Date Range Filter Section */}
       <Card style={styles.filterCard}>
@@ -293,40 +388,139 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       </View>
 
+      {isSeller() && (
+        <Card style={styles.chartCard}>
+          <Text style={styles.filterTitle}>Earnings</Text>
+          <Text style={styles.chartHint}>
+            Fully paid earnings, partial amount collected, and what is still due
+            {dashboardStats?.dateRangeLabel ? ` · ${dashboardStats.dateRangeLabel}` : ''}
+          </Text>
+          <EarningsPieChart
+            paid={Number(dashboardStats?.paidEarnings || 0)}
+            partial={Number(dashboardStats?.partialCollected || 0)}
+            due={Number(dashboardStats?.balanceDue || 0)}
+          />
+        </Card>
+      )}
+
+      {isStrictAdmin() && (
+        <Card style={styles.chartCard}>
+          <Text style={styles.filterTitle}>Revenue Overview</Text>
+          <Text style={styles.chartHint}>Last 6 months — order revenue and seller subscription collections</Text>
+          <DashboardRevenueChart points={dashboardStats?.monthlyRevenue || []} />
+        </Card>
+      )}
+
       {/* Recent Notifications Section */}
-      {notifications && notifications.length > 0 && (
-        <View style={styles.notificationsSection}>
-          <View style={styles.notificationsHeader}>
-            <Text style={styles.sectionTitle}>🔔 New Orders ({unreadCount})</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('OrderManagement')}>
-              <Text style={styles.viewAllText}>View All</Text>
+      {unreadCount > 0 && (
+        <TouchableOpacity style={styles.noticeBar} onPress={() => setPreview(notifications?.[0])}>
+          <Text style={styles.noticeText}>
+            {unreadCount} new update{unreadCount > 1 ? 's' : ''}
+          </Text>
+          <Text style={styles.noticeAction}>Open</Text>
+        </TouchableOpacity>
+      )}
+      <NotificationPreview
+        visible={!!preview}
+        message={preview?.message || (preview ? `New order #${preview.orderId} from ${preview.customerName}` : '')}
+        createdAt={preview?.createdAt}
+        isRead={false}
+        onClose={() => setPreview(null)}
+        onRead={async () => {
+          if (!preview) return;
+          try {
+            await markAsRead(preview.id);
+            setPreview(null);
+          } catch (error) {
+            console.error('Error marking notification as read:', error);
+          }
+        }}
+      />
+      <NotificationPreview
+        visible={!!inboxPreview}
+        message={inboxPreview ? `${inboxPreview.title}: ${inboxPreview.message}` : ''}
+        createdAt={inboxPreview?.createdAt}
+        isRead={false}
+        onClose={() => setInboxPreview(null)}
+        onRead={async () => {
+          if (!inboxPreview) return;
+          setDismissedInboxIds((prev) => prev.concat(inboxPreview.id));
+          try {
+            await markInboxRead(inboxPreview.id).unwrap();
+            setInboxPreview(null);
+          } catch (_error) {
+            setDismissedInboxIds((prev) => prev.filter((id) => id !== inboxPreview.id));
+            showErrorToast('Could not mark the buyer message as read');
+          }
+        }}
+      />
+
+      {isStrictAdmin() && platform && (
+        <View style={styles.platformSection}>
+          <Text style={styles.sectionTitle}>Platform Admin</Text>
+          <View style={styles.statsGrid}>
+            <TouchableOpacity style={styles.statCardTouchable} onPress={() => navigation.navigate('SellerList')}>
+              <Card style={styles.platformStatCard}>
+                <Text style={styles.statValue}>{platform.totalSellers}</Text>
+                <Text style={styles.statLabel}>Total Sellers</Text>
+              </Card>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.statCardTouchable} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Active' })}>
+              <Card style={styles.platformStatCard}>
+                <Text style={styles.statValue}>{platform.activeSubscribers}</Text>
+                <Text style={styles.statLabel}>Active Subscribers {platform.activeRate}</Text>
+              </Card>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.statCardTouchable} onPress={() => navigation.navigate('PaymentList')}>
+              <Card style={styles.platformStatCard}>
+                <Text style={styles.statValue}>{formatCurrency(platform.revenueThisMonth)}</Text>
+                <Text style={styles.statLabel}>Subscription Revenue</Text>
+              </Card>
+            </TouchableOpacity>
+            <Card style={styles.statCard}>
+              <Text style={styles.statValue}>{formatCurrency(platform.yetToReceive)}</Text>
+              <Text style={styles.statLabel}>Yet to Receive</Text>
+            </Card>
           </View>
-          {notifications.slice(0, 3).map((notification) => (
-            <TouchableOpacity
-              key={notification.id}
-              style={[
-                styles.notificationCard,
-                !notification.isRead && styles.notificationCardUnread
-              ]}
-              onPress={() => handleNotificationPress(notification)}
-            >
-              <View style={styles.notificationContent}>
-                <Text style={styles.notificationTitle}>
-                  New Order #{notification.orderId}
-                </Text>
-                <Text style={styles.notificationCustomer}>
-                  Customer: {notification.customerName}
-                </Text>
-                <Text style={styles.notificationDetails}>
-                  {notification.itemCount} item{notification.itemCount > 1 ? 's' : ''} • {formatCurrency(notification.total)}
-                </Text>
-                <Text style={styles.notificationTime}>
-                  {formatDateTime(notification.createdAt)}
-                </Text>
+
+          <Card style={styles.healthCard}>
+            <Text style={styles.filterTitle}>Subscription Health</Text>
+            <View style={styles.healthRow}>
+              <HealthBtn label="Active" value={platform.activeSubscriptions} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Active' })} />
+              <HealthBtn label="Expiring" value={platform.expiringSoon} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Expiring Soon' })} />
+              <HealthBtn label="Expired" value={platform.expired} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Expired' })} />
+              <HealthBtn label="Pending" value={platform.paymentPending} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Payment Pending' })} />
+            </View>
+          </Card>
+
+          {platform.attentionItems?.length > 0 && (
+            <Card style={styles.healthCard}>
+              <Text style={styles.filterTitle}>Needs Attention</Text>
+              {platform.attentionItems.map((item) => (
+                <Text key={item} style={styles.attentionItem}>• {item}</Text>
+              ))}
+            </Card>
+          )}
+
+          {platform.recentPayments?.length > 0 && (
+            <Card style={styles.healthCard}>
+              <View style={styles.notificationsHeader}>
+                <Text style={styles.filterTitle}>Recent Subscription Payments</Text>
+                <TouchableOpacity onPress={() => navigation.navigate('PaymentList')}>
+                  <Text style={styles.viewAllText}>View all</Text>
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
-          ))}
+              {platform.recentPayments.map((payment) => (
+                <View key={payment.id} style={styles.payRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.notificationTitle}>{payment.businessName || payment.sellerName}</Text>
+                    <Text style={styles.notificationDetails}>{payment.plan} • {formatCurrency(payment.amount)} • {payment.method}</Text>
+                  </View>
+                  <StatusPill label={payment.status} />
+                </View>
+              ))}
+            </Card>
+          )}
         </View>
       )}
 
@@ -364,11 +558,66 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         )}
 
+        {isStrictAdmin() && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('AppSettings')}
+          >
+            <Text style={styles.actionButtonText}>⚙️ App Settings</Text>
+          </TouchableOpacity>
+        )}
+
+        {isStrictAdmin() && (
+          <>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => navigation.navigate('SellerList')}
+            >
+              <Text style={styles.actionButtonText}>🏪 Manage Sellers</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => navigation.navigate('SubscriptionList')}
+            >
+              <Text style={styles.actionButtonText}>🔁 Subscriptions</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => navigation.navigate('PaymentList')}
+            >
+              <Text style={styles.actionButtonText}>💳 Subscription Payments</Text>
+            </TouchableOpacity>
+          </>
+        )}
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => navigation.navigate('AppSettings')}
+          onPress={() => navigation.getParent()?.navigate('ShopCustomers') || navigation.navigate('ShopCustomers')}
         >
-          <Text style={styles.actionButtonText}>⚙️ App Settings</Text>
+          <Text style={styles.actionButtonText}>👥 Shop Customers</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => navigation.getParent()?.navigate('IssuedCans') || navigation.navigate('IssuedCans')}
+        >
+          <Text style={styles.actionButtonText}>🧴 20 Litre Cans</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => navigation.getParent()?.navigate('ShopBuyers') || navigation.navigate('ShopBuyers')}
+        >
+          <Text style={styles.actionButtonText}>🧑‍🤝‍🧑 My Buyers</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => navigation.getParent()?.navigate('PhoneOrder') || navigation.navigate('PhoneOrder')}
+        >
+          <Text style={styles.actionButtonText}>📞 Phone Order</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => navigation.getParent()?.navigate('ShopProfile') || navigation.navigate('ShopProfile')}
+        >
+          <Text style={styles.actionButtonText}>🧾 Shop Profile / QR</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -389,10 +638,59 @@ const styles = StyleSheet.create({
     borderRadius: spacing.md,
     marginBottom: spacing.lg,
   },
+  companyCard: {
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    backgroundColor: '#E8F1FC',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  companyCode: {
+    fontSize: typography.fontSize['2xl'],
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
+    marginVertical: spacing.xs,
+  },
+  reminderCard: {
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    backgroundColor: '#FFF8E1',
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  reminderTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  reminderCopy: {
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  dismissHint: {
+    color: colors.warning,
+    fontWeight: typography.fontWeight.semibold,
+    fontSize: typography.fontSize.sm,
+  },
+  reminderButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.warning,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  reminderButtonText: {
+    color: colors.white,
+    fontWeight: typography.fontWeight.semibold,
+  },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+  },
+  shopBrand: {
+    marginBottom: spacing.sm,
   },
   greeting: {
     fontSize: typography.fontSize['2xl'],
@@ -491,6 +789,28 @@ const styles = StyleSheet.create({
   actionBadgeText: {
     color: colors.white,
     fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+  },
+  noticeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  noticeText: {
+    color: colors.textPrimary,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  noticeAction: {
+    color: colors.primary,
+    fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.bold,
   },
   notificationsSection: {
@@ -633,5 +953,52 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontWeight: typography.fontWeight.medium,
   },
+  chartCard: {
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  chartHint: {
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.sm,
+    marginBottom: spacing.md,
+  },
+  platformStatCard: {
+    width: '100%',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  platformSection: {
+    marginBottom: spacing.lg,
+  },
+  healthCard: {
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  healthRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  attentionItem: {
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  payRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray200,
+  },
 });
+
+const HealthBtn = ({ label, value, onPress }: { label: string; value: number; onPress: () => void }) => (
+  <TouchableOpacity onPress={onPress} style={{ flexGrow: 1, minWidth: '45%', backgroundColor: colors.gray50, borderRadius: 8, padding: spacing.md }}>
+    <Text style={{ fontSize: typography.fontSize.xl, fontWeight: typography.fontWeight.bold, color: colors.primary }}>{value}</Text>
+    <Text style={{ color: colors.textSecondary }}>{label}</Text>
+  </TouchableOpacity>
+);
 

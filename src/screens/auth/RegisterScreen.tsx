@@ -31,6 +31,8 @@ export const RegisterScreen = ({ navigation }: any) => {
     state: '',
     pincode: '',
     landmark: '',
+    companyName: '',
+    companyCode: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [imagePickerLoading, setImagePickerLoading] = useState(false);
@@ -322,6 +324,13 @@ export const RegisterScreen = ({ navigation }: any) => {
       newErrors.profilePhoto = validationMessages.imageSize;
     }
 
+    if (formData.role === UserRole.SELLER && formData.companyName.trim().length < 2) {
+      newErrors.companyName = 'Company name is required';
+    }
+    if (formData.role === UserRole.BUYER && formData.companyCode.trim().length < 3) {
+      newErrors.companyCode = 'Seller company code is required';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -349,22 +358,36 @@ export const RegisterScreen = ({ navigation }: any) => {
       state: formData.state.trim(),
       pincode: formData.pincode.trim(),
       landmark: formData.landmark.trim() || undefined,
+      companyName: formData.role === UserRole.SELLER ? formData.companyName.trim() : undefined,
+      companyCode: formData.role === UserRole.BUYER ? formData.companyCode.trim() : undefined,
     };
 
     const result = await register(registerData);
     
     if (result.success) {
-      Alert.alert(
-        'Registration Successful',
-        'Your account is under review. Please wait for admin approval.',
-        [
-        {
-          text: 'OK',
-          onPress: () => navigation.navigate('Login'),
-        },
+      const goToLogin = () => {
+        navigation.replace('Login');
+      };
+
+      let message = `Welcome ${registerData.username}. Your account was created successfully.`;
+      if (formData.role === UserRole.SELLER) {
+        message += result.user?.companyCode
+          ? ` Your company code is ${result.user.companyCode}. Share this code with buyers so they can join your shop.`
+          : ' Your company code is ready.';
+        message += ' Your seller account is active. You can log in now. Only an admin can deactivate it later.';
+      } else if (formData.role === UserRole.BUYER) {
+        message += ` You are linked to seller code ${formData.companyCode.trim()}. You can log in now and you will see only that seller's products.`;
+      } else {
+        message += ' You can log in now.';
+      }
+      message += ' Please go to Login.';
+
+      Alert.alert('Account created successfully', message, [
+        { text: 'Go to Login', onPress: goToLogin },
       ]);
     } else {
-      Alert.alert('Registration Failed', result.error || 'Please try again');
+      const errorMessage = result.error || 'Please try again';
+      Alert.alert('Registration Failed', errorMessage);
     }
   };
 
@@ -629,6 +652,26 @@ export const RegisterScreen = ({ navigation }: any) => {
               </Picker>
             </View>
           </View>
+
+          {formData.role === UserRole.SELLER && (
+            <Input
+              label="Company name *"
+              value={formData.companyName}
+              onChangeText={(text) => setFormData({ ...formData, companyName: text })}
+              placeholder="Your water company name"
+              error={errors.companyName}
+            />
+          )}
+          {formData.role === UserRole.BUYER && (
+            <Input
+              label="Seller company code *"
+              value={formData.companyCode}
+              onChangeText={(text) => setFormData({ ...formData, companyCode: text.toUpperCase() })}
+              placeholder="Example: RAVI-0001"
+              autoCapitalize="characters"
+              error={errors.companyCode}
+            />
+          )}
 
           <Button
             title="Register"

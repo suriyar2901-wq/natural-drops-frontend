@@ -2,17 +2,20 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Image, Alert, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, typography, spacing } from '../../theme';
-import { Card, Loading, Input } from '../../components/common';
+import { Card, Loading, Input, HeaderBrand } from '../../components/common';
 import { useGetMenuItemsQuery } from '../../store/api/menuApi';
+import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
 import { useCart, useAuth } from '../../hooks';
+import { moneyValue } from '../../types/shop.types';
 import { MenuItem } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
 import { API_BASE_URL } from '../../utils/constants';
 import { navigate } from '../../navigation/navigationRef';
 
 export const HomeScreen = ({ navigation }: any) => {
-  const { user } = useAuth();
+  const { user, isBuyer } = useAuth();
   const { data: products, isLoading, refetch, error } = useGetMenuItemsQuery();
+  const { data: account } = useGetBuyerAccountSummaryQuery(undefined, { skip: !isBuyer() });
   const { addToCart, getItemQuantity, incrementQuantity, decrementQuantity, totalItems } = useCart();
   const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -186,8 +189,35 @@ export const HomeScreen = ({ navigation }: any) => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        {isBuyer() && (
+          <View style={styles.shopBrand}>
+            <HeaderBrand
+              name={account?.companyName || account?.sellerBusiness}
+              photo={account?.sellerProfilePhoto}
+              light
+            />
+          </View>
+        )}
         <Text style={styles.greeting}>Welcome, {user?.username || user?.fullName || 'User'}!</Text>
         <Text style={styles.subtitle}>Order fresh water today</Text>
+        {isBuyer() && (
+          <View style={styles.accountRow}>
+            <TouchableOpacity
+              style={styles.accountChip}
+              onPress={() => navigation.getParent()?.navigate('BuyerPayments') || navigation.navigate('BuyerPayments')}
+            >
+              <Text style={styles.accountValue}>{formatCurrency(moneyValue(account?.due))}</Text>
+              <Text style={styles.accountLabel}>Due</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.accountChip}
+              onPress={() => navigation.getParent()?.navigate('BuyerEmptyCans') || navigation.navigate('BuyerEmptyCans')}
+            >
+              <Text style={styles.accountValue}>{account?.emptyCans || 0}</Text>
+              <Text style={styles.accountLabel}>Cans to return</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* Search Bar */}
@@ -239,12 +269,7 @@ export const HomeScreen = ({ navigation }: any) => {
         onPress={() => {
           if (!totalItems || totalItems <= 0) {
             const msg = 'Your cart is empty. Please add items before viewing the cart.';
-            // Web: Alert.alert callbacks/popups are unreliable; use window.alert
-            if (Platform.OS === 'web') {
-              (window as any).alert(msg);
-            } else {
-              Alert.alert('Info', msg);
-            }
+            Alert.alert('Info', msg);
             return;
           }
           // Cart is not a bottom tab anymore; it lives in the parent Stack.
@@ -318,6 +343,9 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     backgroundColor: colors.primary,
   },
+  shopBrand: {
+    marginBottom: spacing.sm,
+  },
   greeting: {
     fontSize: typography.fontSize['2xl'],
     fontWeight: typography.fontWeight.bold,
@@ -327,6 +355,27 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: typography.fontSize.base,
     color: colors.white,
+  },
+  accountRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  accountChip: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 12,
+    padding: spacing.sm,
+  },
+  accountValue: {
+    color: colors.white,
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+  },
+  accountLabel: {
+    color: colors.white,
+    opacity: 0.85,
+    marginTop: 2,
   },
   searchContainer: {
     paddingHorizontal: spacing.md,

@@ -59,6 +59,7 @@ export interface Order {
   billedBy?: string; // Username of seller who created/updated the bill
   billedAt?: string; // Timestamp when bill was created or last updated
   billingNotes?: string; // Optional notes about the billing
+  scheduledDeliveryDate?: string;
   items: OrderItem[];
 }
 
@@ -71,6 +72,8 @@ export interface CreateOrderRequest {
   latitude?: number;
   longitude?: number;
   total: number;
+  scheduledDeliveryDate?: string;
+  deliveryTime?: string;
   items: {
     menuItemId: number;
     itemName: string;

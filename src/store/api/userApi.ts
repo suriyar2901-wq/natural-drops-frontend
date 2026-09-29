@@ -40,6 +40,20 @@ export const userApi = baseApi.injectEndpoints({
       },
       invalidatesTags: (_result, _error, { id }) => [{ type: 'User', id }, 'User', 'Auth'],
     }),
+    updateOwnProfile: builder.mutation<User, UpdateUserRequest>({
+      query: (data) => ({
+        url: '/users/me',
+        method: 'PUT',
+        body: data,
+      }),
+      transformResponse: (response: any) => {
+        if (response && response.data) {
+          return response.data;
+        }
+        return response;
+      },
+      invalidatesTags: ['User', 'Auth'],
+    }),
     deleteUser: builder.mutation<void, number>({
       query: (id) => ({
         url: `/users/${id}`,
@@ -80,6 +94,7 @@ export const {
   useGetAllUsersQuery,
   useGetUserByIdQuery,
   useUpdateUserMutation,
+  useUpdateOwnProfileMutation,
   useDeleteUserMutation,
   useActivateUserMutation,
   useDeactivateUserMutation,

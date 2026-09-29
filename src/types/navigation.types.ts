@@ -37,6 +37,13 @@ export type AdminStackParamList = {
   EditUser: { user: User };
   Reports: undefined;
   Settings: undefined;
+  SellerList: undefined;
+  AddSeller: undefined;
+  SellerDetail: { sellerId: number };
+  EditSeller: { sellerId: number };
+  ActivatePayment: { sellerId: number };
+  SubscriptionList: { filter?: string } | undefined;
+  PaymentList: { status?: string } | undefined;
 };
 
 // Root Stack

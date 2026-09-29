@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Platform, TextInputProps } from 'react-native';
 import { colors, typography, spacing } from '../../theme';
 
 export interface AutocompleteOption {
   name: string;
+  displayName?: string;
   type?: string;
   state?: string;
+  city?: string;
+  district?: string;
+  pincode?: string;
 }
 
 interface AutocompleteInputProps {
@@ -19,6 +23,7 @@ interface AutocompleteInputProps {
   isLoading?: boolean;
   maxLength?: number;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  keyboardType?: TextInputProps['keyboardType'];
 }
 
 export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
@@ -32,6 +37,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
   isLoading = false,
   maxLength,
   autoCapitalize = 'words',
+  keyboardType,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -90,6 +96,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
           maxLength={maxLength}
           autoCapitalize={autoCapitalize}
           autoCorrect={false}
+          keyboardType={keyboardType}
         />
         {isLoading && (
           <View style={styles.loaderContainer}>
@@ -122,9 +129,9 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
                     styles.suggestionText,
                     isHighlighted && styles.suggestionTextHighlighted,
                   ]}>
-                    {item.name}
+                    {item.displayName || item.name}
                   </Text>
-                  {item.state && (
+                  {item.state && !item.displayName && (
                     <Text style={styles.suggestionSubtext}>{item.state}</Text>
                   )}
                 </TouchableOpacity>
