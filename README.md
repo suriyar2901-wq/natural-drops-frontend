@@ -2,6 +2,15 @@
 
 A complete React Native mobile application for the Natural Drops Water Supply System, built with Expo, TypeScript, Redux Toolkit, and React Navigation.
 
+## Latest changes
+- Seller and buyer shop screens: phone orders, customers, regular buyers, payments, and 20L cans.
+- Checkout and phone orders use a future date plus an hour and minute with AM/PM.
+- Popups open inside the app. Phone-sized screens scroll so the rest of a long form stays reachable.
+- Seller dashboard pie chart shows fully paid earnings, partial amount collected, and the balance still due.
+- A partial bill shows the balance while editing and again on the order.
+- A blank notification message no longer replaces the real order text.
+- A deactivated buyer cannot log in or stay inside the app. Admin access is unchanged.
+
 ## Features
 
 ### 🎯 Core Features
