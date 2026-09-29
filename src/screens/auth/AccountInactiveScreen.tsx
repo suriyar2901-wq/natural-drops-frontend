@@ -14,7 +14,7 @@ export const AccountInactiveScreen = ({ navigation }: any) => {
     if (user) {
       // Treat undefined, null, or true as active. Only explicit false means inactive.
       const isActiveBoolean = user.isActive !== false;
-      const shouldBeActive = user.role === 'admin' || user.role === 'buyer' || isActiveBoolean;
+      const shouldBeActive = user.role === 'admin' || isActiveBoolean;
       
       if (shouldBeActive) {
         console.log('✅ User account is ACTIVE, redirecting to app:', {

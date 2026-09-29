@@ -288,7 +288,7 @@ export const LoginScreen = ({ navigation }: any) => {
         const isActiveValue = result.user.isActive;
         // Treat undefined, null, or true as active. Only explicit false means inactive.
         const isActiveBoolean = isActiveValue !== false;
-        const isInactive = result.user.role === 'seller' && !isActiveBoolean;
+        const isInactive = (result.user.role === 'seller' || result.user.role === 'buyer') && !isActiveBoolean;
         
         if (isInactive) {
           // User is inactive (Seller/Buyer only) - redirect to inactive screen

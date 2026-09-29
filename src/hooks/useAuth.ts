@@ -220,7 +220,7 @@ export const useAuth = () => {
         const isActiveValue = userData.isActive;
         // Treat undefined, null, or true as active. Only explicit false means inactive.
         const isActiveBoolean = isActiveValue !== false;
-        const isInactive = userData.role === 'seller' && !isActiveBoolean;
+        const isInactive = (userData.role === 'seller' || userData.role === 'buyer') && !isActiveBoolean;
         
         if (isInactive) {
           // User is inactive (Seller/Buyer only) - clear auth and redirect to inactive screen

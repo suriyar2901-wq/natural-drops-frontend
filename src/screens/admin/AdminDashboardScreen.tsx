@@ -91,7 +91,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
   useEffect(() => {
     if (unreadCount > previousCountRef.current && previousCountRef.current > 0) {
       const newNotificationsCount = unreadCount - previousCountRef.current;
-      const latestMessage = notifications?.[0]?.message;
+      const latestMessage = notifications?.[0]?.message?.trim();
       showNotification(
         latestMessage ? 'Delivery reminder' : 'New Order Received!',
         latestMessage || `You have ${newNotificationsCount} new order${newNotificationsCount > 1 ? 's' : ''} from customer${newNotificationsCount > 1 ? 's' : ''}`,
@@ -422,7 +422,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
       )}
       <NotificationPreview
         visible={!!preview}
-        message={preview?.message || (preview ? `New order #${preview.orderId} from ${preview.customerName}` : '')}
+        message={preview?.message?.trim() || (preview ? `New order #${preview.orderId} from ${preview.customerName}` : '')}
         createdAt={preview?.createdAt}
         isRead={false}
         onClose={() => setPreview(null)}
