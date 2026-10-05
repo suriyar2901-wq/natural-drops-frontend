@@ -26,6 +26,14 @@ export interface PincodeSuggestion {
   state: string;
 }
 
+export interface AddressMatch {
+  area: string;
+  city: string;
+  pincode: string;
+  state: string;
+  label: string;
+}
+
 class LocationApiService {
   private cache: Map<string, PincodeLocation> = new Map();
   private suggestionCache: Map<string, LocationSuggestion[]> = new Map();
@@ -81,6 +89,78 @@ class LocationApiService {
     }
   }
 
+  async searchAddressMatches(query: string): Promise<AddressMatch[]> {
+    const text = (query || '').trim();
+    if (/^\d{6}$/.test(text)) {
+      return this.matchesFromPincode(text);
+    }
+    if (text.length < 3) {
+      return [];
+    }
+    try {
+      const response = await fetch(`https://api.postalpincode.in/postoffice/${encodeURIComponent(text)}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) {
+        return [];
+      }
+      const data = await response.json();
+      return this.matchesFromPayload(data);
+    } catch (error) {
+      console.error('Error searching address:', error);
+      return [];
+    }
+  }
+
+  private async matchesFromPincode(pincode: string): Promise<AddressMatch[]> {
+    try {
+      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) {
+        return [];
+      }
+      const data = await response.json();
+      return this.matchesFromPayload(data, pincode);
+    } catch (error) {
+      console.error('Error fetching pincode areas:', error);
+      return [];
+    }
+  }
+
+  private matchesFromPayload(data: any, fallbackPincode?: string): AddressMatch[] {
+    const offices = data?.[0]?.Status === 'Success' ? data[0].PostOffice : null;
+    if (!Array.isArray(offices)) {
+      return [];
+    }
+    const seen = new Set<string>();
+    const matches: AddressMatch[] = [];
+    offices.forEach((office: any) => {
+      const area = String(office?.Name || '').trim();
+      const city = String(office?.District || '').trim();
+      const state = String(office?.State || '').trim();
+      const pincode = String(office?.Pincode || fallbackPincode || '').trim();
+      if (!area || !/^\d{6}$/.test(pincode)) {
+        return;
+      }
+      const key = `${area.toLowerCase()}|${pincode}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      matches.push({
+        area,
+        city,
+        pincode,
+        state,
+        label: `${area}, ${city || '—'}${state ? `, ${state}` : ''} — ${pincode}`,
+      });
+    });
+    return matches.slice(0, 8);
+  }
+
   async getPincodeSuggestions(pincode: string): Promise<PincodeSuggestion[]> {
     if (!pincode || pincode.length !== 6) {
       return [];
@@ -101,14 +181,14 @@ class LocationApiService {
         return [];
       }
       return data[0].PostOffice.map((office: any) => {
-        const city = office.Block || office.Name || office.District || '';
         const district = office.District || '';
         const state = office.State || '';
+        const area = office.Name || '';
         return {
           pincode,
-          name: pincode,
-          displayName: `${pincode} • ${office.Name || city}${district ? `, ${district}` : ''}${state ? `, ${state}` : ''}`,
-          city,
+          name: area || pincode,
+          displayName: `${area || pincode}${district ? `, ${district}` : ''}${state ? `, ${state}` : ''} — ${pincode}`,
+          city: district,
           district,
           state,
         };

@@ -180,26 +180,33 @@ export const ShopBuyersScreen = ({ navigation }: any) => {
 
   const handleCreate = async () => {
     setFormError('');
-    if (form.fullName.trim().length < 2) {
-      setFormError('Buyer name is required');
-      return;
-    }
-    if (!/^\d{10}$/.test(form.phone.trim())) {
-      setFormError('Enter a valid 10-digit mobile number');
+    const missing: string[] = [];
+    if (form.fullName.trim().length < 2) missing.push('Buyer name');
+    if (form.username.trim().length < 3) missing.push('Username');
+    if (!/^\d{10}$/.test(form.phone.trim())) missing.push('Mobile');
+    if (!/^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(form.email.trim())) missing.push('Email');
+    if (!form.houseDoorNo.trim()) missing.push('House / door no');
+    if (form.streetArea.trim().length < 2) missing.push('Street / area');
+    if (!/^\d{6}$/.test(form.pincode.trim())) missing.push('Pincode');
+    if (form.city.trim().length < 2) missing.push('City');
+    if (form.district.trim().length < 2) missing.push('District');
+    if (form.state.trim().length < 2) missing.push('State');
+    if (missing.length > 0) {
+      setFormError(`Fill every field before creating the buyer: ${missing.join(', ')}.`);
       return;
     }
     try {
       const result = await createBuyer({
         fullName: form.fullName.trim(),
-        username: form.username.trim() || undefined,
+        username: form.username.trim(),
         phone: form.phone.trim(),
-        email: form.email.trim() || undefined,
-        houseDoorNo: form.houseDoorNo.trim() || undefined,
-        streetArea: form.streetArea.trim() || undefined,
-        city: form.city.trim() || undefined,
-        district: form.district.trim() || undefined,
-        state: form.state.trim() || undefined,
-        pincode: form.pincode.trim() || undefined,
+        email: form.email.trim(),
+        houseDoorNo: form.houseDoorNo.trim(),
+        streetArea: form.streetArea.trim(),
+        city: form.city.trim(),
+        district: form.district.trim(),
+        state: form.state.trim(),
+        pincode: form.pincode.trim(),
       }).unwrap();
       setShowCreate(false);
       setInvite(result);
@@ -322,14 +329,14 @@ export const ShopBuyersScreen = ({ navigation }: any) => {
               <Text style={styles.meta}>Company details are filled from your shop. The buyer is mapped to {company?.companyCode || 'your company'}.</Text>
               <Input label="Company name" value={company?.companyName || ''} editable={false} />
               <Input label="Company code" value={company?.companyCode || ''} editable={false} />
-              <Input label="Buyer name" value={form.fullName} onChangeText={(text) => setField('fullName', text)} placeholder="Full name" />
-              <Input label="Username (optional)" value={form.username} onChangeText={(text) => setField('username', text)} placeholder="Auto from name + mobile" autoCapitalize="none" />
-              <Input label="Mobile" value={form.phone} onChangeText={(text) => setField('phone', text)} placeholder="10-digit mobile" keyboardType="phone-pad" maxLength={10} />
-              <Input label="Email" value={form.email} onChangeText={(text) => setField('email', text)} placeholder="Buyer email" autoCapitalize="none" keyboardType="email-address" />
-              <Input label="House / door no" value={form.houseDoorNo} onChangeText={(text) => setField('houseDoorNo', text)} />
-              <Input label="Street / area" value={form.streetArea} onChangeText={(text) => setField('streetArea', text)} />
+              <Input label="Buyer name *" value={form.fullName} onChangeText={(text) => setField('fullName', text)} placeholder="Full name" />
+              <Input label="Username *" value={form.username} onChangeText={(text) => setField('username', text)} placeholder="At least 3 letters" autoCapitalize="none" />
+              <Input label="Mobile *" value={form.phone} onChangeText={(text) => setField('phone', text.replace(/[^0-9]/g, '').slice(0, 10))} placeholder="10-digit mobile" keyboardType="phone-pad" maxLength={10} />
+              <Input label="Email *" value={form.email} onChangeText={(text) => setField('email', text)} placeholder="Buyer email" autoCapitalize="none" keyboardType="email-address" />
+              <Input label="House / door no *" value={form.houseDoorNo} onChangeText={(text) => setField('houseDoorNo', text)} />
+              <Input label="Street / area *" value={form.streetArea} onChangeText={(text) => setField('streetArea', text)} />
               <AutocompleteInput
-                label="Pincode"
+                label="Pincode *"
                 value={form.pincode}
                 onChangeText={handlePincodeChange}
                 onSelect={(option) => applyPincodeLocation({
@@ -348,9 +355,9 @@ export const ShopBuyersScreen = ({ navigation }: any) => {
                 keyboardType="number-pad"
                 autoCapitalize="none"
               />
-              <Input label="City" value={form.city} onChangeText={(text) => setField('city', text)} placeholder="Auto from pincode" />
-              <Input label="District" value={form.district} onChangeText={(text) => setField('district', text)} placeholder="Auto from pincode" />
-              <Input label="State" value={form.state} onChangeText={(text) => setField('state', text)} placeholder="Auto from pincode" />
+              <Input label="City *" value={form.city} onChangeText={(text) => setField('city', text)} placeholder="Auto from pincode" />
+              <Input label="District *" value={form.district} onChangeText={(text) => setField('district', text)} placeholder="Auto from pincode" />
+              <Input label="State *" value={form.state} onChangeText={(text) => setField('state', text)} placeholder="Auto from pincode" />
               {!!formError && <Text style={styles.error}>{formError}</Text>}
               <Button title={creating ? 'Creating...' : 'Create buyer'} onPress={handleCreate} disabled={creating} fullWidth />
             </ScrollView>

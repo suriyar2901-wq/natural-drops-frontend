@@ -1,28 +1,47 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, Platform, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import { colors, typography, spacing } from '../../theme';
-import { BillEditModal, Button, Card, Loading } from '../../components/common';
+import { BillEditModal, Card, EditOrderModal, Loading } from '../../components/common';
 import { useGetMenuItemsQuery } from '../../store/api/menuApi';
-import { useUpdateOrderBillMutation } from '../../store/api/orderApi';
-import { MenuItem, Order } from '../../types';
-import { canEditOrderBill, formatCurrency, formatDateTime } from '../../utils/formatters';
+import {
+  useCancelOrderMutation,
+  useConfirmOrderMutation,
+  useDeliverOrderMutation,
+  useUpdateOrderBillMutation,
+  useUpdateOrderMutation,
+} from '../../store/api/orderApi';
+import { MenuItem, Order, OrderStatus } from '../../types';
+import { canEditOrderBill, formatCurrency, formatDateTime, formatOrderStatus } from '../../utils/formatters';
 import { DeliverySlotBadge } from '../../components/common/DeliverySlotBadge';
 import { useAuth } from '../../hooks';
 import { storageService } from '../../services/storage.service';
-import { showErrorAlert, showSuccessAlert } from '../../utils/alert';
+import { showConfirmAlert, showErrorAlert, showSuccessAlert } from '../../utils/alert';
 
 const VideoTag: any = Platform.OS === 'web' ? 'video' : null;
+
+const statusColor = (status: string): string => {
+  const value = String(status || '').toLowerCase();
+  if (value === OrderStatus.CONFIRMED || value === OrderStatus.PROCESSING) return '#2196F3';
+  if (value === OrderStatus.DELIVERED) return '#4CAF50';
+  if (value === OrderStatus.CANCELED) return '#F44336';
+  return '#757575';
+};
 
 export const OrderDetailScreen = () => {
   const route = useRoute<any>();
   const routeOrder: Order | undefined = route?.params?.order;
   const [order, setOrder] = useState<Order | undefined>(routeOrder);
   const [billModalVisible, setBillModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
   const [sellerName, setSellerName] = useState('seller');
   const { isAdmin } = useAuth();
   const { data: menuItems, isLoading } = useGetMenuItemsQuery();
   const [updateOrderBill, { isLoading: updatingBill }] = useUpdateOrderBillMutation();
+  const [confirmOrder, { isLoading: confirming }] = useConfirmOrderMutation();
+  const [cancelOrder, { isLoading: canceling }] = useCancelOrderMutation();
+  const [deliverOrder, { isLoading: delivering }] = useDeliverOrderMutation();
+  const [updateOrder, { isLoading: updatingOrder }] = useUpdateOrderMutation();
 
   useEffect(() => {
     setOrder(routeOrder);
@@ -42,6 +61,70 @@ export const OrderDetailScreen = () => {
   }, []);
 
   const canEditBill = !!order && isAdmin() && canEditOrderBill(order);
+  const status = String(order?.status || '').toLowerCase();
+  const isPending = status === OrderStatus.PENDING;
+  const isConfirmed = status === OrderStatus.CONFIRMED || status === OrderStatus.PROCESSING;
+  const acting = confirming || canceling || delivering || updatingOrder;
+  const canEditOrder = isAdmin() && (isPending || isConfirmed);
+
+  const handleSaveOrder = async (data: any) => {
+    if (!order) return;
+    try {
+      const updated = await updateOrder({ id: order.id, data }).unwrap();
+      if (updated && updated.id) setOrder(updated);
+      setEditModalVisible(false);
+      showSuccessAlert('Order updated successfully');
+    } catch (e: any) {
+      showErrorAlert(e?.data?.message || e?.message || 'Failed to update order');
+    }
+  };
+
+  const applyUpdatedOrder = (updated: Order | undefined, fallbackStatus: OrderStatus) => {
+    if (updated && updated.id) {
+      setOrder(updated);
+      return;
+    }
+    setOrder((current) => (current ? { ...current, status: fallbackStatus } : current));
+  };
+
+  const handleConfirm = () => {
+    if (!order || acting) return;
+    showConfirmAlert('Confirm Order', 'Do you want to confirm this order?', async () => {
+      try {
+        const updated = await confirmOrder({ id: order.id, data: { confirmedBy: sellerName } }).unwrap();
+        applyUpdatedOrder(updated, OrderStatus.CONFIRMED);
+        showSuccessAlert('Order confirmed successfully.');
+      } catch (e: any) {
+        showErrorAlert(e?.data?.message || e?.message || 'Failed to confirm order');
+      }
+    });
+  };
+
+  const handleCancel = () => {
+    if (!order || acting) return;
+    showConfirmAlert('Cancel Order', 'Are you sure you want to cancel this order?', async () => {
+      try {
+        const updated = await cancelOrder({ id: order.id, data: { canceledBy: sellerName, reason: 'Canceled from order details' } }).unwrap();
+        applyUpdatedOrder(updated, OrderStatus.CANCELED);
+        showSuccessAlert('Order canceled.');
+      } catch (e: any) {
+        showErrorAlert(e?.data?.message || e?.message || 'Failed to cancel order');
+      }
+    });
+  };
+
+  const handleDeliver = () => {
+    if (!order || acting) return;
+    showConfirmAlert('Confirm Delivery', 'Confirm delivery to customer?', async () => {
+      try {
+        const updated = await deliverOrder({ id: order.id, data: { deliveredBy: sellerName } }).unwrap();
+        applyUpdatedOrder(updated, OrderStatus.DELIVERED);
+        showSuccessAlert('Order marked as delivered successfully!');
+      } catch (e: any) {
+        showErrorAlert(e?.data?.message || e?.message || 'Failed to mark order as delivered');
+      }
+    });
+  };
 
   const handleSaveBill = async (finalBillAmount: number, billingNotes: string) => {
     if (!order) return;
@@ -86,7 +169,23 @@ export const OrderDetailScreen = () => {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Card style={styles.headerCard}>
-        <Text style={styles.title}>Order #{order.id}</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Order #{order.id}</Text>
+          <View style={styles.titleActions}>
+            {canEditOrder && (
+              <TouchableOpacity
+                style={[styles.editIconButton, updatingOrder && styles.editIconButtonDisabled]}
+                onPress={() => setEditModalVisible(true)}
+                disabled={updatingOrder}
+              >
+                <Text style={styles.editIconText}>✏️</Text>
+              </TouchableOpacity>
+            )}
+            <View style={[styles.statusBadge, { backgroundColor: statusColor(order.status) }]}>
+              <Text style={styles.statusText}>{formatOrderStatus(order.status)}</Text>
+            </View>
+          </View>
+        </View>
         <Text style={styles.muted}>{formatDateTime(order.orderDate || (order as any).createdAt)}</Text>
         <Text style={styles.sectionLabel}>Customer</Text>
         <Text style={styles.text}>{order.buyerName}</Text>
@@ -134,13 +233,6 @@ export const OrderDetailScreen = () => {
           </View>
         )}
 
-        {canEditBill && (
-          <Button
-            title="Edit Bill"
-            onPress={() => setBillModalVisible(true)}
-            style={styles.editBillButton}
-          />
-        )}
         {isAdmin() && order.paymentStatus === 'PAID' && (
           <View style={styles.lockedBanner}>
             <Text style={styles.lockedText}>This bill is fully paid and cannot be edited.</Text>
@@ -161,6 +253,30 @@ export const OrderDetailScreen = () => {
               <Text style={styles.deliveredByText}>
                 Delivered at: {formatDateTime(order.statusUpdatedAt)}
               </Text>
+            )}
+          </View>
+        )}
+        {isAdmin() && (isPending || isConfirmed || canEditBill) && (
+          <View style={styles.buttonRow}>
+            {canEditBill && (
+              <TouchableOpacity style={[styles.actionButton, styles.billButton]} onPress={() => setBillModalVisible(true)} disabled={acting}>
+                <Text style={styles.actionText}>{isConfirmed ? '💰 Add / Edit Bill' : '💰 Edit Bill'}</Text>
+              </TouchableOpacity>
+            )}
+            {isConfirmed && !!order.finalBillAmount && (
+              <TouchableOpacity style={[styles.actionButton, styles.deliverButton]} onPress={handleDeliver} disabled={acting}>
+                {delivering ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.actionText}>🚚 Delivery to Client</Text>}
+              </TouchableOpacity>
+            )}
+            {(isPending || isConfirmed) && (
+              <TouchableOpacity style={[styles.actionButton, styles.cancelButton]} onPress={handleCancel} disabled={acting}>
+                {canceling ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.actionText}>✕ Cancel Order</Text>}
+              </TouchableOpacity>
+            )}
+            {isPending && (
+              <TouchableOpacity style={[styles.actionButton, styles.confirmButton]} onPress={handleConfirm} disabled={acting}>
+                {confirming ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.actionText}>✓ Confirm Order</Text>}
+              </TouchableOpacity>
             )}
           </View>
         )}
@@ -223,6 +339,14 @@ export const OrderDetailScreen = () => {
         );
       })}
 
+      <EditOrderModal
+        visible={editModalVisible}
+        order={order}
+        products={(menuItems || []) as MenuItem[]}
+        onClose={() => setEditModalVisible(false)}
+        onSave={handleSaveOrder}
+      />
+
       <BillEditModal
         visible={billModalVisible}
         order={order}
@@ -246,7 +370,82 @@ const styles = StyleSheet.create({
   headerCard: {
     marginBottom: spacing.md,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  titleActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  editIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editIconButtonDisabled: {
+    opacity: 0.6,
+  },
+  editIconText: {
+    fontSize: 16,
+    lineHeight: 18,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: spacing.xs,
+    minHeight: 28,
+    justifyContent: 'center',
+  },
+  statusText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.white,
+  },
+  buttonRow: {
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  actionButton: {
+    height: 44,
+    minWidth: 150,
+    paddingHorizontal: spacing.md,
+    borderRadius: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.white,
+  },
+  confirmButton: {
+    backgroundColor: colors.success,
+  },
+  cancelButton: {
+    backgroundColor: colors.error,
+  },
+  billButton: {
+    backgroundColor: '#FF9800',
+  },
+  deliverButton: {
+    backgroundColor: '#4CAF50',
+  },
   title: {
+    flex: 1,
     fontSize: typography.fontSize.xl,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,

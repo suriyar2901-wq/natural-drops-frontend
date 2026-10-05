@@ -2,22 +2,24 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, typography, spacing } from '../../theme';
-import { Card, Loading, OrderTimer } from '../../components/common';
-import { useAuth } from '../../hooks';
+import { Card, EmptyState, Loading, OrderTimer } from '../../components/common';
+import { useAuth, useCart } from '../../hooks';
 import { useGetBuyerOrdersQuery } from '../../store/api/orderApi';
 import { 
   useGetUnreadBuyerNotificationsQuery, 
   useGetUnreadBuyerNotificationCountQuery,
   useMarkBuyerNotificationAsReadMutation 
 } from '../../store/api/notificationApi';
-import { Order, OrderStatus } from '../../types';
+import { MenuItem, Order, OrderStatus } from '../../types';
 import { formatCurrency, formatDateTime, formatOrderStatus } from '../../utils/formatters';
+import { showErrorToast, showSuccessToast } from '../../utils/toast';
 import { ORDER_STATUS_COLORS } from '../../utils/constants';
 import { useNotifications } from '../../hooks/useNotifications';
 import { NotificationPreview } from '../../components/common/NotificationPreview';
 import { DeliverySlotBadge } from '../../components/common/DeliverySlotBadge';
 
 export const OrdersScreen = ({ navigation }: any) => {
+  const { addToCart } = useCart();
   const { user } = useAuth();
   const { data: orders, isLoading, refetch, error } = useGetBuyerOrdersQuery(user?.id || 0, {
     skip: !user,
@@ -126,12 +128,36 @@ export const OrdersScreen = ({ navigation }: any) => {
     return ORDER_STATUS_COLORS[status as keyof typeof ORDER_STATUS_COLORS] || colors.gray500;
   };
 
+  const reorder = (order: Order) => {
+    const lines = (order.items || []).filter((line) => line.menuItemId && line.quantity > 0);
+    if (lines.length === 0) {
+      showErrorToast('This order has no products to add again');
+      return;
+    }
+    lines.forEach((line) => {
+      const menuItem = {
+        id: line.menuItemId,
+        name: line.itemName,
+        category: 'water',
+        stockQuantity: 0,
+        rate: line.rate || 0,
+        createdAt: '',
+        updatedAt: '',
+      } as MenuItem;
+      addToCart(menuItem, line.quantity);
+    });
+    showSuccessToast('Products added to cart');
+    const parentNav = navigation?.getParent?.();
+    if (parentNav?.navigate) parentNav.navigate('Cart');
+    else navigation.navigate('Cart');
+  };
+
   const renderOrder = ({ item }: { item: Order }) => {
     return (
+        <Card style={styles.orderCard}>
       <TouchableOpacity
         onPress={() => navigation.navigate('OrderDetail', { order: item })}
       >
-        <Card style={styles.orderCard}>
           <View style={styles.orderHeader}>
             <Text style={styles.orderId}>Order #{item.id}</Text>
             <View style={styles.headerRight}>
@@ -163,11 +189,6 @@ export const OrdersScreen = ({ navigation }: any) => {
             <Text style={styles.addressText}>
               {item.deliveryAddress || item.buyerAddress || 'Not specified'}
             </Text>
-            {item.latitude && item.longitude && (
-              <Text style={styles.coordinatesText}>
-                Coordinates: {item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}
-              </Text>
-            )}
           </View>
         )}
 
@@ -220,8 +241,11 @@ export const OrdersScreen = ({ navigation }: any) => {
             )}
           </View>
         </View>
+      </TouchableOpacity>
+        <TouchableOpacity style={styles.reorderButton} onPress={() => reorder(item)}>
+          <Text style={styles.reorderText}>Order again</Text>
+        </TouchableOpacity>
       </Card>
-    </TouchableOpacity>
     );
   };
 
@@ -266,8 +290,12 @@ export const OrdersScreen = ({ navigation }: any) => {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No orders yet</Text>
-            <Text style={styles.emptySubtext}>Start shopping to place your first order!</Text>
+            <EmptyState
+              title="No orders yet"
+              message="Start shopping to place your first order."
+              actionLabel="Browse shop"
+              onAction={() => navigation.navigate('Home')}
+            />
             {error && (
               <Text style={styles.errorText}>
                 Error: {error?.data?.message || error?.message || 'Failed to load orders'}
@@ -288,6 +316,18 @@ const styles = StyleSheet.create({
   listContent: {
     padding: spacing.md,
   },
+  reorderButton: {
+    marginTop: spacing.sm,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  reorderText: {
+    color: colors.white,
+    fontWeight: typography.fontWeight.semibold,
+  },
   orderCard: {
     marginBottom: spacing.md,
     position: 'relative',
@@ -295,15 +335,18 @@ const styles = StyleSheet.create({
   orderHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
     marginBottom: spacing.sm,
   },
   headerRight: {
     alignItems: 'flex-end',
     justifyContent: 'flex-start',
-    minWidth: 110,
+    flexShrink: 1,
   },
   orderId: {
+    flexShrink: 1,
     fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,

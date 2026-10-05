@@ -303,6 +303,12 @@ export const UserManagementScreen = () => {
       </View>
 
       <View style={styles.userDetails}>
+        {!!item.shopName && (
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>🏪 Shop:</Text>
+            <Text style={styles.detailValue}>{item.shopName}</Text>
+          </View>
+        )}
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>📧 Email:</Text>
           <Text style={styles.detailValue}>{item.email || 'N/A'}</Text>
@@ -647,23 +653,29 @@ const styles = StyleSheet.create({
   userInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
   },
   userTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    flexShrink: 1,
+    minWidth: 0,
   },
   roleIcon: {
     fontSize: typography.fontSize['2xl'],
   },
   username: {
+    flexShrink: 1,
     fontSize: typography.fontSize.xl,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
   },
   badgeContainer: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.xs,
     alignItems: 'center',
   },
@@ -708,6 +720,7 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'flex-end',
     paddingTop: spacing.md,
     borderTopWidth: 1,

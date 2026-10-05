@@ -39,7 +39,7 @@ export const ShopCustomerDetailScreen = ({ navigation, route }: any) => {
         <Button title="Record can return" variant="outline" onPress={() => navigation.navigate('ShopEmptyCans', { customerId })} />
       </View>
       <View style={styles.actions}>
-        <Button title="Phone Order" variant="outline" onPress={() => navigation.navigate('PhoneOrder', { customerId })} />
+        <Button title="Add Order" variant="outline" onPress={() => navigation.navigate('PhoneOrder', { customerId })} />
         <Button title="Edit" variant="outline" onPress={() => navigation.navigate('AddShopCustomer', { customerId })} />
       </View>
 

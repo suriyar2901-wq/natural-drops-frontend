@@ -6,7 +6,7 @@ export const canEditOrderBill = (order: {
   if (!order || order.status === 'canceled') return false;
   if (order.paymentStatus === 'PAID') return false;
   if (order.paymentStatus === 'PARTIALLY_PAID' || order.paymentStatus === 'UNPAID') return true;
-  return order.status === 'processing';
+  return order.status === 'confirmed' || order.status === 'processing';
 };
 
 // Currency formatter
@@ -102,10 +102,9 @@ export const truncate = (text: string, maxLength: number): string => {
 
 // Format order status
 export const formatOrderStatus = (status: string): string => {
-  // Special case: "processing" should display as "On The Way"
   const normalizedStatus = status.toLowerCase().trim();
   if (normalizedStatus === 'processing') {
-    return 'On The Way';
+    return 'Confirmed';
   }
   return status.split('_').map(capitalize).join(' ');
 };

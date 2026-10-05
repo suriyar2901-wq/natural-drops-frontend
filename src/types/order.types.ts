@@ -60,6 +60,8 @@ export interface Order {
   billedAt?: string; // Timestamp when bill was created or last updated
   billingNotes?: string; // Optional notes about the billing
   scheduledDeliveryDate?: string;
+  sellerUserId?: number;
+  sellerBusinessName?: string;
   items: OrderItem[];
 }
 

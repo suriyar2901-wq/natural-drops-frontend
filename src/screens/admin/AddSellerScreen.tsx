@@ -1,14 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Button, Card, Input } from '../../components/common';
+import { AddressMatchFields, Button, Card, Input } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
 import { useCreateAdminSellerMutation } from '../../store/api/platformAdminApi';
+import { useGetSettingsQuery } from '../../store/api/settingsApi';
+import { formatCurrency } from '../../utils/formatters';
 import { PlanType } from '../../types/platformAdmin.types';
 
 const EMAIL_RE = /^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
 export const AddSellerScreen = ({ navigation }: any) => {
   const [createSeller, { isLoading }] = useCreateAdminSellerMutation();
+  const { data: settings } = useGetSettingsQuery();
   const [ownerName, setOwnerName] = useState('');
   const [mobile, setMobile] = useState('');
   const [alternateMobile, setAlternateMobile] = useState('');
@@ -18,20 +21,21 @@ export const AddSellerScreen = ({ navigation }: any) => {
   const [area, setArea] = useState('');
   const [city, setCity] = useState('');
   const [pincode, setPincode] = useState('');
+  const [addressMatched, setAddressMatched] = useState(false);
   const [plan, setPlan] = useState<PlanType>('MONTHLY');
 
-  const amount = plan === 'YEARLY' ? '5389.20' : '499.00';
+  const monthlyPrice = settings?.planMonthlyAmount || '499.00';
+  const yearlyPrice = settings?.planYearlyAmount || '5389.20';
+  const amount = plan === 'YEARLY' ? yearlyPrice : monthlyPrice;
   const error = useMemo(() => {
     if (ownerName.trim().length < 2) return 'Owner name is required';
     if (!/^[0-9]{10}$/.test(mobile)) return 'Mobile must be 10 digits';
     if (email.trim() && !EMAIL_RE.test(email.trim())) return 'Invalid email format';
     if (businessName.trim().length < 2) return 'Business name is required';
     if (businessAddress.trim().length < 4) return 'Business address is required';
-    if (area.trim().length < 2) return 'Area is required';
-    if (city.trim().length < 2) return 'City is required';
-    if (!/^[0-9]{6}$/.test(pincode)) return 'Pincode must be 6 digits';
+    if (!addressMatched) return 'Pick an area suggestion so city and pincode match';
     return '';
-  }, [ownerName, mobile, email, businessName, businessAddress, area, city, pincode]);
+  }, [ownerName, mobile, email, businessName, businessAddress, addressMatched]);
 
   const handleCreate = async () => {
     if (error) {
@@ -78,16 +82,25 @@ export const AddSellerScreen = ({ navigation }: any) => {
         <Text style={styles.section}>2. Business</Text>
         <Input label="Business name *" value={businessName} onChangeText={setBusinessName} />
         <Input label="Address *" value={businessAddress} onChangeText={setBusinessAddress} />
-        <Input label="Area *" value={area} onChangeText={setArea} />
-        <Input label="City *" value={city} onChangeText={setCity} />
-        <Input label="Pincode *" value={pincode} onChangeText={(t) => setPincode(t.replace(/[^0-9]/g, '').slice(0, 6))} keyboardType="numeric" />
+        <AddressMatchFields
+          area={area}
+          city={city}
+          pincode={pincode}
+          matched={addressMatched}
+          onChange={(next) => {
+            setArea(next.area);
+            setCity(next.city);
+            setPincode(next.pincode);
+            setAddressMatched(next.matched);
+          }}
+        />
       </Card>
 
       <Card style={styles.card}>
         <Text style={styles.section}>3. Plan</Text>
         <View style={styles.planRow}>
-          <PlanOption title="Monthly" amount="₹499.00" selected={plan === 'MONTHLY'} onPress={() => setPlan('MONTHLY')} />
-          <PlanOption title="Yearly" amount="₹5,389.20" selected={plan === 'YEARLY'} onPress={() => setPlan('YEARLY')} />
+          <PlanOption title="Monthly" amount={formatCurrency(Number(monthlyPrice))} selected={plan === 'MONTHLY'} onPress={() => setPlan('MONTHLY')} />
+          <PlanOption title="Yearly" amount={formatCurrency(Number(yearlyPrice))} selected={plan === 'YEARLY'} onPress={() => setPlan('YEARLY')} />
         </View>
         <Text style={styles.preview}>Selected: {plan} • Amount due ₹{amount} • Payment Pending</Text>
       </Card>

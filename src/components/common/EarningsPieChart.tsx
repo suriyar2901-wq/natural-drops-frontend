@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { colors, spacing, typography } from '../../theme';
 import { formatCurrency } from '../../utils/formatters';
 
@@ -16,9 +16,57 @@ type Props = {
   due: number;
 };
 
+const PIE_SIZE = 168;
+
 const money = (value: number | undefined | null) => {
   const amount = Number(value);
   return Number.isFinite(amount) && amount > 0 ? amount : 0;
+};
+
+const sliceColors = (slices: Slice[]) => {
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  const degrees: string[] = [];
+  if (total <= 0) return degrees;
+  const positive = slices.filter((slice) => slice.value > 0);
+  let assigned = 0;
+  positive.forEach((slice, index) => {
+    const count = index === positive.length - 1
+      ? 360 - assigned
+      : Math.max(0, Math.round((slice.value / total) * 360));
+    const safe = Math.min(count, 360 - assigned);
+    for (let step = 0; step < safe; step += 1) degrees.push(slice.color);
+    assigned += safe;
+  });
+  return degrees;
+};
+
+const EarningsPie = ({ slices }: { slices: Slice[] }) => {
+  const degrees = sliceColors(slices);
+  if (degrees.length === 0) {
+    return <View style={[styles.pie, { backgroundColor: colors.gray200 }]} />;
+  }
+  return (
+    <View style={styles.pie}>
+      {degrees.map((color, degree) => (
+        <View
+          key={`${color}-${degree}`}
+          style={{
+            position: 'absolute',
+            left: PIE_SIZE / 2 - 2,
+            top: 0,
+            width: 4,
+            height: PIE_SIZE / 2,
+            backgroundColor: color,
+            transform: [
+              { translateY: PIE_SIZE / 4 },
+              { rotate: `${degree}deg` },
+              { translateY: -(PIE_SIZE / 4) },
+            ],
+          }}
+        />
+      ))}
+    </View>
+  );
 };
 
 export const EarningsPieChart = ({ paid, partial, due }: Props) => {
@@ -29,34 +77,10 @@ export const EarningsPieChart = ({ paid, partial, due }: Props) => {
   ];
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
 
-  let cursor = 0;
-  const gradient = total === 0
-    ? colors.gray200
-    : `conic-gradient(${slices
-        .map((slice) => {
-          const start = cursor;
-          cursor += (slice.value / total) * 360;
-          const piece = `${slice.color} ${start}deg ${cursor}deg`;
-          return piece;
-        })
-        .join(', ')})`;
-
   return (
     <View style={styles.wrap}>
       <View style={styles.chartRow}>
-        {Platform.OS === 'web' ? (
-          React.createElement('div', {
-            style: {
-              width: 168,
-              height: 168,
-              borderRadius: '50%',
-              background: gradient,
-              flexShrink: 0,
-            },
-          })
-        ) : (
-          <View style={[styles.fallbackPie, { backgroundColor: slices.find((slice) => slice.value > 0)?.color || colors.gray200 }]} />
-        )}
+        <EarningsPie slices={slices} />
         <View style={styles.legend}>
           {slices.map((slice) => {
             const percent = total > 0 ? Math.round((slice.value / total) * 100) : 0;
@@ -81,7 +105,13 @@ export const EarningsPieChart = ({ paid, partial, due }: Props) => {
 const styles = StyleSheet.create({
   wrap: { marginTop: spacing.sm },
   chartRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flexWrap: 'wrap' },
-  fallbackPie: { width: 168, height: 168, borderRadius: 84 },
+  pie: {
+    width: PIE_SIZE,
+    height: PIE_SIZE,
+    borderRadius: PIE_SIZE / 2,
+    overflow: 'hidden',
+    backgroundColor: colors.gray200,
+  },
   legend: { flex: 1, minWidth: 180 },
   legendRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.sm },
   swatch: { width: 14, height: 14, borderRadius: 7, marginTop: 3, marginRight: spacing.sm },

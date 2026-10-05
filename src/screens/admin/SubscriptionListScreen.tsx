@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Button, Card, Input, Loading, StatusPill } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
@@ -13,6 +13,12 @@ export const SubscriptionListScreen = ({ navigation, route }: any) => {
   const { data: rows = [], isLoading, refetch } = useGetAdminSubscriptionsQuery();
   const [renew] = useRenewAdminSubscriptionMutation();
   const [tab, setTab] = useState(initial);
+
+  useEffect(() => {
+    if (route?.params?.filter) {
+      setTab(route.params.filter);
+    }
+  }, [route?.params?.filter]);
   const [search, setSearch] = useState('');
   const [plan, setPlan] = useState('All');
   const [account, setAccount] = useState('All');

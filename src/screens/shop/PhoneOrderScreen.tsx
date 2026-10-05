@@ -1,29 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Button, Card, Input, Loading } from '../../components/common';
+import { Button, Card, DeliverySlotFields, EmptyState, Input, Loading } from '../../components/common';
+import { deliveryDateFor, isFutureDeliverySlot } from '../../components/common/DeliverySlotFields';
 import { colors, spacing, typography } from '../../theme';
 import { useCreatePhoneOrderMutation, useGetShopCustomersQuery } from '../../store/api/shopApi';
 import { useGetMenuItemsQuery } from '../../store/api/menuApi';
-import { formatCurrency } from '../../utils/formatters';
+import { formatClockAmPm, formatCurrency } from '../../utils/formatters';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
-
-type DeliveryChoice = 'Today' | 'Tomorrow' | 'Date';
 
 type SelectedLine = {
   menuItemId: number;
   name: string;
   rate: number;
   quantity: number;
-};
-
-const toYmd = (offsetDays: number) => {
-  const date = new Date();
-  date.setHours(12, 0, 0, 0);
-  date.setDate(date.getDate() + offsetDays);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 };
 
 const formatYmd = (value: string) => {
@@ -39,10 +28,14 @@ export const PhoneOrderScreen = ({ navigation, route }: any) => {
   const [createPhoneOrder, { isLoading: saving }] = useCreatePhoneOrderMutation();
   const [customerId, setCustomerId] = useState<number | undefined>(presetCustomerId);
   const [customerQuery, setCustomerQuery] = useState('');
+  const [productQuery, setProductQuery] = useState('');
+  const [productOpen, setProductOpen] = useState(false);
+  const [pickedId, setPickedId] = useState<number | null>(null);
+  const [pickedQty, setPickedQty] = useState('1');
   const [lines, setLines] = useState<SelectedLine[]>([]);
-  const [draftQty, setDraftQty] = useState<Record<number, string>>({});
-  const [deliveryChoice, setDeliveryChoice] = useState<DeliveryChoice>('Today');
+  const [deliveryChoice, setDeliveryChoice] = useState<'Today' | 'Tomorrow' | 'Date'>('Today');
   const [customDate, setCustomDate] = useState('');
+  const [deliveryTime, setDeliveryTime] = useState('10:00');
   const [note, setNote] = useState('');
 
   useEffect(() => {
@@ -60,12 +53,14 @@ export const PhoneOrderScreen = ({ navigation, route }: any) => {
   const customerMatches = showCustomerList
     ? customers.filter((customer) => customer.name.toLowerCase().startsWith(query.toLowerCase()))
     : [];
+  const productText = productQuery.trim().toLowerCase();
+  const productMatches = products.filter((item) => !productText || item.name.toLowerCase().includes(productText));
+  const pickedProduct = products.find((item) => item.id === pickedId);
   const total = lines.reduce((sum, line) => sum + line.rate * line.quantity, 0);
-  const today = toYmd(0);
-  const deliveryDate = deliveryChoice === 'Today' ? today : deliveryChoice === 'Tomorrow' ? toYmd(1) : customDate;
+  const deliveryDate = deliveryDateFor(deliveryChoice, customDate);
 
   if (customersLoading || productsLoading) {
-    return <Loading fullScreen message="Loading phone order..." />;
+    return <Loading fullScreen message="Loading add order..." />;
   }
 
   const save = async () => {
@@ -77,26 +72,20 @@ export const PhoneOrderScreen = ({ navigation, route }: any) => {
       showErrorToast('Add at least one product');
       return;
     }
-    if (deliveryChoice === 'Date' && !/^\d{4}-\d{2}-\d{2}$/.test(customDate)) {
-      showErrorToast('Choose a delivery date');
+    if (!isFutureDeliverySlot(deliveryDate, deliveryTime)) {
+      showErrorToast('Choose a future delivery date and time');
       return;
     }
-    if (deliveryDate < today) {
-      showErrorToast('Delivery date cannot be in the past');
-      return;
-    }
-    const delivery = deliveryChoice === 'Date' ? customDate : deliveryChoice;
     try {
       await createPhoneOrder({
         customerId,
-        delivery,
+        delivery: deliveryDate,
+        deliveryTime,
         note,
         items: lines.map((line) => ({ menuItemId: line.menuItemId, quantity: line.quantity })),
       }).unwrap();
       showSuccessToast(
-        deliveryChoice === 'Today'
-          ? 'Phone order created for delivery today'
-          : `Phone order created. Delivery on ${formatYmd(deliveryDate)}. Alert goes out one day before.`
+        `Order added. Delivery on ${formatYmd(deliveryDate)} at ${formatClockAmPm(deliveryTime)}.`
       );
       if (navigation.canGoBack()) {
         navigation.goBack();
@@ -104,7 +93,7 @@ export const PhoneOrderScreen = ({ navigation, route }: any) => {
         navigation.navigate('AdminApp', { screen: 'OrderManagement' });
       }
     } catch (error: any) {
-      showErrorToast(error?.data?.message || 'Could not create phone order');
+      showErrorToast(error?.data?.message || 'Could not add order');
     }
   };
 
@@ -115,7 +104,7 @@ export const PhoneOrderScreen = ({ navigation, route }: any) => {
       keyboardShouldPersistTaps="handled"
       nestedScrollEnabled
     >
-      <Text style={styles.title}>Phone Order</Text>
+      <Text style={styles.title}>Add Order</Text>
       <Card style={styles.card}>
         <Input
           label="Customer"
@@ -148,49 +137,94 @@ export const PhoneOrderScreen = ({ navigation, route }: any) => {
         )}
         {customers.length === 0 && <Text style={styles.meta}>Add a shop customer first.</Text>}
 
-        <Text style={styles.label}>Product</Text>
-        <Text style={styles.meta}>Choose a product, set its quantity, then add it. Add another product the same way.</Text>
-        {products.map((item) => {
-          const added = lines.find((line) => line.menuItemId === item.id);
-          const qtyValue = draftQty[item.id] ?? (added ? String(added.quantity) : '1');
-          return (
-            <View key={item.id} style={styles.productRow}>
-              <View style={styles.productInfo}>
-                <Text style={styles.suggestName}>{item.name}</Text>
-                <Text style={styles.suggestMeta}>{formatCurrency(Number(item.rate || 0))}</Text>
-              </View>
-              <Input
-                label="Qty"
-                value={qtyValue}
-                keyboardType="number-pad"
-                containerStyle={styles.qtyInput}
-                onChangeText={(value) => setDraftQty((prev) => ({ ...prev, [item.id]: value.replace(/[^0-9]/g, '').slice(0, 2) }))}
-              />
-              <TouchableOpacity
-                style={styles.addButton}
-                onPress={() => {
-                  const nextQty = Number(qtyValue);
-                  if (!nextQty || nextQty < 1 || nextQty > 20) {
-                    showErrorToast('Quantity must be between 1 and 20');
-                    return;
-                  }
-                  setLines((prev) => {
-                    const existing = prev.find((line) => line.menuItemId === item.id);
-                    if (existing) {
-                      return prev.map((line) => (line.menuItemId === item.id ? { ...line, quantity: nextQty } : line));
-                    }
-                    return [...prev, { menuItemId: item.id, name: item.name, rate: Number(item.rate || 0), quantity: nextQty }];
-                  });
-                }}
-              >
-                <Text style={styles.addButtonText}>{added ? 'Update' : 'Add'}</Text>
-              </TouchableOpacity>
+        <Input
+          label="Product"
+          value={productQuery}
+          onChangeText={(value) => {
+            setProductQuery(value);
+            setProductOpen(true);
+            setPickedId(null);
+          }}
+          onFocus={() => setProductOpen(true)}
+          onBlur={() => {
+            setTimeout(() => setProductOpen(false), 200);
+          }}
+          placeholder="Search product name"
+          autoCapitalize="none"
+          containerStyle={productOpen ? styles.searchInputOpen : undefined}
+        />
+        {productOpen && (
+          <View style={styles.dropdown}>
+            <ScrollView style={styles.dropdownScroll} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              {productMatches.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.dropdownRow}
+                  onPress={() => {
+                    const added = lines.find((line) => line.menuItemId === item.id);
+                    setPickedId(item.id);
+                    setPickedQty(added ? String(added.quantity) : '1');
+                    setProductQuery(item.name);
+                    setProductOpen(false);
+                  }}
+                >
+                  <Text style={styles.suggestName}>{item.name}</Text>
+                  <Text style={styles.dropdownPrice}>{formatCurrency(Number(item.rate || 0))}</Text>
+                </TouchableOpacity>
+              ))}
+              {productMatches.length === 0 && <Text style={styles.dropdownEmpty}>No product found</Text>}
+            </ScrollView>
+          </View>
+        )}
+        {pickedProduct && !productOpen && (
+          <View style={styles.addRow}>
+            <View style={styles.productInfo}>
+              <Text style={styles.suggestName}>{pickedProduct.name}</Text>
+              <Text style={styles.suggestMeta}>{formatCurrency(Number(pickedProduct.rate || 0))}</Text>
             </View>
-          );
-        })}
+            <Input
+              label="Qty"
+              value={pickedQty}
+              keyboardType="number-pad"
+              containerStyle={styles.qtyInput}
+              onChangeText={(value) => setPickedQty(value.replace(/[^0-9]/g, '').slice(0, 2))}
+            />
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => {
+                const nextQty = Number(pickedQty);
+                if (!nextQty || nextQty < 1 || nextQty > 20) {
+                  showErrorToast('Quantity must be between 1 and 20');
+                  return;
+                }
+                setLines((prev) => {
+                  const existing = prev.find((line) => line.menuItemId === pickedProduct.id);
+                  if (existing) {
+                    return prev.map((line) => (line.menuItemId === pickedProduct.id ? { ...line, quantity: nextQty } : line));
+                  }
+                  return [...prev, {
+                    menuItemId: pickedProduct.id,
+                    name: pickedProduct.name,
+                    rate: Number(pickedProduct.rate || 0),
+                    quantity: nextQty,
+                  }];
+                });
+                setPickedId(null);
+                setProductQuery('');
+                setPickedQty('1');
+              }}
+            >
+              <Text style={styles.addButtonText}>
+                {lines.some((line) => line.menuItemId === pickedProduct.id) ? 'Update' : 'Add'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <Text style={styles.label}>Selected products</Text>
-        {lines.length === 0 && <Text style={styles.meta}>No products added yet.</Text>}
+        {lines.length === 0 && (
+          <EmptyState title="No products added yet" message="Pick a product above and set the quantity." />
+        )}
         {lines.map((line) => (
           <View key={line.menuItemId} style={styles.selectedRow}>
             <View style={styles.productInfo}>
@@ -224,54 +258,18 @@ export const PhoneOrderScreen = ({ navigation, route }: any) => {
           </View>
         ))}
         <Text style={styles.label}>Delivery</Text>
-        <View style={styles.row}>
-          {(['Today', 'Tomorrow', 'Date'] as DeliveryChoice[]).map((item) => (
-            <TouchableOpacity
-              key={item}
-              style={[styles.chip, deliveryChoice === item && styles.optionActive]}
-              onPress={() => setDeliveryChoice(item)}
-            >
-              <Text style={[styles.optionText, deliveryChoice === item && styles.optionTextActive]}>{item}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        {deliveryChoice === 'Date' && (
-          <View style={styles.dateWrap}>
-            <Text style={styles.meta}>Pick the delivery date</Text>
-            {Platform.OS === 'web' ? (
-              React.createElement('input', {
-                type: 'date',
-                min: today,
-                value: customDate,
-                onChange: (event: any) => setCustomDate(event.target.value),
-                style: {
-                  marginTop: 8,
-                  width: '100%',
-                  padding: 12,
-                  borderRadius: 10,
-                  border: `1px solid ${colors.border}`,
-                  fontSize: 16,
-                },
-              })
-            ) : (
-              <Input
-                label="Date"
-                value={customDate}
-                placeholder="YYYY-MM-DD"
-                keyboardType="numbers-and-punctuation"
-                onChangeText={setCustomDate}
-              />
-            )}
-          </View>
-        )}
-        <Text style={styles.deliveryHint}>
-          {deliveryChoice === 'Today'
-            ? `Delivery on ${formatYmd(today)}.`
-            : `Delivery on ${deliveryDate ? formatYmd(deliveryDate) : 'the selected date'}. Seller and buyer get an alert one day before.`}
-        </Text>
+        <DeliverySlotFields
+          choice={deliveryChoice}
+          onChoiceChange={setDeliveryChoice}
+          customDate={customDate}
+          onCustomDateChange={setCustomDate}
+          time={deliveryTime}
+          onTimeChange={setDeliveryTime}
+        />
+        <Text style={styles.deliveryHint}>Seller and buyer get an alert one day before.</Text>
         <Input label="Note" value={note} onChangeText={setNote} />
         <Text style={styles.total}>Total {formatCurrency(total)}</Text>
-        <Button title={saving ? 'Creating…' : 'Create Phone Order'} onPress={save} />
+        <Button title={saving ? 'Adding…' : 'Add Order'} onPress={save} />
       </Card>
     </ScrollView>
   );
@@ -301,10 +299,47 @@ const styles = StyleSheet.create({
   suggestMeta: { color: colors.textSecondary, marginTop: 2 },
   dateWrap: { marginTop: spacing.sm },
   deliveryHint: { marginTop: spacing.sm, color: colors.textSecondary },
-  productRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, marginBottom: spacing.sm },
-  productInfo: { flex: 1 },
+  searchInputOpen: { marginBottom: spacing.xs },
+  dropdown: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: colors.white,
+    marginBottom: spacing.md,
+    maxHeight: 220,
+    overflow: 'hidden',
+  },
+  dropdownScroll: { maxHeight: 220 },
+  dropdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  dropdownPrice: { color: colors.textSecondary, fontWeight: typography.fontWeight.semibold },
+  dropdownEmpty: { color: colors.textSecondary, padding: spacing.md },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  productInfo: { flex: 1, justifyContent: 'center', minHeight: 44 },
   qtyInput: { width: 72, marginBottom: 0 },
-  addButton: { backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginBottom: spacing.md },
+  addButton: {
+    height: 44,
+    minWidth: 88,
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 0,
+  },
   addButtonText: { color: colors.white, fontWeight: typography.fontWeight.semibold },
   selectedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: spacing.sm, marginBottom: spacing.xs },
   qtyControls: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

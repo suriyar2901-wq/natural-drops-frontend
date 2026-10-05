@@ -38,6 +38,7 @@ export interface SellerAdmin {
   city: string;
   pincode: string;
   accountStatus: AccountStatus;
+  loginActive?: boolean;
   deactivationReason?: string;
   adminNote?: string;
   createdAt?: string;
@@ -67,6 +68,7 @@ export interface PlatformDashboard {
   expiringSoon: number;
   expired: number;
   paymentPending: number;
+  failedPayments?: number;
   deactivatedAccounts: number;
   newSellers: number;
   renewed: number;

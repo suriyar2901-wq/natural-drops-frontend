@@ -42,6 +42,11 @@ export interface ShopProfile {
   altMobile?: string;
   email?: string;
   qrData?: string;
+  openTime?: string | null;
+  closeTime?: string | null;
+  openDays?: string | null;
+  leaveDates?: string | null;
+  showHoursToBuyer?: boolean | null;
 }
 
 export interface ShopCustomerPayload {
@@ -65,6 +70,12 @@ export interface BuyerAccountSummary {
   companyName?: string | null;
   companyCode?: string | null;
   sellerProfilePhoto?: string | null;
+  shopOpenTime?: string | null;
+  shopCloseTime?: string | null;
+  shopOpenDays?: string | null;
+  shopLeaveDates?: string | null;
+  shopOpenNow?: boolean;
+  shopNextOpenLabel?: string | null;
 }
 
 export interface SellerSubscriptionAccess {

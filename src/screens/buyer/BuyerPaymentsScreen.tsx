@@ -3,14 +3,32 @@ import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { Button, Card, Input, Loading } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
 import { useClaimBuyerPaymentMutation, useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
+import { useGetBuyerOrdersQuery } from '../../store/api/orderApi';
+import { useAuth } from '../../hooks';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { moneyValue } from '../../types/shop.types';
+import { Order } from '../../types';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
+
+const orderSplit = (order: Order) => {
+  const total = Number(order.total) || 0;
+  const billed = order.finalBillAmount == null ? null : Number(order.finalBillAmount);
+  if (order.paymentStatus === 'PAID') {
+    return { paid: billed != null && billed > 0 ? billed : total, balance: 0 };
+  }
+  if (order.paymentStatus === 'PARTIALLY_PAID') {
+    const paid = Math.min(total, Math.max(0, billed || 0));
+    return { paid, balance: Math.max(0, total - paid) };
+  }
+  return { paid: 0, balance: total };
+};
 
 const METHODS = ['UPI', 'CASH'];
 
 export const BuyerPaymentsScreen = () => {
+  const { user } = useAuth();
   const { data, isLoading, refetch } = useGetBuyerAccountSummaryQuery();
+  const { data: orders = [] } = useGetBuyerOrdersQuery(user?.id || 0, { skip: !user?.id });
   const [claimPayment, { isLoading: saving }] = useClaimBuyerPaymentMutation();
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('UPI');
@@ -21,6 +39,10 @@ export const BuyerPaymentsScreen = () => {
 
   const due = moneyValue(data?.due);
   const ledger = data?.ledger || [];
+  const orderBills = (orders as Order[])
+    .filter((order) => order.status !== 'canceled')
+    .slice()
+    .sort((left, right) => right.id - left.id);
 
   const save = async () => {
     const parsed = Number(amount);
@@ -68,6 +90,20 @@ export const BuyerPaymentsScreen = () => {
         <Button title={saving ? 'Saving…' : 'Record Payment'} onPress={save} />
       </Card>
 
+      {orderBills.map((order) => {
+        const split = orderSplit(order);
+        return (
+          <Card key={order.id} style={styles.rowCard}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.name}>Order #{order.id}</Text>
+              <Text style={styles.name}>{order.paymentStatus === 'PAID' ? 'Paid' : order.paymentStatus === 'PARTIALLY_PAID' ? 'Partial' : 'Unpaid'}</Text>
+            </View>
+            <Text style={styles.meta}>Paid {formatCurrency(split.paid)}</Text>
+            <Text style={styles.balance}>Balance {formatCurrency(split.balance)}</Text>
+          </Card>
+        );
+      })}
+
       {ledger.map((event) => (
         <Card key={event.id} style={styles.rowCard}>
           <View style={styles.rowBetween}>
@@ -96,6 +132,7 @@ const styles = StyleSheet.create({
   chipText: { color: colors.textSecondary },
   chipTextActive: { color: colors.white, fontWeight: typography.fontWeight.semibold },
   rowCard: { padding: spacing.md, marginBottom: spacing.sm },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between' },
-  name: { fontWeight: typography.fontWeight.semibold, color: colors.textPrimary },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm, flexWrap: 'wrap' },
+  name: { flexShrink: 1, fontWeight: typography.fontWeight.semibold, color: colors.textPrimary },
+  balance: { marginTop: 2, color: colors.warning, fontWeight: typography.fontWeight.bold },
 });

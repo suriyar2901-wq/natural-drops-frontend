@@ -23,6 +23,9 @@ if (Platform.OS === 'web') {
       html, body, #root {
         height: 100% !important;
         min-height: 100% !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
       }
       body {
         overflow: hidden !important;

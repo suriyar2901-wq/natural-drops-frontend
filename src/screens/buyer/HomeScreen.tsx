@@ -1,24 +1,44 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Image, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Image, Alert, Platform, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, typography, spacing } from '../../theme';
-import { Card, Loading, Input, HeaderBrand } from '../../components/common';
+import { Card, EmptyState, Loading, Input, HeaderBrand, ProductPhotoPlaceholder } from '../../components/common';
 import { useGetMenuItemsQuery } from '../../store/api/menuApi';
 import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
+import { useGetBuyerOrdersQuery } from '../../store/api/orderApi';
 import { useCart, useAuth } from '../../hooks';
 import { moneyValue } from '../../types/shop.types';
-import { MenuItem } from '../../types';
-import { formatCurrency } from '../../utils/formatters';
+import { MenuItem, Order } from '../../types';
+import { formatCurrency, formatDeliverySlot } from '../../utils/formatters';
+import { shopAvailability } from '../../utils/shopHours';
 import { API_BASE_URL } from '../../utils/constants';
 import { navigate } from '../../navigation/navigationRef';
 
 export const HomeScreen = ({ navigation }: any) => {
+  const { width } = useWindowDimensions();
+  const photoSize = width < 520 ? 84 : 120;
   const { user, isBuyer } = useAuth();
   const { data: products, isLoading, refetch, error } = useGetMenuItemsQuery();
   const { data: account } = useGetBuyerAccountSummaryQuery(undefined, { skip: !isBuyer() });
+  const { data: buyerOrders = [] } = useGetBuyerOrdersQuery(user?.id || 0, { skip: !isBuyer() || !user?.id });
   const { addToCart, getItemQuantity, incrementQuantity, decrementQuantity, totalItems } = useCart();
   const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const nextDelivery = useMemo(() => {
+    const open = (buyerOrders as Order[]).filter((order) => (
+      order.status !== 'canceled'
+      && order.status !== 'delivered'
+      && !!order.scheduledDeliveryDate
+    ));
+    open.sort((left, right) => {
+      const dateCompare = String(left.scheduledDeliveryDate).localeCompare(String(right.scheduledDeliveryDate));
+      if (dateCompare !== 0) return dateCompare;
+      return String(left.estimatedDelivery || '').localeCompare(String(right.estimatedDelivery || ''));
+    });
+    return open[0];
+  }, [buyerOrders]);
+  const shopHours = shopAvailability(account?.shopOpenTime, account?.shopCloseTime, account?.shopOpenDays, account?.shopLeaveDates);
+  const shopClosed = isBuyer() && shopHours.hasHours && !shopHours.openNow;
 
   // Refetch products when screen comes into focus to ensure latest products from seller
   useFocusEffect(
@@ -111,7 +131,7 @@ export const HomeScreen = ({ navigation }: any) => {
       >
         <Card style={styles.productCard}>
         {isValidImageUrl ? (
-          <View style={styles.imageContainer}>
+          <View style={[styles.imageContainer, { width: photoSize, height: photoSize }]}>
             <Image
               source={{ uri: imageUri }}
               style={styles.productImage}
@@ -131,9 +151,8 @@ export const HomeScreen = ({ navigation }: any) => {
             />
           </View>
         ) : (
-          <View style={styles.placeholderImage}>
-            <Text style={styles.placeholderText}>📦</Text>
-            <Text style={styles.placeholderSubtext}>No image</Text>
+          <View style={[styles.placeholderImage, { width: photoSize, height: photoSize }]}>
+            <ProductPhotoPlaceholder size={photoSize} />
           </View>
         )}
         
@@ -199,12 +218,16 @@ export const HomeScreen = ({ navigation }: any) => {
           </View>
         )}
         <Text style={styles.greeting}>Welcome, {user?.username || user?.fullName || 'User'}!</Text>
-        <Text style={styles.subtitle}>Order fresh water today</Text>
+        <Text style={styles.subtitle}>
+          {shopHours.hasHours
+            ? `Shop available ${shopHours.openLabel} to ${shopHours.closeLabel}`
+            : 'Order fresh water today'}
+        </Text>
         {isBuyer() && (
           <View style={styles.accountRow}>
             <TouchableOpacity
               style={styles.accountChip}
-              onPress={() => navigation.getParent()?.navigate('BuyerPayments') || navigation.navigate('BuyerPayments')}
+              onPress={() => navigation.navigate('BuyerPayments')}
             >
               <Text style={styles.accountValue}>{formatCurrency(moneyValue(account?.due))}</Text>
               <Text style={styles.accountLabel}>Due</Text>
@@ -219,6 +242,28 @@ export const HomeScreen = ({ navigation }: any) => {
           </View>
         )}
       </View>
+
+      {isBuyer() && nextDelivery && (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.getParent()?.navigate('OrderDetail', { order: nextDelivery }) || navigation.navigate('OrderDetail', { order: nextDelivery })}
+        >
+          <Card style={styles.nextDelivery}>
+            <Text style={styles.nextDeliveryTitle}>Next delivery</Text>
+            <Text style={styles.nextDeliverySlot}>{formatDeliverySlot(nextDelivery)}</Text>
+            <Text style={styles.nextDeliveryMeta}>Order #{nextDelivery.id}</Text>
+          </Card>
+        </TouchableOpacity>
+      )}
+
+      {shopClosed && (
+        <Card style={styles.closedCard}>
+          <Text style={styles.closedTitle}>Shop is closed</Text>
+          <Text style={styles.closedText}>
+            The shop opens next {shopHours.nextLabel}. You can still place an order. The seller will receive it, and it will be taken when the shop opens.
+          </Text>
+        </Card>
+      )}
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
@@ -243,13 +288,10 @@ export const HomeScreen = ({ navigation }: any) => {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             {searchQuery.trim() ? (
-              <>
-                <Text style={styles.emptyText}>No products found</Text>
-                <Text style={styles.emptySubtext}>Try a different search term</Text>
-              </>
+              <EmptyState title="No products found" message="Try a different search term." />
             ) : (
               <>
-                <Text style={styles.emptyText}>No products available</Text>
+                <EmptyState title="No products available" message="Products from your seller will show here." />
                 {error && (
                   <Text style={styles.errorText}>
                     {(() => {
@@ -278,7 +320,7 @@ export const HomeScreen = ({ navigation }: any) => {
           else navigation.navigate('Cart');
         }}
       >
-        <Text style={styles.cartButtonText}>View Cart</Text>
+        <Text style={styles.cartButtonText}>View Cart{totalItems > 0 ? ` (${totalItems})` : ''}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -289,6 +331,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
     marginTop: spacing.sm,
   },
   inCartText: {
@@ -361,6 +405,42 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.md,
   },
+  closedCard: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    backgroundColor: '#FFF8E1',
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  closedTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  closedText: {
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.sm,
+  },
+  nextDelivery: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    padding: spacing.md,
+  },
+  nextDeliveryTitle: {
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  nextDeliverySlot: {
+    marginTop: spacing.xs,
+    color: colors.primary,
+    fontWeight: typography.fontWeight.bold,
+    fontSize: typography.fontSize.base,
+  },
+  nextDeliveryMeta: {
+    marginTop: 2,
+    color: colors.textSecondary,
+  },
   accountChip: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.16)',
@@ -389,6 +469,7 @@ const styles = StyleSheet.create({
   listContent: {
     padding: spacing.md,
     paddingTop: 0,
+    paddingBottom: 110,
   },
   productCard: {
     marginBottom: spacing.md,
@@ -425,8 +506,10 @@ const styles = StyleSheet.create({
   },
   productDetails: {
     flex: 1,
+    minWidth: 0,
   },
   productName: {
+    flexShrink: 1,
     fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,

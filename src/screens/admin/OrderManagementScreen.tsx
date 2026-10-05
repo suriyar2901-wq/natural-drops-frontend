@@ -2,14 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, ScrollView, ActivityIndicator, Platform, Dimensions } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import { colors, typography, spacing } from '../../theme';
-import { Card, Loading, DeliveryTimeModal, OrderTimer, DateRangeModal, EditOrderModal, BillEditModal } from '../../components/common';
+import { Card, EmptyState, Loading, DateRangeModal, EditOrderModal, BillEditModal } from '../../components/common';
 import { API_BASE_URL } from '../../utils/constants';
 import { storageService } from '../../services/storage.service';
 import { 
   useGetAllOrdersQuery, 
-  useUpdateOrderStatusMutation,
   useConfirmOrderMutation,
-  useSetOnTheWayMutation,
   useDeliverOrderMutation,
   useCancelOrderMutation,
   useUpdateOrderMutation,
@@ -32,7 +30,10 @@ export const OrderManagementScreen = () => {
   // Note: navigation is passed by React Navigation; used for Order Details.
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const [selectedFilter, setSelectedFilter] = useState<OrderStatus | 'ALL'>('ALL');
+  const [category, setCategory] = useState<'active' | 'complete'>('active');
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | 'ALL'>('ALL');
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [sellerFilter, setSellerFilter] = useState<string>('ALL');
   const [fromDate, setFromDate] = useState<string>(''); // yyyy-MM-dd
   const [toDate, setToDate] = useState<string>(''); // yyyy-MM-dd
   const [dateModalVisible, setDateModalVisible] = useState(false);
@@ -42,7 +43,6 @@ export const OrderManagementScreen = () => {
   });
   const [sellerName, setSellerName] = useState<string>('Seller');
   const [exporting, setExporting] = useState(false);
-  const [orderWithUpdatedBill, setOrderWithUpdatedBill] = useState<Order | null>(null);
 
   // Responsive breakpoint: Mobile < 768px, Tablet/Desktop >= 768px
   const [screenWidth, setScreenWidth] = useState(Dimensions.get('window').width);
@@ -72,8 +72,15 @@ export const OrderManagementScreen = () => {
   // If navigated from dashboard cards, allow setting an initial filter (ex: Pending)
   useEffect(() => {
     const initialStatus = route?.params?.initialStatus;
-    if (initialStatus) {
-      setSelectedFilter(initialStatus);
+    if (!initialStatus) return;
+    if (initialStatus === OrderStatus.DELIVERED) {
+      setCategory('complete');
+      setStatusFilter(OrderStatus.DELIVERED);
+    } else if (initialStatus === OrderStatus.CANCELED) {
+      setStatusFilter(OrderStatus.CANCELED);
+    } else if (initialStatus === OrderStatus.PENDING || initialStatus === OrderStatus.CONFIRMED) {
+      setCategory('active');
+      setStatusFilter(initialStatus);
     }
   }, [route?.params?.initialStatus]);
 
@@ -85,26 +92,27 @@ export const OrderManagementScreen = () => {
   };
 
   const queryArgs = useMemo(() => {
+    const status = statusFilter === OrderStatus.PENDING
+      || statusFilter === OrderStatus.DELIVERED
+      || statusFilter === OrderStatus.CANCELED
+      ? statusFilter
+      : undefined;
     return {
-      status: selectedFilter === 'ALL' ? undefined : selectedFilter,
+      status,
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
     };
-  }, [selectedFilter, fromDate, toDate]);
+  }, [statusFilter, fromDate, toDate]);
 
   const { isSeller, isStrictAdmin } = useAuth();
   const { data: myBuyers = [] } = useGetShopBuyersQuery(undefined, { skip: !isSeller() || isStrictAdmin() });
   const { data: orders, isLoading, refetch, error } = useGetAllOrdersQuery(queryArgs);
-  const [updateOrderStatus, { isLoading: updating }] = useUpdateOrderStatusMutation();
   const [confirmOrder, { isLoading: confirming }] = useConfirmOrderMutation();
-  const [setOnTheWay, { isLoading: settingOnTheWay }] = useSetOnTheWayMutation();
   const [deliverOrder, { isLoading: delivering }] = useDeliverOrderMutation();
   const [cancelOrder, { isLoading: canceling }] = useCancelOrderMutation();
   const [updateOrder, { isLoading: updatingOrder }] = useUpdateOrderMutation();
   const { data: menuItems = [] } = useGetMenuItemsQuery();
   const [processingOrderId, setProcessingOrderId] = useState<number | null>(null);
-  const [timeModalVisible, setTimeModalVisible] = useState(false);
-  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
 
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -165,23 +173,6 @@ export const OrderManagementScreen = () => {
     loadSellerName();
   }, []);
 
-  // Auto-deliver orders when timer expires
-  const handleTimerExpired = async (orderId: number) => {
-    try {
-      console.log('⏰ Timer expired for order:', orderId);
-      const result = await deliverOrder({
-        id: orderId,
-        data: { deliveredBy: 'system' }
-      }).unwrap();
-      
-      console.log('✅ Auto-delivered order:', result);
-      await refetch();
-    } catch (error: any) {
-      console.error('❌ Auto-deliver error:', error);
-      // Don't show error to user for auto-deliver, just log it
-    }
-  };
-
   // Normalize status for filtering to handle any case inconsistencies
   const normalizeStatus = (status: string | OrderStatus): string => {
     return String(status || '').toLowerCase();
@@ -189,20 +180,51 @@ export const OrderManagementScreen = () => {
 
   // Filter orders based on selected status
   // Use useMemo to prevent unnecessary recalculations and ensure proper updates
+  const sellerOptions = useMemo(() => {
+    const names = new Set<string>();
+    (orders || []).forEach((order) => {
+      const name = order.sellerBusinessName?.trim();
+      if (name) names.add(name);
+    });
+    return Array.from(names).sort((left, right) => left.localeCompare(right));
+  }, [orders]);
+
   const filteredOrders = useMemo(() => {
     if (!orders) return [];
+    let list = orders;
     if (isSeller() && !isStrictAdmin()) {
       const buyerIds = new Set((myBuyers || []).map((buyer) => Number(buyer.id)));
-      return orders.filter((order) => buyerIds.has(Number(order.buyerId)));
+      list = orders.filter((order) => buyerIds.has(Number(order.buyerId)));
     }
-    return orders;
-  }, [orders, selectedFilter, myBuyers, isSeller, isStrictAdmin]);
+    if (isStrictAdmin() && sellerFilter !== 'ALL') {
+      list = list.filter((order) => (order.sellerBusinessName || '').trim() === sellerFilter);
+    }
+    list = list.filter((order) => {
+      const status = normalizeStatus(order.status);
+      if (statusFilter === OrderStatus.CONFIRMED) {
+        return status === normalizeStatus(OrderStatus.CONFIRMED)
+          || status === normalizeStatus(OrderStatus.PROCESSING);
+      }
+      if (statusFilter !== 'ALL') {
+        return status === normalizeStatus(statusFilter);
+      }
+      if (category === 'active') {
+        return status === normalizeStatus(OrderStatus.PENDING)
+          || status === normalizeStatus(OrderStatus.CONFIRMED)
+          || status === normalizeStatus(OrderStatus.PROCESSING);
+      }
+      return status === normalizeStatus(OrderStatus.DELIVERED);
+    });
+    return list;
+  }, [orders, category, statusFilter, myBuyers, isSeller, isStrictAdmin, sellerFilter]);
 
   const hasDateRange = !!fromDate && !!toDate;
 
   const isExportEligible = (order: Order) => {
     const s = normalizeStatus(order.status);
-    return s === normalizeStatus(OrderStatus.PROCESSING) || s === normalizeStatus(OrderStatus.DELIVERED);
+    return s === normalizeStatus(OrderStatus.CONFIRMED)
+      || s === normalizeStatus(OrderStatus.PROCESSING)
+      || s === normalizeStatus(OrderStatus.DELIVERED);
   };
 
   const downloadPdf = async (path: string, filename: string) => {
@@ -259,7 +281,8 @@ export const OrderManagementScreen = () => {
       const date = toLocalYmd(new Date());
       const filename = `orders_${date}.pdf`;
       const params = new URLSearchParams();
-      if (selectedFilter !== 'ALL') params.set('status', String(selectedFilter));
+      if (statusFilter !== 'ALL') params.set('status', String(statusFilter));
+      else if (category === 'complete') params.set('status', OrderStatus.DELIVERED);
       if (fromDate) params.set('fromDate', fromDate);
       if (toDate) params.set('toDate', toDate);
       params.set('sellerName', sellerName);
@@ -275,7 +298,10 @@ export const OrderManagementScreen = () => {
   };
 
   const getStatusColor = (status: string) => {
-    return ORDER_STATUS_COLORS[status as keyof typeof ORDER_STATUS_COLORS] || colors.gray500;
+    const key = normalizeStatus(status) === normalizeStatus(OrderStatus.PROCESSING)
+      ? OrderStatus.CONFIRMED
+      : status;
+    return ORDER_STATUS_COLORS[key as keyof typeof ORDER_STATUS_COLORS] || colors.gray500;
   };
 
   const handleConfirmOrder = async (orderId: number) => {
@@ -299,7 +325,8 @@ export const OrderManagementScreen = () => {
       console.log('✅ Orders refetched');
       
       // Automatically switch to "Confirmed" tab to show the confirmed order
-      setSelectedFilter(OrderStatus.CONFIRMED);
+      setCategory('active');
+      setStatusFilter(OrderStatus.CONFIRMED);
     } catch (error: any) {
       console.error('❌ Confirm order error:', error);
       console.error('❌ Error details:', JSON.stringify(error, null, 2));
@@ -334,7 +361,7 @@ export const OrderManagementScreen = () => {
       console.log('✅ Orders refetched');
       
       // Automatically switch to "Canceled" tab to show the canceled order
-      setSelectedFilter(OrderStatus.CANCELED);
+      setStatusFilter(OrderStatus.CANCELED);
     } catch (error: any) {
       console.error('❌ Cancel order error:', error);
       console.error('❌ Error details:', JSON.stringify(error, null, 2));
@@ -346,11 +373,6 @@ export const OrderManagementScreen = () => {
     } finally {
       setProcessingOrderId(null);
     }
-  };
-
-  const handleOnTheWayClick = (orderId: number) => {
-    setSelectedOrderId(orderId);
-    setTimeModalVisible(true);
   };
 
   const handleEditOrderClick = (order: Order) => {
@@ -380,7 +402,7 @@ export const OrderManagementScreen = () => {
     if (!billingOrder) return;
     setProcessingOrderId(billingOrder.id);
     try {
-      const updatedOrder = await updateOrderBill({
+      await updateOrderBill({
         id: billingOrder.id,
         data: {
           finalBillAmount,
@@ -391,8 +413,6 @@ export const OrderManagementScreen = () => {
       const buyerNotified = billingOrder.paymentStatus === 'PARTIALLY_PAID';
       showSuccessAlert(buyerNotified ? 'Bill updated. The buyer has been notified.' : 'Bill updated successfully');
       setBillModalVisible(false);
-      // Store the updated order to show "Move to Delivery" button
-      setOrderWithUpdatedBill(updatedOrder);
       setBillingOrder(null);
       await refetch();
     } catch (e: any) {
@@ -402,62 +422,6 @@ export const OrderManagementScreen = () => {
     } finally {
       setProcessingOrderId(null);
     }
-  };
-
-  const handleMoveToDelivery = () => {
-    if (!orderWithUpdatedBill) return;
-
-    // Show confirmation dialog
-    showConfirmAlert(
-      'Move to Delivery',
-      'Are you sure you want to move this order to delivery? The order status will be updated.',
-      async () => {
-        // User confirmed
-        setProcessingOrderId(orderWithUpdatedBill.id);
-        try {
-          // Update order status - keeping as PROCESSING but adding delivery note
-          // Note: If backend has "out_for_delivery" status, use that instead
-          await updateOrderStatus({
-            id: orderWithUpdatedBill.id,
-            data: {
-              status: OrderStatus.PROCESSING, // Keep as processing (On The Way) or use delivery status if available
-            },
-          }).unwrap();
-
-          showSuccessAlert('Order moved to delivery successfully');
-          
-          // Navigate to delivery/map screen if available
-          // Check if MapScreen is accessible from admin navigation
-          try {
-            navigation.navigate('MapScreen', {
-              orderId: orderWithUpdatedBill.id,
-              order: orderWithUpdatedBill,
-              mode: 'delivery',
-            });
-          } catch (navError) {
-            console.warn('⚠️ Could not navigate to MapScreen, navigating to OrderDetail instead:', navError);
-            // Fallback to OrderDetail screen
-            navigation.navigate('OrderDetail', {
-              order: orderWithUpdatedBill,
-            });
-          }
-
-          // Clear the order with updated bill
-          setOrderWithUpdatedBill(null);
-          await refetch();
-        } catch (e: any) {
-          console.error('❌ Move to delivery error:', e);
-          const msg = e?.data?.message || e?.message || 'Failed to move order to delivery';
-          showErrorAlert(msg);
-        } finally {
-          setProcessingOrderId(null);
-        }
-      },
-      () => {
-        // User cancelled - do nothing
-        console.log('❌ Move to delivery cancelled by user');
-      }
-    );
   };
 
   const handleDeliverOrder = async (orderId: number) => {
@@ -477,7 +441,8 @@ export const OrderManagementScreen = () => {
       await refetch();
       
       // Automatically switch to "Delivered" tab
-      setSelectedFilter(OrderStatus.DELIVERED);
+      setCategory('complete');
+      setStatusFilter(OrderStatus.DELIVERED);
     } catch (error: any) {
       console.error('❌ Deliver order error:', error);
       const errorMessage = error?.data?.message || 
@@ -488,13 +453,6 @@ export const OrderManagementScreen = () => {
     } finally {
       setProcessingOrderId(null);
     }
-  };
-
-  const formatTimeFromSeconds = (totalSeconds: number): string => {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
   // Get responsive styles for order footer based on screen size
@@ -544,49 +502,6 @@ export const OrderManagementScreen = () => {
     return {};
   };
 
-  const handleTimeConfirm = async (totalSeconds: number) => {
-    if (!selectedOrderId) return;
-
-    setTimeModalVisible(false);
-    setProcessingOrderId(selectedOrderId);
-
-    try {
-      // Convert seconds to minutes for backend (backend still expects minutes for now)
-      const minutes = Math.ceil(totalSeconds / 60);
-      const timeString = formatTimeFromSeconds(totalSeconds);
-      
-      console.log('🔄 Setting order to On The Way:', selectedOrderId, 'with time:', timeString, `(${totalSeconds} seconds)`);
-      const result = await setOnTheWay({
-        id: selectedOrderId,
-        data: {
-          deliveryTotalSeconds: totalSeconds,
-          // legacy minutes for old backend/clients (kept for safety)
-          deliveryTime: Math.max(1, Math.round(Math.ceil(totalSeconds / 60))),
-          updatedBy: 'seller',
-        }
-      }).unwrap();
-
-      console.log('✅ Set On The Way success:', result);
-      showSuccessAlert(`Order set to On The Way. Delivery in ${timeString}. Notification sent to buyer.`);
-
-      // Refetch orders to get updated list
-      await refetch();
-
-      // Automatically switch to "On The Way" (Processing) tab
-      setSelectedFilter(OrderStatus.PROCESSING);
-    } catch (error: any) {
-      console.error('❌ Set On The Way error:', error);
-      const errorMessage = error?.data?.message || 
-                          error?.message || 
-                          error?.error?.data?.message ||
-                          'Failed to set order to On The Way';
-      showErrorAlert(errorMessage);
-    } finally {
-      setProcessingOrderId(null);
-      setSelectedOrderId(null);
-    }
-  };
-
   const renderOrder = ({ item }: { item: Order }) => {
     // Normalize status for comparison
     const normalizedStatus = normalizeStatus(item.status);
@@ -612,6 +527,9 @@ export const OrderManagementScreen = () => {
         <View style={styles.orderHeader}>
           <View>
             <Text style={styles.orderId}>Order #{item.id}</Text>
+            {isStrictAdmin() && !!item.sellerBusinessName && (
+              <Text style={styles.sellerName}>Seller: {item.sellerBusinessName}</Text>
+            )}
             <Text style={styles.customerName}>{item.buyerName}</Text>
             <Text style={styles.customerPhone}>{item.buyerPhone}</Text>
           </View>
@@ -625,16 +543,10 @@ export const OrderManagementScreen = () => {
                 <Text style={styles.editIconText}>✏️</Text>
               </TouchableOpacity>
             )}
-            {/* Timer at top-right (above status) */}
-            <OrderTimer
-              order={item}
-              position="header-right"
-              onExpired={() => handleTimerExpired(item.id)}
-            />
             <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
               <Text style={styles.statusText}>{formatOrderStatus(item.status)}</Text>
             </View>
-            {/* Export icon under status badge (On The Way + Delivered only) */}
+            {/* Export icon under status badge (Confirmed + Delivered) */}
             {isExportEligible(item) && (
               <TouchableOpacity
                 style={[styles.exportUnderStatusButton, exporting && styles.exportUnderStatusButtonDisabled]}
@@ -773,52 +685,7 @@ export const OrderManagementScreen = () => {
                 </TouchableOpacity>
               </>
             )}
-            {isConfirmed && (
-              <>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.onTheWayButton, getActionButtonStyle()]}
-                  onPress={() => {
-                    if (processingOrderId === item.id) {
-                      console.log('⚠️ Order already being processed, ignoring click');
-                      return;
-                    }
-                    handleOnTheWayClick(item.id);
-                  }}
-                  disabled={processingOrderId === item.id && settingOnTheWay}
-                >
-                  {processingOrderId === item.id && settingOnTheWay ? (
-                    <ActivityIndicator size="small" color={colors.white} />
-                  ) : (
-                    <Text style={styles.onTheWayButtonText}>🚚 On The Way</Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.cancelButton, getActionButtonStyle()]}
-                  onPress={() => {
-                    console.log('🔘 Cancel button pressed for order:', item.id);
-                    showConfirmAlert(
-                      'Cancel Order',
-                      'Are you sure you want to cancel this order?',
-                      () => {
-                        console.log('✅ Cancel confirmed, calling handleCancelOrder');
-                        handleCancelOrder(item.id);
-                      },
-                      () => {
-                        console.log('❌ Cancel cancelled by user');
-                      }
-                    );
-                  }}
-                  disabled={processingOrderId === item.id && canceling}
-                >
-                  {processingOrderId === item.id && canceling ? (
-                    <ActivityIndicator size="small" color={colors.white} />
-                  ) : (
-                    <Text style={styles.cancelButtonText}>✕ Cancel Order</Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            )}
-            {isProcessing && (
+            {isConfirmedOrProcessing && (
               <>
                 {canEditOrderBill(item) && (
                   <TouchableOpacity
@@ -826,43 +693,20 @@ export const OrderManagementScreen = () => {
                     onPress={() => {
                       setBillingOrder(item);
                       setBillModalVisible(true);
-                      // Clear orderWithUpdatedBill when opening bill modal
-                      setOrderWithUpdatedBill(null);
                     }}
                   >
                     <Text style={styles.billButtonText}>💰 Add / Edit Bill</Text>
                   </TouchableOpacity>
                 )}
-                {/* Show "Move to Delivery" button after bill is updated */}
-                {orderWithUpdatedBill && orderWithUpdatedBill.id === item.id && (
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.moveToDeliveryButton, getActionButtonStyle()]}
-                    onPress={handleMoveToDelivery}
-                    disabled={processingOrderId === item.id && updating}
-                  >
-                    {processingOrderId === item.id && updating ? (
-                      <ActivityIndicator size="small" color={colors.white} />
-                    ) : (
-                      <Text style={styles.moveToDeliveryButtonText}>🚚 Move to Delivery</Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-                {/* Show Delivery to Client button only after bill is saved */}
                 {item.finalBillAmount && (
                   <TouchableOpacity
                     style={[styles.actionButton, styles.deliverButton, getActionButtonStyle()]}
                     onPress={() => {
-                      console.log('🔘 Delivery to Client button pressed for order:', item.id);
                       showConfirmAlert(
                         'Confirm Delivery',
                         'Confirm delivery to customer?',
-                        () => {
-                          console.log('✅ Delivery confirmed, calling handleDeliverOrder');
-                          handleDeliverOrder(item.id);
-                        },
-                        () => {
-                          console.log('❌ Delivery cancelled by user');
-                        }
+                        () => handleDeliverOrder(item.id),
+                        () => {}
                       );
                     }}
                     disabled={processingOrderId === item.id && delivering}
@@ -877,17 +721,11 @@ export const OrderManagementScreen = () => {
                 <TouchableOpacity
                   style={[styles.actionButton, styles.cancelButton, getActionButtonStyle()]}
                   onPress={() => {
-                    console.log('🔘 Cancel button pressed for order:', item.id);
                     showConfirmAlert(
                       'Cancel Order',
                       'Are you sure you want to cancel this order?',
-                      () => {
-                        console.log('✅ Cancel confirmed, calling handleCancelOrder');
-                        handleCancelOrder(item.id);
-                      },
-                      () => {
-                        console.log('❌ Cancel cancelled by user');
-                      }
+                      () => handleCancelOrder(item.id),
+                      () => {}
                     );
                   }}
                   disabled={processingOrderId === item.id && canceling}
@@ -900,13 +738,12 @@ export const OrderManagementScreen = () => {
                 </TouchableOpacity>
               </>
             )}
-            {!isProcessing && canEditOrderBill(item) && (
+            {!isConfirmedOrProcessing && canEditOrderBill(item) && (
               <TouchableOpacity
                 style={[styles.actionButton, styles.billButton, getActionButtonStyle()]}
                 onPress={() => {
                   setBillingOrder(item);
                   setBillModalVisible(true);
-                  setOrderWithUpdatedBill(null);
                 }}
               >
                 <Text style={styles.billButtonText}>💰 Edit Bill</Text>
@@ -926,33 +763,76 @@ export const OrderManagementScreen = () => {
     <View style={styles.container}>
       <View style={styles.filterContainer}>
         <View style={[styles.filterTopRow, isMobile && styles.filterTopRowMobile]}>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false} 
-            style={[styles.filterScrollView, isMobile && styles.filterScrollViewMobile]}
-            contentContainerStyle={styles.filterScrollContent}
-          >
-            {['ALL', ...Object.values(OrderStatus)].map((status) => (
-              <TouchableOpacity
-                key={status}
-                style={[
-                  styles.filterButton,
-                  selectedFilter === status && styles.filterButtonActive,
-                  isMobile && styles.filterButtonMobile,
-                ]}
-                onPress={() => setSelectedFilter(status as OrderStatus | 'ALL')}
-              >
-                <Text
-                  style={[
-                    styles.filterButtonText,
-                    selectedFilter === status && styles.filterButtonTextActive,
-                  ]}
+          <View style={styles.categoryRow}>
+            {([
+              { id: 'active' as const, label: 'Active Order' },
+              { id: 'complete' as const, label: 'Complete Order' },
+            ]).map((item) => {
+              const selected = statusFilter === OrderStatus.CANCELED
+                ? false
+                : statusFilter === OrderStatus.DELIVERED
+                  ? item.id === 'complete'
+                  : statusFilter === OrderStatus.PENDING || statusFilter === OrderStatus.CONFIRMED
+                    ? item.id === 'active'
+                    : category === item.id;
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[styles.filterButton, selected && styles.filterButtonActive]}
+                  onPress={() => {
+                    setCategory(item.id);
+                    setStatusFilter('ALL');
+                    setStatusMenuOpen(false);
+                  }}
                 >
-                  {status === 'ALL' ? 'All' : formatOrderStatus(status)}
+                  <Text style={[styles.filterButtonText, selected && styles.filterButtonTextActive]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+            <View style={styles.statusMenuWrap}>
+              <TouchableOpacity
+                style={styles.statusMenuButton}
+                onPress={() => setStatusMenuOpen((open) => !open)}
+              >
+                <Text style={styles.statusMenuText}>
+                  {statusFilter === 'ALL'
+                    ? 'All status'
+                    : statusFilter === OrderStatus.CANCELED
+                      ? 'Cancelled'
+                      : formatOrderStatus(statusFilter)}
                 </Text>
+                <Text style={styles.statusMenuCaret}>{statusMenuOpen ? '▴' : '▾'}</Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+              {statusMenuOpen && (
+                <View style={styles.statusMenu}>
+                  {([
+                    { id: 'ALL' as const, label: 'All status' },
+                    { id: OrderStatus.PENDING, label: 'Pending' },
+                    { id: OrderStatus.CONFIRMED, label: 'Confirmed' },
+                    { id: OrderStatus.DELIVERED, label: 'Delivered' },
+                    { id: OrderStatus.CANCELED, label: 'Cancelled' },
+                  ]).map((option) => (
+                    <TouchableOpacity
+                      key={option.id}
+                      style={[styles.statusMenuItem, statusFilter === option.id && styles.statusMenuItemActive]}
+                      onPress={() => {
+                        setStatusFilter(option.id);
+                        setStatusMenuOpen(false);
+                        if (option.id === OrderStatus.DELIVERED) setCategory('complete');
+                        if (option.id === OrderStatus.PENDING || option.id === OrderStatus.CONFIRMED) setCategory('active');
+                      }}
+                    >
+                      <Text style={[styles.statusMenuItemText, statusFilter === option.id && styles.statusMenuItemTextActive]}>
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
           <TouchableOpacity
             style={[
               styles.exportOrdersButton, 
@@ -988,6 +868,26 @@ export const OrderManagementScreen = () => {
             </View>
           )}
         </View>
+        {isStrictAdmin() && sellerOptions.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.sellerFilterRow}
+            contentContainerStyle={styles.filterScrollContent}
+          >
+            {['ALL', ...sellerOptions].map((name) => (
+              <TouchableOpacity
+                key={name}
+                style={[styles.filterButton, sellerFilter === name && styles.filterButtonActive]}
+                onPress={() => setSellerFilter(name)}
+              >
+                <Text style={[styles.filterButtonText, sellerFilter === name && styles.filterButtonTextActive]}>
+                  {name === 'ALL' ? 'All sellers' : name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
       </View>
 
       <FlatList
@@ -1000,7 +900,14 @@ export const OrderManagementScreen = () => {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No orders found</Text>
+            <EmptyState
+              title="No orders found"
+              message={isSeller() && !isStrictAdmin() ? 'Add an order when a customer calls.' : 'Orders will show here after buyers place them.'}
+              actionLabel={isSeller() && !isStrictAdmin() ? 'Add order' : undefined}
+              onAction={isSeller() && !isStrictAdmin()
+                ? () => navigation.getParent()?.navigate('PhoneOrder') || navigation.navigate('PhoneOrder')
+                : undefined}
+            />
             {error && (
               <Text style={styles.errorText}>
                 Error: {(error as any)?.data?.message || (error as any)?.message || 'Failed to load orders'}
@@ -1019,15 +926,6 @@ export const OrderManagementScreen = () => {
           setEditingOrder(null);
         }}
         onSave={handleSaveOrderChanges}
-      />
-
-      <DeliveryTimeModal
-        visible={timeModalVisible}
-        onClose={() => {
-          setTimeModalVisible(false);
-          setSelectedOrderId(null);
-        }}
-        onConfirm={handleTimeConfirm}
       />
 
       <DateRangeModal
@@ -1069,6 +967,72 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    zIndex: 20,
+  },
+  categoryRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  statusMenuWrap: {
+    position: 'relative',
+    zIndex: 30,
+  },
+  statusMenuButton: {
+    minHeight: 36,
+    minWidth: 140,
+    paddingHorizontal: spacing.md,
+    borderRadius: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  statusMenuText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textPrimary,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  statusMenuCaret: {
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.sm,
+  },
+  statusMenu: {
+    position: 'absolute',
+    top: 40,
+    left: 0,
+    minWidth: 160,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: spacing.sm,
+    overflow: 'hidden',
+    zIndex: 40,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  statusMenuItem: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  statusMenuItemActive: {
+    backgroundColor: colors.primary,
+  },
+  statusMenuItemText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textPrimary,
+  },
+  statusMenuItemTextActive: {
+    color: colors.white,
+    fontWeight: typography.fontWeight.semibold,
   },
   filterTopRow: {
     flexDirection: 'row',
@@ -1189,8 +1153,6 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   exportUnderStatusButton: {
-    marginTop: spacing.xs,
-    alignSelf: 'flex-end',
     width: 34,
     height: 34,
     borderRadius: 17,
@@ -1219,16 +1181,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
     marginBottom: spacing.sm,
   },
   headerRight: {
-    alignItems: 'flex-end',
-    justifyContent: 'flex-start',
-    minWidth: 110,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    flexShrink: 1,
   },
   editIconButton: {
-    alignSelf: 'flex-end',
-    marginBottom: spacing.xs,
     width: 34,
     height: 34,
     borderRadius: 17,
@@ -1243,6 +1207,14 @@ const styles = StyleSheet.create({
   },
   editIconText: {
     fontSize: 16,
+  },
+  sellerName: {
+    color: colors.primary,
+    fontWeight: typography.fontWeight.semibold,
+    marginTop: 2,
+  },
+  sellerFilterRow: {
+    marginTop: spacing.sm,
   },
   orderId: {
     fontSize: typography.fontSize.lg,
@@ -1355,19 +1327,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'flex-end',
-    // Fallback for React Native Web
     marginLeft: spacing.sm,
   },
   actionButton: {
+    height: 44,
+    minWidth: 140,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md, // Increased for better touch target (mobile-friendly)
     borderRadius: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44, // Minimum touch target size for mobile (iOS/Android guidelines)
-    minWidth: 100, // Minimum width for desktop
   },
   detailsButton: {
     backgroundColor: colors.gray100,
@@ -1395,14 +1365,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.semibold,
     color: colors.white,
   },
-  onTheWayButton: {
-    backgroundColor: colors.secondary,
-  },
-  onTheWayButtonText: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semibold,
-    color: colors.white,
-  },
   billButton: {
     backgroundColor: '#FF9800',
   },
@@ -1415,14 +1377,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#4CAF50',
   },
   deliverButtonText: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semibold,
-    color: colors.white,
-  },
-  moveToDeliveryButton: {
-    backgroundColor: '#2196F3',
-  },
-  moveToDeliveryButtonText: {
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.semibold,
     color: colors.white,

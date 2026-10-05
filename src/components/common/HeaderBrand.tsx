@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { colors, spacing, typography } from '../../theme';
 
 interface HeaderBrandProps {
@@ -19,12 +19,13 @@ const photoUri = (photo?: string | null) => {
 };
 
 export const HeaderBrand: React.FC<HeaderBrandProps> = ({ name, photo, light }) => {
+  const { width } = useWindowDimensions();
   const displayName = (name || '').trim() || 'Shop';
   const uri = photoUri(photo);
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, { maxWidth: width < 520 ? Math.max(110, width * 0.36) : 220 }]}>
       {uri ? (
         <Image source={{ uri }} style={[styles.photo, light && styles.photoLight]} />
       ) : (
@@ -43,7 +44,8 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    maxWidth: 260,
+    flexShrink: 1,
+    minWidth: 0,
   },
   photo: {
     width: 32,

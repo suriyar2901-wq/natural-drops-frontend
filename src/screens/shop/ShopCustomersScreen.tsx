@@ -53,7 +53,7 @@ export const ShopCustomersScreen = ({ navigation }: any) => {
       <Button title={isFetching ? 'Refreshing…' : 'Refresh'} onPress={() => refetch()} />
 
       <View style={styles.actions}>
-        <Button title="Phone Order" variant="outline" onPress={() => navigation.navigate('PhoneOrder')} />
+        <Button title="Add Order" variant="outline" onPress={() => navigation.navigate('PhoneOrder')} />
         <Button title="Shop Profile" variant="outline" onPress={() => navigation.navigate('ShopProfile')} />
       </View>
 

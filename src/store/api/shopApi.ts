@@ -65,6 +65,7 @@ export const shopApi = baseApi.injectEndpoints({
     createPhoneOrder: builder.mutation<any, {
       customerId: number;
       delivery: string;
+      deliveryTime?: string;
       note?: string;
       items: { menuItemId: number; quantity: number }[];
     }>({

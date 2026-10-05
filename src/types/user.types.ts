@@ -48,6 +48,7 @@ export interface User {
   landmark?: string;
   linkedSellerId?: number;
   companyCode?: string;
+  shopName?: string;
 }
 
 export interface LoginRequest {

@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, TextInput, Modal, ScrollView, Image, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, typography, spacing } from '../../theme';
-import { Card, Loading, Button } from '../../components/common';
+import { Card, EmptyState, Loading, Button, ProductPhotoPlaceholder } from '../../components/common';
 import { 
   useGetMenuItemsQuery, 
   useDeleteMenuItemMutation, 
@@ -12,10 +12,8 @@ import {
   useUpdateMenuItemMutation,
   useAddProductImageMutation,
   useDeleteProductImageMutation,
-  useAddProductVideoMutation,
-  useDeleteProductVideoMutation
 } from '../../store/api/menuApi';
-import { MenuItem, Category, ProductImage, ProductVideo } from '../../types';
+import { MenuItem, Category, ProductImage } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
 import { useAuth } from '../../hooks';
 import { navigate } from '../../navigation/navigationRef';
@@ -30,8 +28,6 @@ export const MenuManagementScreen = () => {
   const [updateMenuItem] = useUpdateMenuItemMutation();
   const [addProductImage] = useAddProductImageMutation();
   const [deleteProductImage] = useDeleteProductImageMutation();
-  const [addProductVideo] = useAddProductVideoMutation();
-  const [deleteProductVideo] = useDeleteProductVideoMutation();
   const { user } = useAuth();
   const isAdminAccount = user?.role === 'admin';
   const route = useRoute<any>();
@@ -46,20 +42,24 @@ export const MenuManagementScreen = () => {
   const [stockQuantity, setStockQuantity] = useState('');
   const [showStockModal, setShowStockModal] = useState(false);
   const [showLowStock, setShowLowStock] = useState(false);
+  const [sellerFilter, setSellerFilter] = useState('ALL');
+  const sellerOptions = useMemo(() => {
+    const source = showLowStock ? lowStockItems : products;
+    const names = new Set<string>();
+    (source || []).forEach((item) => {
+      const name = item.sellerName?.trim();
+      if (name) names.add(name);
+    });
+    return Array.from(names).sort((left, right) => left.localeCompare(right));
+  }, [showLowStock, lowStockItems, products]);
   const [showProductModal, setShowProductModal] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [imagePickerLoading, setImagePickerLoading] = useState(false);
-  const [videoPickerLoading, setVideoPickerLoading] = useState(false);
   
   // Existing + new media (for preview before saving)
   const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
   const [imagesToDelete, setImagesToDelete] = useState<number[]>([]);
   const [newImages, setNewImages] = useState<string[]>([]); // base64 data URLs
-
-  const [existingVideos, setExistingVideos] = useState<ProductVideo[]>([]);
-  const [videosToDelete, setVideosToDelete] = useState<number[]>([]);
-  const [newVideos, setNewVideos] = useState<Array<{ dataUrl: string; sizeBytes: number }>>([]);
-  const MAX_TOTAL_VIDEO_BYTES = 5 * 1024 * 1024; // 5MB total (new uploads)
 
   // If we navigated here from PDP with an editProductId param, open edit modal automatically.
   useFocusEffect(
@@ -171,9 +171,6 @@ export const MenuManagementScreen = () => {
     setExistingImages([]);
     setImagesToDelete([]);
     setNewImages([]);
-    setExistingVideos([]);
-    setVideosToDelete([]);
-    setNewVideos([]);
     setShowProductModal(true);
   };
 
@@ -194,9 +191,6 @@ export const MenuManagementScreen = () => {
     setExistingImages(item.images || []);
     setImagesToDelete([]);
     setNewImages([]);
-    setExistingVideos((item as any).videos || []);
-    setVideosToDelete([]);
-    setNewVideos([]);
     setShowProductModal(true);
   };
 
@@ -258,19 +252,12 @@ export const MenuManagementScreen = () => {
         for (const imageId of imagesToDelete) {
           await deleteProductImage({ menuItemId: selectedItem.id, imageId }).unwrap().catch(() => undefined);
         }
-        for (const videoId of videosToDelete) {
-          await deleteProductVideo({ menuItemId: selectedItem.id, videoId }).unwrap().catch(() => undefined);
-        }
 
-        // Upload new images/videos
         for (let i = 0; i < newImages.length; i++) {
           await addProductImage({
             menuItemId: selectedItem.id,
             data: { imageUrl: newImages[i], isPrimary: !hasExistingPrimary && i === 0, displayOrder: i },
           }).unwrap();
-        }
-        for (const v of newVideos) {
-          await addProductVideo({ menuItemId: selectedItem.id, data: { videoUrl: v.dataUrl } }).unwrap();
         }
         
         console.log('✅ Product updated successfully:', updatedItem);
@@ -305,16 +292,12 @@ export const MenuManagementScreen = () => {
           description: productForm.description?.trim() ? productForm.description : null,
         }).unwrap();
 
-        // Upload new images/videos after create
         if (created?.id) {
           for (let i = 0; i < newImages.length; i++) {
             await addProductImage({
               menuItemId: created.id,
               data: { imageUrl: newImages[i], isPrimary: i === 0, displayOrder: i },
             }).unwrap();
-          }
-          for (const v of newVideos) {
-            await addProductVideo({ menuItemId: created.id, data: { videoUrl: v.dataUrl } }).unwrap();
           }
         }
         
@@ -363,19 +346,6 @@ export const MenuManagementScreen = () => {
 
   const showMsg = (title: string, message: string) => {
     Alert.alert(title, message);
-  };
-
-  const getAssetSizeBytes = async (asset: any): Promise<number> => {
-    if (typeof asset?.fileSize === 'number' && isFinite(asset.fileSize)) {
-      return asset.fileSize;
-    }
-    try {
-      const res = await fetch(asset.uri);
-      const blob = await res.blob();
-      return blob.size || 0;
-    } catch {
-      return 0;
-    }
   };
 
   const pickImagesFromGallery = async () => {
@@ -433,58 +403,6 @@ export const MenuManagementScreen = () => {
     }
   };
 
-  const pickVideosFromGallery = async () => {
-    try {
-      setVideoPickerLoading(true);
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        showMsg('Permission Required', 'Please grant photo library access to upload videos.');
-        setVideoPickerLoading(false);
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['videos'],
-        allowsMultipleSelection: true,
-        selectionLimit: 5,
-        quality: 1,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const picked = result.assets;
-        // Validate total size for NEW videos only
-        let currentTotal = newVideos.reduce((sum, v) => sum + (v.sizeBytes || 0), 0);
-        const nextVideos: Array<{ dataUrl: string; sizeBytes: number }> = [];
-
-        for (const a of picked) {
-          const size = await getAssetSizeBytes(a);
-          if (currentTotal + size > MAX_TOTAL_VIDEO_BYTES) {
-            showMsg('Video too large', 'Maximum allowed size is 5 MB total for all uploaded videos.');
-            break;
-          }
-          currentTotal += size;
-          try {
-            const dataUrl = await convertImageToBase64(a.uri);
-            nextVideos.push({ dataUrl, sizeBytes: size });
-          } catch (e) {
-            console.error('❌ Failed to convert video:', e);
-          }
-        }
-
-        if (nextVideos.length > 0) {
-          setNewVideos((prev) => [...prev, ...nextVideos]);
-          showMsg('Success', `${nextVideos.length} video(s) added.`);
-        }
-      }
-
-      setVideoPickerLoading(false);
-    } catch (e) {
-      console.error('❌ Error picking videos:', e);
-      showMsg('Error', 'Failed to pick videos');
-      setVideoPickerLoading(false);
-    }
-  };
-
   const getStockColor = (item: MenuItem) => {
     const stock = item.stockQuantity || 0;
     const threshold = item.lowStockThreshold || 10;
@@ -521,7 +439,6 @@ export const MenuManagementScreen = () => {
     // Check if image URL is valid (not a blob URL, can be base64 data URL)
     // Also filter out external placeholder URLs that might not be reachable
     const imageUri = typeof imageUrl === 'string' ? imageUrl : undefined;
-    const isBlobUrl = !!imageUri && imageUri.startsWith('blob:');
     const isBase64 = !!imageUri && imageUri.startsWith('data:image');
     const isExternalUrl = !!imageUri && imageUri.startsWith('http');
     const isPlaceholderUrl = !!imageUri && imageUri.includes('via.placeholder.com');
@@ -559,12 +476,7 @@ export const MenuManagementScreen = () => {
               />
             </View>
           ) : (
-            <View style={styles.productPlaceholder}>
-              <Text style={styles.placeholderEmoji}>📦</Text>
-              {(isBlobUrl || isPlaceholderUrl) && (
-                <Text style={styles.blobWarning}>Invalid</Text>
-              )}
-            </View>
+            <ProductPhotoPlaceholder size={100} style={styles.productPlaceholder} />
           )}
           
           <View style={styles.productContent}>
@@ -627,7 +539,10 @@ export const MenuManagementScreen = () => {
     return <Loading fullScreen message="Loading products..." />;
   }
 
-  const displayProducts = showLowStock ? lowStockItems : products;
+  const productSource = showLowStock ? lowStockItems : products;
+  const displayProducts = isAdminAccount && sellerFilter !== 'ALL'
+    ? (productSource || []).filter((item) => (item.sellerName || '').trim() === sellerFilter)
+    : productSource;
 
   return (
     <View style={styles.container}>
@@ -648,6 +563,27 @@ export const MenuManagementScreen = () => {
           <Text style={styles.addButtonText}>+ Add Product</Text>
         </TouchableOpacity>
       </View>
+
+      {isAdminAccount && sellerOptions.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.sellerFilterRow}
+          contentContainerStyle={styles.sellerFilterContent}
+        >
+          {['ALL', ...sellerOptions].map((name) => (
+            <TouchableOpacity
+              key={name}
+              style={[styles.sellerChip, sellerFilter === name && styles.sellerChipActive]}
+              onPress={() => setSellerFilter(name)}
+            >
+              <Text style={[styles.sellerChipText, sellerFilter === name && styles.sellerChipTextActive]}>
+                {name === 'ALL' ? 'All sellers' : name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
       
       <FlatList
         data={displayProducts}
@@ -655,9 +591,12 @@ export const MenuManagementScreen = () => {
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No products found</Text>
-          </View>
+          <EmptyState
+            title="No products found"
+            message="Add a product with a photo so buyers can see it in the shop."
+            actionLabel="Add product"
+            onAction={handleAddProduct}
+          />
         }
       />
 
@@ -865,56 +804,6 @@ export const MenuManagementScreen = () => {
                 />
               </View>
 
-              <Text style={[styles.inputLabel, { marginTop: spacing.md }]}>Product Videos</Text>
-              <Text style={styles.helperText}>Max 5 MB total for all uploaded videos</Text>
-
-              {(existingVideos.filter((v) => !videosToDelete.includes(v.id)).length > 0 || newVideos.length > 0) ? (
-                <View style={styles.videoList}>
-                  {existingVideos
-                    .filter((v) => !videosToDelete.includes(v.id))
-                    .map((v) => (
-                      <View key={`ex-vid-${v.id}`} style={styles.videoRow}>
-                        <Text style={styles.videoText} numberOfLines={1}>🎥 Existing video</Text>
-                        <TouchableOpacity
-                          style={styles.videoRemoveBtn}
-                          onPress={() => setVideosToDelete((prev) => [...prev, v.id])}
-                        >
-                          <Text style={styles.videoRemoveText}>Remove</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  {newVideos.map((v, idx) => (
-                    <View key={`new-vid-${idx}`} style={styles.videoRow}>
-                      <Text style={styles.videoText} numberOfLines={1}>
-                        🎥 New video ({Math.round((v.sizeBytes || 0) / 1024)} KB)
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.videoRemoveBtn}
-                        onPress={() => setNewVideos((prev) => prev.filter((_, i) => i !== idx))}
-                      >
-                        <Text style={styles.videoRemoveText}>Remove</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <View style={styles.noImagePlaceholder}>
-                  <Text style={styles.noImageText}>🎥 No videos selected</Text>
-                  <Text style={styles.noImageSubtext}>Add optional product videos</Text>
-                </View>
-              )}
-
-              <View style={styles.imageButtonsRow}>
-                <Button
-                  title="+ Add More Videos"
-                  onPress={pickVideosFromGallery}
-                  variant="outline"
-                  style={styles.imageButton}
-                  loading={videoPickerLoading}
-                  fullWidth
-                />
-              </View>
-              
               <View style={styles.modalActions}>
                 <Button
                   title="Cancel"
@@ -946,6 +835,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  sellerFilterRow: {
+    maxHeight: 48,
+    marginBottom: spacing.sm,
+  },
+  sellerFilterContent: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+    alignItems: 'center',
+  },
+  sellerChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  sellerChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  sellerChipText: {
+    color: colors.textPrimary,
+    fontSize: typography.fontSize.sm,
+  },
+  sellerChipTextActive: {
+    color: colors.white,
+    fontWeight: typography.fontWeight.semibold,
   },
   filterButton: {
     paddingHorizontal: spacing.md,
@@ -1018,6 +936,7 @@ const styles = StyleSheet.create({
   },
   productContent: {
     flex: 1,
+    minWidth: 0,
   },
   productHeader: {
     flexDirection: 'row',
@@ -1303,42 +1222,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontWeight: typography.fontWeight.bold,
     fontSize: 12,
-  },
-  videoList: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    backgroundColor: colors.white,
-    marginBottom: spacing.sm,
-    overflow: 'hidden',
-  },
-  videoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  videoText: {
-    flex: 1,
-    fontSize: typography.fontSize.sm,
-    color: colors.textPrimary,
-    marginRight: spacing.sm,
-  },
-  videoRemoveBtn: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: colors.gray100,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  videoRemoveText: {
-    color: colors.error,
-    fontWeight: typography.fontWeight.semibold,
-    fontSize: typography.fontSize.sm,
   },
   noImagePlaceholder: {
     height: 150,

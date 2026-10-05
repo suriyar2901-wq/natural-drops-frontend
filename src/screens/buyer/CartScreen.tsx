@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Platform, TextInput } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { colors, typography, spacing } from '../../theme';
-import { Card, Button, LocationSelectionModal } from '../../components/common';
+import { Card, Button, DeliverySlotFields, LocationSelectionModal } from '../../components/common';
+import { deliveryDateFor, isFutureDeliverySlot, toDeliveryYmd } from '../../components/common/DeliverySlotFields';
 import { useCart, useAuth } from '../../hooks';
 import { useCreateOrderMutation } from '../../store/api/orderApi';
+import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
 import { formatClockAmPm, formatCurrency } from '../../utils/formatters';
+import { shopAvailability } from '../../utils/shopHours';
 import { CartItem, CreateOrderRequest } from '../../types';
 import { useDispatch } from 'react-redux';
 import { calculateTotals } from '../../store/slices/cartSlice';
 
 export const CartScreen = ({ navigation }: any) => {
   const { items, total, subtotal, tax, deliveryCharge, incrementQuantity, decrementQuantity, removeFromCart, clearCart, getCartForOrder } = useCart();
-  const { user } = useAuth();
+  const { user, isBuyer } = useAuth();
+  const { data: account } = useGetBuyerAccountSummaryQuery(undefined, { skip: !isBuyer() });
   const [createOrder, { isLoading }] = useCreateOrderMutation();
   const dispatch = useDispatch();
   
@@ -23,8 +27,6 @@ export const CartScreen = ({ navigation }: any) => {
   const [deliveryChoice, setDeliveryChoice] = useState<'Today' | 'Tomorrow' | 'Date'>('Today');
   const [customDate, setCustomDate] = useState('');
   const [deliveryTime, setDeliveryTime] = useState('10:00');
-  const [hourDraft, setHourDraft] = useState('10');
-  const [minuteDraft, setMinuteDraft] = useState('00');
 
   // Recalculate totals if items exist but total is invalid
   useEffect(() => {
@@ -96,71 +98,8 @@ export const CartScreen = ({ navigation }: any) => {
   };
 
 
-  const toYmd = (offsetDays: number) => {
-    const date = new Date();
-    date.setHours(12, 0, 0, 0);
-    date.setDate(date.getDate() + offsetDays);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const today = toYmd(0);
-  const scheduledDate = deliveryChoice === 'Today' ? today : deliveryChoice === 'Tomorrow' ? toYmd(1) : customDate;
-  const hourSlots = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`);
-  const minutesOf = (value: string) => {
-    const [hour, minute] = value.split(':').map(Number);
-    return hour * 60 + minute;
-  };
-  const nowMinutes = () => {
-    const now = new Date();
-    return now.getHours() * 60 + now.getMinutes();
-  };
-  const isFutureSlot = (date: string, time: string) => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return false;
-    if (date < today) return false;
-    if (date > today) return true;
-    return minutesOf(time) > nowMinutes();
-  };
-  const earliestToday = (() => {
-    const now = new Date(Date.now() + 60 * 1000);
-    if (now.getDate() !== new Date().getDate()) return '';
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  })();
-
-  const clockParts = (value: string) => {
-    const [hourRaw, minuteRaw] = (value || '09:00').slice(0, 5).split(':');
-    const hour24 = Number(hourRaw);
-    const minute = Number(minuteRaw);
-    return {
-      hour12: hour24 % 12 || 12,
-      minute: Number.isNaN(minute) ? 0 : minute,
-      suffix: (hour24 >= 12 ? 'PM' : 'AM') as 'AM' | 'PM',
-    };
-  };
-  const applyClock = (hour12: number, minute: number, suffix: 'AM' | 'PM') => {
-    const safeHour = Math.min(12, Math.max(1, hour12));
-    const safeMinute = Math.min(59, Math.max(0, minute));
-    let hour24 = safeHour % 12;
-    if (suffix === 'PM') hour24 += 12;
-    const value = `${String(hour24).padStart(2, '0')}:${String(safeMinute).padStart(2, '0')}`;
-    if (scheduledDate && !isFutureSlot(scheduledDate, value)) return false;
-    setDeliveryTime(value);
-    return true;
-  };
-
-  useEffect(() => {
-    if (!scheduledDate || isFutureSlot(scheduledDate, deliveryTime)) return;
-    const next = hourSlots.find((slot) => isFutureSlot(scheduledDate, slot));
-    if (next) setDeliveryTime(next);
-  }, [scheduledDate, deliveryTime]);
-
-  useEffect(() => {
-    const parts = clockParts(deliveryTime);
-    setHourDraft(String(parts.hour12));
-    setMinuteDraft(String(parts.minute).padStart(2, '0'));
-  }, [deliveryTime]);
+  const today = toDeliveryYmd(0);
+  const scheduledDate = deliveryDateFor(deliveryChoice, customDate);
 
   const handleCheckout = () => {
     if (items.length === 0) {
@@ -177,7 +116,7 @@ export const CartScreen = ({ navigation }: any) => {
       Alert.alert('Delivery date', 'Choose today or a future date. Past dates are not allowed.');
       return;
     }
-    if (!isFutureSlot(scheduledDate, deliveryTime)) {
+    if (!isFutureDeliverySlot(scheduledDate, deliveryTime)) {
       Alert.alert('Delivery time', 'Choose a future time. Past time is not allowed.');
       return;
     }
@@ -288,9 +227,13 @@ export const CartScreen = ({ navigation }: any) => {
       
       // Redirect to Shop immediately after checkout (no "Browse Products" empty state)
       navigateToShop();
+      const hours = shopAvailability(account?.shopOpenTime, account?.shopCloseTime, account?.shopOpenDays, account?.shopLeaveDates);
+      const placed = hours.openNow
+        ? `Your order #${order.id} has been placed successfully!`
+        : `Your order #${order.id} is received. The shop is closed now and opens next ${hours.nextLabel}. The seller has the order and will take it when the shop opens.`;
       Alert.alert(
         'Order Placed',
-        `Your order #${order.id} has been placed successfully!\n\nDelivery: ${scheduledDate.split('-').reverse().join('/')} at ${formatClockAmPm(deliveryTime)}\nTotal: ${formatCurrency(total)}`
+        `${placed}\n\nDelivery: ${scheduledDate.split('-').reverse().join('/')} at ${formatClockAmPm(deliveryTime)}\nTotal: ${formatCurrency(total)}`
       );
     } catch (error: any) {
       console.error('❌ Order creation failed:', error);
@@ -420,132 +363,15 @@ export const CartScreen = ({ navigation }: any) => {
             </Card>
             <Card style={styles.deliveryCard}>
               <Text style={styles.deliveryTitle}>When should we deliver?</Text>
-              <View style={styles.choiceRow}>
-                {(['Today', 'Tomorrow', 'Date'] as const).map((choice) => (
-                  <TouchableOpacity
-                    key={choice}
-                    style={[styles.choice, deliveryChoice === choice && styles.choiceActive]}
-                    onPress={() => setDeliveryChoice(choice)}
-                  >
-                    <Text style={[styles.choiceText, deliveryChoice === choice && styles.choiceTextActive]}>{choice}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              {deliveryChoice === 'Date' && Platform.OS === 'web' && (
-                <View style={styles.dateField}>
-                  <Text style={styles.dateValue}>
-                    {customDate ? customDate.split('-').reverse().join('/') : 'Select date'}
-                  </Text>
-                  <Text style={styles.dateIcon}>📅</Text>
-                  {React.createElement('input', {
-                    type: 'date',
-                    min: today,
-                    value: customDate,
-                    onChange: (event: any) => {
-                      const value = event.target.value;
-                      if (value && value < today) return;
-                      setCustomDate(value);
-                    },
-                    style: {
-                      position: 'absolute',
-                      left: 0,
-                      top: 0,
-                      width: '100%',
-                      height: '100%',
-                      opacity: 0,
-                      cursor: 'pointer',
-                      boxSizing: 'border-box',
-                    },
-                  })}
-                </View>
-              )}
-              {deliveryChoice === 'Date' && Platform.OS !== 'web' && (
-                <Text style={styles.deliveryHint}>Choose today or any future date. Past dates stay blocked.</Text>
-              )}
-              <Text style={styles.deliveryHint}>Time</Text>
-              {scheduledDate === today && !earliestToday ? (
-                <Text style={styles.deliveryHint}>No time left today. Choose Tomorrow or another date.</Text>
-              ) : (
-                <View style={styles.clockBox}>
-                  <View style={styles.clockField}>
-                    <Text style={styles.clockLabel}>Hour</Text>
-                    <TextInput
-                      value={hourDraft}
-                      keyboardType="number-pad"
-                      maxLength={2}
-                      onChangeText={(text) => {
-                        const digits = text.replace(/\D/g, '').slice(0, 2);
-                        setHourDraft(digits);
-                        const hour = Number(digits);
-                        const ready = digits.length === 2 || (digits.length === 1 && hour >= 2);
-                        if (ready && hour >= 1 && hour <= 12) {
-                          applyClock(hour, clockParts(deliveryTime).minute, clockParts(deliveryTime).suffix);
-                        }
-                      }}
-                      onBlur={() => {
-                        const hour = Number(hourDraft);
-                        const parts = clockParts(deliveryTime);
-                        if (!hour || hour < 1 || hour > 12 || !applyClock(hour, parts.minute, parts.suffix)) {
-                          setHourDraft(String(parts.hour12));
-                        }
-                      }}
-                      style={styles.clockInput}
-                    />
-                  </View>
-                  <Text style={styles.clockColon}>:</Text>
-                  <View style={styles.clockField}>
-                    <Text style={styles.clockLabel}>Min</Text>
-                    <TextInput
-                      value={minuteDraft}
-                      keyboardType="number-pad"
-                      maxLength={2}
-                      onChangeText={(text) => {
-                        const digits = text.replace(/\D/g, '').slice(0, 2);
-                        setMinuteDraft(digits);
-                        if (digits.length === 2) {
-                          const parts = clockParts(deliveryTime);
-                          applyClock(parts.hour12, Number(digits), parts.suffix);
-                        }
-                      }}
-                      onBlur={() => {
-                        const minute = Number(minuteDraft);
-                        const parts = clockParts(deliveryTime);
-                        if (minuteDraft === '' || minute > 59 || !applyClock(parts.hour12, minute || 0, parts.suffix)) {
-                          setMinuteDraft(String(parts.minute).padStart(2, '0'));
-                        }
-                      }}
-                      style={styles.clockInput}
-                    />
-                  </View>
-                  <View style={styles.ampmRow}>
-                    {(['AM', 'PM'] as const).map((suffix) => {
-                      const active = clockParts(deliveryTime).suffix === suffix;
-                      return (
-                        <TouchableOpacity
-                          key={suffix}
-                          style={[styles.ampmButton, active && styles.choiceActive]}
-                          onPress={() => {
-                            const parts = clockParts(deliveryTime);
-                            const hour = Number(hourDraft) || parts.hour12;
-                            const minute = minuteDraft === '' ? parts.minute : Number(minuteDraft);
-                            if (!applyClock(hour, minute, suffix)) {
-                              setHourDraft(String(parts.hour12));
-                              setMinuteDraft(String(parts.minute).padStart(2, '0'));
-                            }
-                          }}
-                        >
-                          <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{suffix}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              )}
-              <Text style={styles.deliveryHint}>
-                {scheduledDate && isFutureSlot(scheduledDate, deliveryTime)
-                  ? `Delivery on ${scheduledDate.split('-').reverse().join('/')} at ${formatClockAmPm(deliveryTime)}. Seller and you get an alert one day before.`
-                  : 'Pick a future date and a future time.'}
-              </Text>
+              <DeliverySlotFields
+                choice={deliveryChoice}
+                onChoiceChange={setDeliveryChoice}
+                customDate={customDate}
+                onCustomDateChange={setCustomDate}
+                time={deliveryTime}
+                onTimeChange={setDeliveryTime}
+              />
+              <Text style={styles.deliveryHint}>Seller and you get an alert one day before.</Text>
             </Card>
           </View>
         }

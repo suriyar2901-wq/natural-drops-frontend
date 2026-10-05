@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Platform, Alert } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import { colors, spacing, typography } from '../../theme';
-import { Card, Loading } from '../../components/common';
+import { Card, Loading, ProductPhotoPlaceholder } from '../../components/common';
 import { useGetMenuItemByIdQuery, useDeleteMenuItemMutation } from '../../store/api/menuApi';
 import { useAuth, useCart } from '../../hooks';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
@@ -316,8 +316,7 @@ export const ProductDetailScreen = ({ navigation }: any) => {
               />
             ) : (
               <View style={styles.mainPlaceholder}>
-                <Text style={styles.placeholderIcon}>📦</Text>
-                <Text style={styles.muted}>No image</Text>
+                <ProductPhotoPlaceholder size={160} />
               </View>
             )}
           </View>
@@ -821,12 +820,12 @@ const styles = StyleSheet.create({
   videoItem: {
     ...(Platform.OS === 'web' && {
       flexShrink: 0,
-      minWidth: 280,
-      maxWidth: 400,
+      width: '100%',
+      maxWidth: '100%',
     } as any),
     ...(Platform.OS !== 'web' && {
-      width: 320,
-      marginRight: spacing.md,
+      width: '100%',
+      marginBottom: spacing.md,
     } as any),
   },
   videoPlayer: {
@@ -835,8 +834,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 10,
     ...(Platform.OS === 'web' && {
-      minWidth: 280,
-      maxWidth: 400,
+      width: '100%',
+      maxWidth: '100%',
     } as any),
   },
 });

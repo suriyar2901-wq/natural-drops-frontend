@@ -9,10 +9,10 @@ import {
 
 export const platformAdminApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
-    getPlatformDashboard: builder.query<PlatformDashboard, string | void>({
-      query: (period) => ({
+    getPlatformDashboard: builder.query<PlatformDashboard, { period?: string; fromDate?: string; toDate?: string } | void>({
+      query: (args) => ({
         url: '/admin/dashboard',
-        params: period ? { period } : undefined,
+        params: args || undefined,
       }),
       providesTags: ['PlatformAdmin'],
     }),

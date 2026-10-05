@@ -17,6 +17,7 @@ export const SellerSubscriptionGate = () => {
   const navigation = useNavigation();
   const { data, isLoading } = useGetSellerSubscriptionQuery(undefined, {
     skip: !isAuthenticated || !isSeller(),
+    refetchOnMountOrArgChange: true,
   });
   const [subscribe, { isLoading: saving }] = useSubscribeSellerMutation();
   const [plan, setPlan] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');

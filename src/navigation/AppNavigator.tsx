@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, Linking, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HeaderBrand } from '../components/common';
 import { useGetShopCompanyQuery } from '../store/api/shopApi';
@@ -37,6 +37,32 @@ const hiddenTabOptions = {
   },
 };
 
+const HeaderBack = ({ onPress }: { onPress: () => void }) => (
+  <TouchableOpacity
+    onPress={onPress}
+    style={styles.backButton}
+    accessibilityRole="button"
+    accessibilityLabel="Back"
+    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+  >
+    <Ionicons name="chevron-back" size={28} color={colors.white} />
+  </TouchableOpacity>
+);
+
+const hiddenPageOptions = (title: string) =>
+  ({ navigation }: { navigation: { canGoBack: () => boolean; goBack: () => void; navigate: (name: string) => void } }) => ({
+    title,
+    ...hiddenTabOptions,
+    headerLeft: () => (
+      <HeaderBack
+        onPress={() => {
+          if (navigation.canGoBack()) navigation.goBack();
+          else navigation.navigate('Dashboard');
+        }}
+      />
+    ),
+  });
+
 // Auth Screens
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
@@ -50,6 +76,7 @@ import { HomeScreen } from '../screens/buyer/HomeScreen';
 import { CartScreen } from '../screens/buyer/CartScreen';
 import { OrdersScreen } from '../screens/buyer/OrdersScreen';
 import { ProfileScreen } from '../screens/buyer/ProfileScreen';
+import { MoreScreen } from '../screens/admin/MoreScreen';
 import { QRScannerScreen } from '../screens/buyer/QRScannerScreen';
 import { BuyerPaymentsScreen } from '../screens/buyer/BuyerPaymentsScreen';
 import { BuyerEmptyCansScreen } from '../screens/buyer/BuyerEmptyCansScreen';
@@ -99,6 +126,8 @@ import { navigationRef } from './navigationRef';
 
 // Header Right Component with Username and Logout
 const HeaderRight = ({ navigation }: any) => {
+  const { width } = useWindowDimensions();
+  const compact = width < 520;
   const { user, logout, isBuyer } = useAuth();
   const buyer = isBuyer();
   const { data: buyerUnread = 0 } = useGetUnreadBuyerNotificationCountQuery(user?.id || 0, { skip: !user?.id || !buyer });
@@ -239,8 +268,12 @@ const HeaderRight = ({ navigation }: any) => {
   };
 
   return (
-    <View style={styles.headerRight}>
-      <Text style={styles.username}>{user?.username || 'User'}</Text>
+    <View style={[styles.headerRight, compact && styles.headerRightCompact]}>
+      {!compact && (
+        <Text style={styles.username} numberOfLines={1}>
+          {user?.username || 'User'}
+        </Text>
+      )}
       <TouchableOpacity
         onPress={() => navigation.getParent()?.navigate('NotificationHistory') || navigation.navigate('NotificationHistory')}
         style={styles.phoneButton}
@@ -287,7 +320,7 @@ const HeaderRight = ({ navigation }: any) => {
           console.log('TouchableOpacity onPress triggered');
           handleLogout();
         }}
-        style={styles.logoutButton}
+        style={[styles.logoutButton, compact && styles.logoutButtonCompact]}
         activeOpacity={0.7}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         disabled={false}
@@ -310,6 +343,12 @@ const BuyerTabs = ({ navigation }: any) => {
     screenOptions={{
       tabBarActiveTintColor: colors.primary,
       tabBarInactiveTintColor: colors.textSecondary,
+      tabBarLabelPosition: 'below-icon',
+      tabBarItemStyle: styles.adminTabItem,
+      tabBarLabelStyle: styles.adminTabLabel,
+      tabBarIconStyle: styles.adminTabIcon,
+      headerTitleContainerStyle: styles.headerTitleSlot,
+      headerLeftContainerStyle: styles.headerTitleSlot,
       headerStyle: { backgroundColor: colors.primary },
       headerTintColor: colors.white,
       headerRight: () => <HeaderRight navigation={navigation} />,
@@ -332,6 +371,16 @@ const BuyerTabs = ({ navigation }: any) => {
         title: 'My Orders',
         tabBarLabel: 'My Orders',
         tabBarIcon: tabIcon('receipt-outline', 'receipt'),
+        headerLeft: () => <View style={styles.headerBrandWrap}>{shopBrand}</View>,
+      }}
+    />
+    <Tab.Screen
+      name="BuyerPayments"
+      component={BuyerPaymentsScreen}
+      options={{
+        title: 'My Payments',
+        tabBarLabel: 'My Payments',
+        tabBarIcon: tabIcon('wallet-outline', 'wallet'),
         headerLeft: () => <View style={styles.headerBrandWrap}>{shopBrand}</View>,
       }}
     />
@@ -374,6 +423,8 @@ const AdminTabs = ({ navigation }: any) => {
       tabBarItemStyle: styles.adminTabItem,
       tabBarLabelStyle: styles.adminTabLabel,
       tabBarIconStyle: styles.adminTabIcon,
+      headerTitleContainerStyle: styles.headerTitleSlot,
+      headerLeftContainerStyle: styles.headerTitleSlot,
       headerStyle: { backgroundColor: colors.primary },
       headerTintColor: colors.white,
       headerRight: () => <HeaderRight navigation={navigation} />,
@@ -424,20 +475,26 @@ const AdminTabs = ({ navigation }: any) => {
         headerLeft: () => isSeller() ? <View style={styles.headerBrandWrap}>{sellerBrand}</View> : undefined,
       }}
     />
+    <Tab.Screen
+      name="More"
+      component={MoreScreen}
+      options={{
+        title: 'More',
+        tabBarLabel: 'More',
+        tabBarIcon: tabIcon('ellipsis-horizontal-circle-outline', 'ellipsis-horizontal-circle'),
+        headerLeft: () => isSeller() ? <View style={styles.headerBrandWrap}>{sellerBrand}</View> : undefined,
+      }}
+    />
       {isStrictAdmin() && (
         <>
-          <Tab.Screen
-            name="AppSettings"
-            component={AppSettingsScreen}
-            options={{ title: 'App Settings', ...hiddenTabOptions }}
-          />
-          <Tab.Screen name="SellerList" component={SellerListScreen} options={{ title: 'Sellers', ...hiddenTabOptions }} />
-          <Tab.Screen name="AddSeller" component={AddSellerScreen} options={{ title: 'Add Seller', ...hiddenTabOptions }} />
-          <Tab.Screen name="SellerDetail" component={SellerDetailScreen} options={{ title: 'Seller Details', ...hiddenTabOptions }} />
-          <Tab.Screen name="EditSeller" component={EditSellerScreen} options={{ title: 'Edit Seller', ...hiddenTabOptions }} />
-          <Tab.Screen name="ActivatePayment" component={ActivatePaymentScreen} options={{ title: 'Payment Activation', ...hiddenTabOptions }} />
-          <Tab.Screen name="SubscriptionList" component={SubscriptionListScreen} options={{ title: 'Subscriptions', ...hiddenTabOptions }} />
-          <Tab.Screen name="PaymentList" component={PaymentListScreen} options={{ title: 'Payments', ...hiddenTabOptions }} />
+          <Tab.Screen name="AppSettings" component={AppSettingsScreen} options={hiddenPageOptions('App Settings')} />
+          <Tab.Screen name="SellerList" component={SellerListScreen} options={hiddenPageOptions('Sellers')} />
+          <Tab.Screen name="AddSeller" component={AddSellerScreen} options={hiddenPageOptions('Add Seller')} />
+          <Tab.Screen name="SellerDetail" component={SellerDetailScreen} options={hiddenPageOptions('Seller Details')} />
+          <Tab.Screen name="EditSeller" component={EditSellerScreen} options={hiddenPageOptions('Edit Seller')} />
+          <Tab.Screen name="ActivatePayment" component={ActivatePaymentScreen} options={hiddenPageOptions('Payment Activation')} />
+          <Tab.Screen name="SubscriptionList" component={SubscriptionListScreen} options={hiddenPageOptions('Subscriptions')} />
+          <Tab.Screen name="PaymentList" component={PaymentListScreen} options={hiddenPageOptions('Payments')} />
         </>
       )}
   </Tab.Navigator>
@@ -600,7 +657,7 @@ export const AppNavigator = () => {
         <Stack.Screen
           name="PhoneOrder"
           component={PhoneOrderScreen}
-          options={{ title: 'Phone Order' }}
+          options={{ title: 'Add Order' }}
         />
         <Stack.Screen
           name="ShopProfile"
@@ -661,8 +718,19 @@ const styles = StyleSheet.create({
     marginTop: 2,
     width: '100%',
   },
+  backButton: {
+    marginLeft: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  headerTitleSlot: {
+    maxWidth: '46%',
+    flexShrink: 1,
+  },
   headerBrandWrap: {
-    marginLeft: spacing.md,
+    marginLeft: spacing.sm,
+    maxWidth: '100%',
+    flexShrink: 1,
   },
   headerTitleText: {
     color: colors.white,
@@ -672,13 +740,19 @@ const styles = StyleSheet.create({
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: spacing.md,
+    marginRight: spacing.sm,
+    flexShrink: 1,
+  },
+  headerRightCompact: {
+    marginRight: spacing.xs,
   },
   username: {
     color: colors.white,
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.medium,
     marginRight: spacing.sm,
+    maxWidth: 88,
+    flexShrink: 1,
   },
   phoneButton: {
     position: 'relative',
@@ -727,6 +801,11 @@ const styles = StyleSheet.create({
     minWidth: 60,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  logoutButtonCompact: {
+    minWidth: 0,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
   },
   logoutText: {
     color: colors.white,

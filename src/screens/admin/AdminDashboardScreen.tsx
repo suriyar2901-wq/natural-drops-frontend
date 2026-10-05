@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, spacing } from '../../theme';
 import { Card, Loading, DatePicker, StatusPill, DashboardRevenueChart, EarningsPieChart, HeaderBrand } from '../../components/common';
 import { useAuth } from '../../hooks';
 import { useGetDashboardStatsQuery } from '../../store/api/dashboardApi';
 import { useGetPlatformDashboardQuery } from '../../store/api/platformAdminApi';
-import { useCreateTodayRegularOrdersMutation, useGetRegularOrderPromptQuery, useGetSellerSubscriptionQuery, useGetShopCompanyQuery, useGetShopInboxQuery, useMarkShopInboxReadMutation, useSubscribeSellerMutation } from '../../store/api/shopApi';
+import { useCreateTodayRegularOrdersMutation, useGetCanLedgerQuery, useGetRegularOrderPromptQuery, useGetSellerSubscriptionQuery, useGetShopBuyersQuery, useGetShopCompanyQuery, useGetShopCustomersQuery, useGetShopInboxQuery, useMarkShopInboxReadMutation, useSubscribeSellerMutation } from '../../store/api/shopApi';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
 import { 
   useGetUnreadAdminNotificationsQuery, 
@@ -21,6 +22,9 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
   const { user, isStrictAdmin, isSeller } = useAuth();
   const { data: sellerSub } = useGetSellerSubscriptionQuery(undefined, { skip: !isSeller() });
   const { data: shopCompany } = useGetShopCompanyQuery(undefined, { skip: !isSeller() });
+  const { data: shopBuyers = [] } = useGetShopBuyersQuery(undefined, { skip: !isSeller() });
+  const { data: shopCustomers = [] } = useGetShopCustomersQuery(undefined, { skip: !isSeller() });
+  const { data: canLedger = [] } = useGetCanLedgerQuery(undefined, { skip: !isSeller() });
   const { data: shopInbox = [] } = useGetShopInboxQuery(undefined, { skip: !isSeller() });
   const { data: regularPrompt } = useGetRegularOrderPromptQuery(undefined, { skip: !isSeller() });
   const [createRegularOrders, { isLoading: creatingRegular }] = useCreateTodayRegularOrdersMutation();
@@ -30,6 +34,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
   const [dateFilterParams, setDateFilterParams] = useState<DashboardQueryParams | undefined>(undefined);
+  const [adminRange, setAdminRange] = useState<'none' | 'last_month' | 'last_3' | 'custom'>('none');
   
   // Use dashboard API with date range filter
   const { 
@@ -80,7 +85,12 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
   const totalRevenue = dashboardStats?.totalRevenue || 0;
   const productsCount = dashboardStats?.productsCount || 0;
   const dateRangeLabel = dashboardStats?.dateRangeLabel || 'All Time';
-  const { data: platform } = useGetPlatformDashboardQuery('this_month', { skip: !isStrictAdmin() });
+  const { data: platform } = useGetPlatformDashboardQuery(
+    dateFilterParams?.fromDate && dateFilterParams?.toDate
+      ? { fromDate: dateFilterParams.fromDate, toDate: dateFilterParams.toDate }
+      : { period: 'this_month' },
+    { skip: !isStrictAdmin() }
+  );
   
   // When no filter, show today's orders; when filtered, show orders in range
   const ordersInRange = dateFilterParams 
@@ -149,6 +159,34 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
     setFromDate('');
     setToDate('');
     setDateFilterParams(undefined);
+    setAdminRange('none');
+  };
+
+  const toIsoDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const applyAdminPreset = (kind: 'last_month' | 'last_3' | 'custom') => {
+    if (adminRange === kind) {
+      handleResetFilter();
+      return;
+    }
+    if (kind === 'custom') {
+      setAdminRange('custom');
+      setFromDate('');
+      setToDate('');
+      return;
+    }
+    const today = new Date();
+    const monthsBack = kind === 'last_month' ? 1 : 3;
+    const start = new Date(today.getFullYear(), today.getMonth() - monthsBack, 1);
+    const end = new Date(today.getFullYear(), today.getMonth(), 0);
+    setAdminRange(kind);
+    setFromDate(toIsoDate(start));
+    setToDate(toIsoDate(end));
   };
 
   // Get today's date in YYYY-MM-DD format for max date (using local timezone)
@@ -273,7 +311,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
       )}
 
       {/* Date Range Filter Section */}
-      <Card style={styles.filterCard}>
+      {!isStrictAdmin() && <Card style={styles.filterCard}>
         <View style={styles.filterHeader}>
           <Text style={styles.filterTitle}>📅 Filter by Date Range</Text>
           {(fromDate || toDate || dateFilterParams) && (
@@ -345,9 +383,9 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
             <Text style={styles.dateRangeLabel}>📊 Showing: {dateRangeLabel}</Text>
           </View>
         )}
-      </Card>
+      </Card>}
 
-      <View style={styles.statsGrid}>
+      {!isStrictAdmin() && <View style={styles.statsGrid}>
         <Card style={styles.statCard}>
           <Text style={styles.statValue}>{ordersInRange}</Text>
           <Text style={styles.statLabel}>
@@ -386,7 +424,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
             <Text style={styles.statLabel}>Products</Text>
           </Card>
         </TouchableOpacity>
-      </View>
+      </View>}
 
       {isSeller() && (
         <Card style={styles.chartCard}>
@@ -403,12 +441,107 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
         </Card>
       )}
 
-      {isStrictAdmin() && (
-        <Card style={styles.chartCard}>
-          <Text style={styles.filterTitle}>Revenue Overview</Text>
-          <Text style={styles.chartHint}>Last 6 months — order revenue and seller subscription collections</Text>
-          <DashboardRevenueChart points={dashboardStats?.monthlyRevenue || []} />
-        </Card>
+      {isSeller() && (
+        <View style={styles.hubGrid}>
+          {[
+            { label: 'Add Order', count: '', screen: 'PhoneOrder' },
+            { label: 'My Buyers', count: String(shopBuyers.length), screen: 'ShopBuyers' },
+            { label: 'Customers', count: String(shopCustomers.length), screen: 'ShopCustomers' },
+            { label: '20L Cans', count: String(canLedger.filter((row) => row.given > 0 || row.toReturn > 0).length), screen: 'IssuedCans' },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.screen}
+              style={styles.hubCard}
+              onPress={() => navigation.getParent()?.navigate(item.screen) || navigation.navigate(item.screen)}
+            >
+              <View style={styles.hubTop}>
+                {item.screen === 'PhoneOrder' ? (
+                  <Text style={[styles.hubLabel, styles.hubPhoneLabel]}>Add Order</Text>
+                ) : (
+                  <Text style={styles.hubCount}>{item.count}</Text>
+                )}
+                {item.screen === 'PhoneOrder' && (
+                  <View style={styles.hubIcon}>
+                    <Ionicons name="add" size={20} color={colors.white} />
+                  </View>
+                )}
+              </View>
+              {item.screen !== 'PhoneOrder' && <Text style={styles.hubLabel}>{item.label}</Text>}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {isStrictAdmin() && platform && (
+        <View style={styles.platformSection}>
+          <View style={styles.adminToolbar}>
+            <View style={styles.adminFilterChips}>
+              {([
+                { id: 'last_month' as const, label: 'Last month' },
+                { id: 'last_3' as const, label: 'Last 3 months' },
+                { id: 'custom' as const, label: 'From / To' },
+              ]).map((chip) => (
+                <TouchableOpacity
+                  key={chip.id}
+                  style={[styles.rangeChip, adminRange === chip.id && styles.rangeChipActive]}
+                  onPress={() => applyAdminPreset(chip.id)}
+                >
+                  <Text style={[styles.rangeChipText, adminRange === chip.id && styles.rangeChipTextActive]}>{chip.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity style={styles.addSellerButton} onPress={() => navigation.navigate('AddSeller')}>
+              <Text style={styles.addSellerButtonText}>+ Add Seller</Text>
+            </TouchableOpacity>
+          </View>
+          {adminRange === 'custom' && (
+            <View style={styles.customRangeRow}>
+              <View style={styles.datePickerWrapper}>
+                <DatePicker label="From Date" value={fromDate} onChange={setFromDate} maxDate={toDate || getTodayDateString()} placeholder="Start date" />
+              </View>
+              <View style={styles.datePickerWrapper}>
+                <DatePicker label="To Date" value={toDate} onChange={setToDate} maxDate={getTodayDateString()} placeholder="End date" />
+              </View>
+            </View>
+          )}
+          <View style={styles.splitRow}>
+            <Card style={[styles.chartCard, styles.splitChart]}>
+              <Text style={styles.filterTitle}>Revenue histogram</Text>
+              <Text style={styles.chartHint}>
+                {dateFilterParams?.fromDate && dateFilterParams?.toDate
+                  ? `${dateRangeLabel} — order revenue and seller subscription collections`
+                  : 'Last 6 months — order revenue and seller subscription collections'}
+              </Text>
+              <DashboardRevenueChart points={dashboardStats?.monthlyRevenue || []} />
+            </Card>
+            <View style={styles.splitStats}>
+              <TouchableOpacity style={styles.splitStat} onPress={() => navigation.navigate('SellerList')}>
+                <Card style={[styles.platformStatCard, { borderTopColor: '#3B82F6' }]}>
+                  <Text style={[styles.statValue, { color: '#3B82F6' }]}>{platform.totalSellers}</Text>
+                  <Text style={styles.statLabel}>Total Sellers</Text>
+                </Card>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.splitStat} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Active' })}>
+                <Card style={[styles.platformStatCard, { borderTopColor: '#14B8A6' }]}>
+                  <Text style={[styles.statValue, { color: '#14B8A6' }]}>{platform.activeSubscribers}</Text>
+                  <Text style={styles.statLabel}>Active Subscribers {platform.activeRate}</Text>
+                </Card>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.splitStat} onPress={() => navigation.navigate('PaymentList')}>
+                <Card style={[styles.platformStatCard, { borderTopColor: '#8B5CF6' }]}>
+                  <Text style={[styles.statValue, { color: '#8B5CF6' }]}>{formatCurrency(platform.revenueThisMonth)}</Text>
+                  <Text style={styles.statLabel}>Subscription Revenue</Text>
+                </Card>
+              </TouchableOpacity>
+              <View style={styles.splitStat}>
+                <Card style={[styles.platformStatCard, { borderTopColor: '#F59E0B' }]}>
+                  <Text style={[styles.statValue, { color: '#D97706' }]}>{formatCurrency(platform.yetToReceive)}</Text>
+                  <Text style={styles.statLabel}>Yet to Receive</Text>
+                </Card>
+              </View>
+            </View>
+          </View>
+        </View>
       )}
 
       {/* Recent Notifications Section */}
@@ -457,50 +590,107 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
 
       {isStrictAdmin() && platform && (
         <View style={styles.platformSection}>
-          <Text style={styles.sectionTitle}>Platform Admin</Text>
-          <View style={styles.statsGrid}>
-            <TouchableOpacity style={styles.statCardTouchable} onPress={() => navigation.navigate('SellerList')}>
-              <Card style={styles.platformStatCard}>
-                <Text style={styles.statValue}>{platform.totalSellers}</Text>
-                <Text style={styles.statLabel}>Total Sellers</Text>
-              </Card>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.statCardTouchable} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Active' })}>
-              <Card style={styles.platformStatCard}>
-                <Text style={styles.statValue}>{platform.activeSubscribers}</Text>
-                <Text style={styles.statLabel}>Active Subscribers {platform.activeRate}</Text>
-              </Card>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.statCardTouchable} onPress={() => navigation.navigate('PaymentList')}>
-              <Card style={styles.platformStatCard}>
-                <Text style={styles.statValue}>{formatCurrency(platform.revenueThisMonth)}</Text>
-                <Text style={styles.statLabel}>Subscription Revenue</Text>
-              </Card>
-            </TouchableOpacity>
-            <Card style={styles.statCard}>
-              <Text style={styles.statValue}>{formatCurrency(platform.yetToReceive)}</Text>
-              <Text style={styles.statLabel}>Yet to Receive</Text>
+          <View style={styles.splitRow}>
+            <Card style={[styles.healthCard, styles.splitChart]}>
+              <Text style={styles.filterTitle}>Subscription Health</Text>
+              <View style={styles.healthRow}>
+                <HealthBtn label="Active" value={platform.activeSubscriptions} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Active' })} />
+                <HealthBtn label="Expiring" value={platform.expiringSoon} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Expiring Soon' })} />
+                <HealthBtn label="Expired" value={platform.expired} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Expired' })} />
+                <HealthBtn label="Pending" value={platform.paymentPending} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Payment Pending' })} />
+              </View>
+            </Card>
+            <Card style={[styles.healthCard, styles.splitChart]}>
+              <Text style={styles.filterTitle}>Seller Growth</Text>
+              <Text style={styles.growthHint}>{dateFilterParams?.fromDate ? dateRangeLabel : 'Current month'}</Text>
+              <View style={styles.growthGrid}>
+                <View style={styles.growthTile}>
+                  <Text style={styles.growthLabel}>New Sellers</Text>
+                  <Text style={styles.growthValue}>{platform.newSellers}</Text>
+                </View>
+                <View style={styles.growthTile}>
+                  <Text style={styles.growthLabel}>Renewed</Text>
+                  <Text style={styles.growthValue}>{platform.renewed}</Text>
+                </View>
+                <View style={styles.growthTile}>
+                  <Text style={styles.growthLabel}>Not Renewed</Text>
+                  <Text style={styles.growthValue}>{platform.notRenewed}</Text>
+                </View>
+              </View>
+              <Text style={styles.growthLabel}>Renewal Rate</Text>
+              <Text style={styles.growthRate}>{platform.renewalRate}</Text>
+              <View style={styles.rateTrack}>
+                <View style={[styles.rateFill, { width: `${Math.min(100, parseInt(String(platform.renewalRate), 10) || 0)}%` }]} />
+              </View>
             </Card>
           </View>
 
-          <Card style={styles.healthCard}>
-            <Text style={styles.filterTitle}>Subscription Health</Text>
-            <View style={styles.healthRow}>
-              <HealthBtn label="Active" value={platform.activeSubscriptions} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Active' })} />
-              <HealthBtn label="Expiring" value={platform.expiringSoon} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Expiring Soon' })} />
-              <HealthBtn label="Expired" value={platform.expired} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Expired' })} />
-              <HealthBtn label="Pending" value={platform.paymentPending} onPress={() => navigation.navigate('SubscriptionList', { filter: 'Payment Pending' })} />
-            </View>
-          </Card>
-
-          {platform.attentionItems?.length > 0 && (
-            <Card style={styles.healthCard}>
-              <Text style={styles.filterTitle}>Needs Attention</Text>
-              {platform.attentionItems.map((item) => (
-                <Text key={item} style={styles.attentionItem}>• {item}</Text>
-              ))}
-            </Card>
-          )}
+          {(() => {
+            const rows = [
+              platform.expiringSoon > 0 && {
+                key: 'expiring',
+                tone: 'warn' as const,
+                mark: '!',
+                title: `${platform.expiringSoon} subscription${platform.expiringSoon === 1 ? '' : 's'} expiring soon`,
+                detail: 'Within the next 7 days',
+                screen: 'SubscriptionList' as const,
+                params: { filter: 'Expiring Soon' },
+              },
+              (platform.failedPayments || 0) > 0 && {
+                key: 'failed',
+                tone: 'bad' as const,
+                mark: '×',
+                title: `${platform.failedPayments} failed subscription payment${platform.failedPayments === 1 ? '' : 's'}`,
+                detail: 'Sellers may retry payment',
+                screen: 'PaymentList' as const,
+                params: { status: 'FAILED' },
+              },
+              platform.paymentPending > 0 && {
+                key: 'pending',
+                tone: 'wait' as const,
+                mark: '…',
+                title: `${platform.paymentPending} payment${platform.paymentPending === 1 ? '' : 's'} pending`,
+                detail: 'Awaiting confirmation',
+                screen: 'SubscriptionList' as const,
+                params: { filter: 'Payment Pending' },
+              },
+              platform.expired > 0 && {
+                key: 'expired',
+                tone: 'bad' as const,
+                mark: '!',
+                title: `${platform.expired} subscription${platform.expired === 1 ? '' : 's'} expired`,
+                detail: 'Online ordering unavailable',
+                screen: 'SubscriptionList' as const,
+                params: { filter: 'Expired' },
+              },
+            ].filter(Boolean) as Array<{ key: string; tone: 'warn' | 'bad' | 'wait'; mark: string; title: string; detail: string; screen: 'SubscriptionList' | 'PaymentList'; params: { filter?: string; status?: string } }>;
+            if (rows.length === 0) return null;
+            return (
+              <Card style={styles.healthCard}>
+                <View style={styles.notificationsHeader}>
+                  <View>
+                    <Text style={styles.filterTitle}>Needs Attention</Text>
+                    <Text style={styles.growthHint}>Items requiring admin review</Text>
+                  </View>
+                  <TouchableOpacity style={styles.viewAllButton} onPress={() => navigation.navigate('SubscriptionList')}>
+                    <Text style={styles.viewAllText}>View all</Text>
+                  </TouchableOpacity>
+                </View>
+                {rows.map((row) => (
+                  <TouchableOpacity key={row.key} style={styles.attentionRow} onPress={() => navigation.navigate(row.screen, row.params)}>
+                    <View style={[styles.attentionMark, row.tone === 'warn' && styles.attentionWarn, row.tone === 'bad' && styles.attentionBad, row.tone === 'wait' && styles.attentionWait]}>
+                      <Text style={[styles.attentionMarkText, row.tone === 'warn' && styles.attentionWarnText, row.tone === 'bad' && styles.attentionBadText]}>{row.mark}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.attentionTitle}>{row.title}</Text>
+                      <Text style={styles.attentionDetail}>{row.detail}</Text>
+                    </View>
+                    <Text style={styles.reviewLink}>Review →</Text>
+                  </TouchableOpacity>
+                ))}
+              </Card>
+            );
+          })()}
 
           {platform.recentPayments?.length > 0 && (
             <Card style={styles.healthCard}>
@@ -521,105 +711,27 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
               ))}
             </Card>
           )}
+
+          <Card style={styles.healthCard}>
+            <Text style={styles.filterTitle}>Platform Activity</Text>
+            <Text style={styles.growthHint}>Usage metrics — not platform revenue</Text>
+            <View style={styles.activityRow}>
+              {[
+                { label: 'Total Buyers', value: platform.totalBuyers },
+                { label: 'Orders Today', value: platform.ordersToday },
+                { label: 'Orders This Month', value: platform.ordersThisMonth },
+                { label: 'Active Sellers Today', value: platform.activeSellersToday },
+              ].map((item) => (
+                <View key={item.label} style={styles.activityTile}>
+                  <Text style={styles.growthLabel}>{item.label}</Text>
+                  <Text style={styles.activityValue}>{Number(item.value || 0).toLocaleString('en-IN')}</Text>
+                </View>
+              ))}
+            </View>
+          </Card>
         </View>
       )}
 
-      <View style={styles.quickActions}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => navigation.navigate('OrderManagement')}
-        >
-          <View style={styles.actionButtonContent}>
-          <Text style={styles.actionButtonText}>📦 Manage Orders</Text>
-            {unreadCount > 0 && (
-              <View style={styles.actionBadge}>
-                <Text style={styles.actionBadgeText}>{unreadCount}</Text>
-              </View>
-            )}
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => navigation.navigate('MenuManagement')}
-        >
-          <Text style={styles.actionButtonText}>🛒 Manage Products</Text>
-        </TouchableOpacity>
-
-        {/* Users management - Only visible for ADMIN role, not for SELLER */}
-        {isStrictAdmin() && (
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => navigation.navigate('UserManagement')}
-          >
-            <Text style={styles.actionButtonText}>👥 Manage Users</Text>
-          </TouchableOpacity>
-        )}
-
-        {isStrictAdmin() && (
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => navigation.navigate('AppSettings')}
-          >
-            <Text style={styles.actionButtonText}>⚙️ App Settings</Text>
-          </TouchableOpacity>
-        )}
-
-        {isStrictAdmin() && (
-          <>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => navigation.navigate('SellerList')}
-            >
-              <Text style={styles.actionButtonText}>🏪 Manage Sellers</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => navigation.navigate('SubscriptionList')}
-            >
-              <Text style={styles.actionButtonText}>🔁 Subscriptions</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => navigation.navigate('PaymentList')}
-            >
-              <Text style={styles.actionButtonText}>💳 Subscription Payments</Text>
-            </TouchableOpacity>
-          </>
-        )}
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => navigation.getParent()?.navigate('ShopCustomers') || navigation.navigate('ShopCustomers')}
-        >
-          <Text style={styles.actionButtonText}>👥 Shop Customers</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => navigation.getParent()?.navigate('IssuedCans') || navigation.navigate('IssuedCans')}
-        >
-          <Text style={styles.actionButtonText}>🧴 20 Litre Cans</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => navigation.getParent()?.navigate('ShopBuyers') || navigation.navigate('ShopBuyers')}
-        >
-          <Text style={styles.actionButtonText}>🧑‍🤝‍🧑 My Buyers</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => navigation.getParent()?.navigate('PhoneOrder') || navigation.navigate('PhoneOrder')}
-        >
-          <Text style={styles.actionButtonText}>📞 Phone Order</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => navigation.getParent()?.navigate('ShopProfile') || navigation.navigate('ShopProfile')}
-        >
-          <Text style={styles.actionButtonText}>🧾 Shop Profile / QR</Text>
-        </TouchableOpacity>
-      </View>
     </ScrollView>
   );
 };
@@ -723,7 +835,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   statCard: {
-    width: '47%',
+    width: 'calc(50% - 8px)' as any,
     alignItems: 'center',
     padding: spacing.lg,
   },
@@ -869,6 +981,57 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
   },
+  adminToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  adminFilterChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flex: 1,
+  },
+  rangeChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: colors.gray100,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+  },
+  rangeChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  rangeChipText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.textPrimary,
+  },
+  rangeChipTextActive: {
+    color: colors.white,
+  },
+  addSellerButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+  },
+  addSellerButtonText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.white,
+  },
+  customRangeRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
   filterCard: {
     marginBottom: spacing.lg,
     padding: spacing.lg,
@@ -953,6 +1116,72 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontWeight: typography.fontWeight.medium,
   },
+  hubGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  hubCard: {
+    width: 'calc(50% - 8px)' as any,
+    backgroundColor: colors.white,
+    borderRadius: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
+  hubTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  hubIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hubCount: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
+  },
+  hubLabel: {
+    marginTop: spacing.xs,
+    color: colors.textPrimary,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  hubPhoneLabel: {
+    marginTop: 0,
+    fontSize: typography.fontSize.lg,
+  },
+  splitRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    alignItems: 'stretch',
+    marginBottom: spacing.lg,
+  },
+  splitChart: {
+    flexGrow: 1,
+    flexBasis: '48%',
+    minWidth: 280,
+    marginBottom: 0,
+  },
+  splitStats: {
+    flexGrow: 1,
+    flexBasis: '48%',
+    minWidth: 280,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    alignContent: 'flex-start',
+  },
+  splitStat: {
+    width: 'calc(50% - 6px)' as any,
+  },
   chartCard: {
     padding: spacing.lg,
     marginBottom: spacing.lg,
@@ -966,6 +1195,7 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     padding: spacing.lg,
+    borderTopWidth: 3,
   },
   platformSection: {
     marginBottom: spacing.lg,
@@ -979,6 +1209,122 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm,
     marginTop: spacing.sm,
+  },
+  growthHint: {
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.sm,
+    marginBottom: spacing.sm,
+  },
+  growthGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  growthTile: {
+    width: 'calc(50% - 6px)' as any,
+    backgroundColor: '#F4F7FB',
+    borderRadius: 10,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  growthLabel: {
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.sm,
+  },
+  growthValue: {
+    marginTop: 2,
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  growthRate: {
+    marginTop: 2,
+    marginBottom: spacing.sm,
+    fontSize: 28,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  activityRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  activityTile: {
+    flexGrow: 1,
+    flexBasis: '22%',
+    minWidth: 120,
+    backgroundColor: '#F4F7FB',
+    borderRadius: 10,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  activityValue: {
+    marginTop: 4,
+    fontSize: 22,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  rateTrack: {
+    height: 8,
+    borderRadius: 8,
+    backgroundColor: '#E6EEF6',
+    overflow: 'hidden',
+  },
+  rateFill: {
+    height: '100%',
+    borderRadius: 8,
+    backgroundColor: '#2F6FED',
+  },
+  viewAllButton: {
+    borderWidth: 1,
+    borderColor: colors.gray300,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.white,
+  },
+  attentionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.gray50,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: spacing.sm,
+  },
+  attentionMark: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attentionWarn: { backgroundColor: '#FFF4D6' },
+  attentionBad: { backgroundColor: '#FDECEC' },
+  attentionWait: { backgroundColor: '#ECEFF3' },
+  attentionMarkText: {
+    fontSize: 16,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textSecondary,
+  },
+  attentionWarnText: { color: '#C2410C' },
+  attentionBadText: { color: '#DC2626' },
+  attentionTitle: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  attentionDetail: {
+    marginTop: 2,
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+  },
+  reviewLink: {
+    color: colors.primary,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
   },
   attentionItem: {
     color: colors.textSecondary,
