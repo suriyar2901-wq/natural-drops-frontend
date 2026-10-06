@@ -20,6 +20,7 @@ import { locationApiService } from '../../services/locationApi.service';
 import { useGetShopProfileQuery, useSaveShopProfileMutation } from '../../store/api/shopApi';
 import { formatClockAmPm } from '../../utils/formatters';
 import { Ionicons } from '@expo/vector-icons';
+import { BuyerRegularOrderCard } from '../../components/buyer/BuyerRegularOrderCard';
 
 interface FormErrors {
   fullName?: string;
@@ -1085,6 +1086,7 @@ export const ProfileScreen = () => {
                 )}
                 {isBuyer() && (
                   <>
+                    <BuyerRegularOrderCard navigation={navigation} />
                     <Button
                       title="My Payments"
                       onPress={() => navigation.navigate('BuyerPayments' as never)}

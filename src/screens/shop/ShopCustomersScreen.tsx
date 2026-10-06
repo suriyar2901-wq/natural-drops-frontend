@@ -3,11 +3,14 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { Button, Card, Input, Loading } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
 import { useGetShopCustomersQuery } from '../../store/api/shopApi';
+import { useGetAllOrdersQuery } from '../../store/api/orderApi';
 import { formatCurrency } from '../../utils/formatters';
-import { moneyValue } from '../../types/shop.types';
+import { moneyValue, orderBillPending } from '../../types/shop.types';
+import { Order } from '../../types';
 
 export const ShopCustomersScreen = ({ navigation }: any) => {
   const { data: customers = [], isLoading, refetch, isFetching } = useGetShopCustomersQuery();
+  const { data: orders = [] } = useGetAllOrdersQuery();
   const [search, setSearch] = useState('');
 
   const filtered = useMemo(() => {
@@ -20,11 +23,23 @@ export const ShopCustomersScreen = ({ navigation }: any) => {
     );
   }, [customers, search]);
 
+  const dueFor = (customer: { mobile?: string | null; buyerUserId?: number | null; money: number | string }) => {
+    const matched = (orders as Order[]).filter((order) => {
+      if (order.status === 'canceled') return false;
+      const orderPhone = String(order.buyerPhone || '').replace(/\D/g, '').slice(-10);
+      const customerPhone = String(customer.mobile || '').replace(/\D/g, '').slice(-10);
+      return (orderPhone && customerPhone && orderPhone === customerPhone)
+        || (!!customer.buyerUserId && order.buyerId === customer.buyerUserId);
+    });
+    if (matched.length === 0) return moneyValue(customer.money);
+    return matched.reduce((sum, order) => sum + orderBillPending(order), 0);
+  };
+
   const totals = useMemo(() => ({
     count: customers.length,
-    due: customers.reduce((sum, item) => sum + moneyValue(item.money), 0),
+    due: customers.reduce((sum, item) => sum + dueFor(item), 0),
     cans: customers.reduce((sum, item) => sum + (item.emptyCans || 0), 0),
-  }), [customers]);
+  }), [customers, orders]);
 
   if (isLoading) {
     return <Loading fullScreen message="Loading customers..." />;
@@ -33,7 +48,7 @@ export const ShopCustomersScreen = ({ navigation }: any) => {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
-        <Text style={styles.title}>Shop Customers</Text>
+        <Text style={styles.title}>Customer ledger</Text>
         <Button title="+ Add" onPress={() => navigation.navigate('AddShopCustomer')} />
       </View>
 
@@ -70,7 +85,7 @@ export const ShopCustomersScreen = ({ navigation }: any) => {
           <Card style={styles.card}>
             <View style={styles.cardTop}>
               <Text style={styles.code}>{customer.customerCode}</Text>
-              <Text style={styles.due}>{formatCurrency(moneyValue(customer.money))}</Text>
+              <Text style={styles.due}>{formatCurrency(dueFor(customer))}</Text>
             </View>
             <Text style={styles.name}>{customer.name}</Text>
             <Text style={styles.meta}>{customer.mobile}</Text>

@@ -4,7 +4,7 @@ import { colors, typography, spacing } from '../../theme';
 import { Card, Button, DeliverySlotFields, LocationSelectionModal } from '../../components/common';
 import { deliveryDateFor, isFutureDeliverySlot, toDeliveryYmd } from '../../components/common/DeliverySlotFields';
 import { useCart, useAuth } from '../../hooks';
-import { useCreateOrderMutation } from '../../store/api/orderApi';
+import { useCreateOrderMutation, useGetBuyerRegularOrderQuery, usePauseBuyerRegularOrderMutation, useResumeBuyerRegularOrderMutation, useSaveBuyerRegularOrderMutation } from '../../store/api/orderApi';
 import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
 import { formatClockAmPm, formatCurrency } from '../../utils/formatters';
 import { shopAvailability } from '../../utils/shopHours';
@@ -12,11 +12,25 @@ import { CartItem, CreateOrderRequest } from '../../types';
 import { useDispatch } from 'react-redux';
 import { calculateTotals } from '../../store/slices/cartSlice';
 
-export const CartScreen = ({ navigation }: any) => {
+const WEEK_DAYS = [
+  { id: 0, label: 'Sun' },
+  { id: 1, label: 'Mon' },
+  { id: 2, label: 'Tue' },
+  { id: 3, label: 'Wed' },
+  { id: 4, label: 'Thu' },
+  { id: 5, label: 'Fri' },
+  { id: 6, label: 'Sat' },
+];
+
+export const CartScreen = ({ navigation, route }: any) => {
   const { items, total, subtotal, tax, deliveryCharge, incrementQuantity, decrementQuantity, removeFromCart, clearCart, getCartForOrder } = useCart();
   const { user, isBuyer } = useAuth();
   const { data: account } = useGetBuyerAccountSummaryQuery(undefined, { skip: !isBuyer() });
   const [createOrder, { isLoading }] = useCreateOrderMutation();
+  const { data: regularPlan } = useGetBuyerRegularOrderQuery(undefined, { skip: !isBuyer() });
+  const [saveRegularOrder, { isLoading: savingRegular }] = useSaveBuyerRegularOrderMutation();
+  const [pauseRegularOrder, { isLoading: pausing }] = usePauseBuyerRegularOrderMutation();
+  const [resumeRegularOrder, { isLoading: resuming }] = useResumeBuyerRegularOrderMutation();
   const dispatch = useDispatch();
   
   // Delivery location state
@@ -27,6 +41,8 @@ export const CartScreen = ({ navigation }: any) => {
   const [deliveryChoice, setDeliveryChoice] = useState<'Today' | 'Tomorrow' | 'Date'>('Today');
   const [customDate, setCustomDate] = useState('');
   const [deliveryTime, setDeliveryTime] = useState('10:00');
+  const [orderKind, setOrderKind] = useState<'normal' | 'regular'>(route?.params?.orderKind === 'regular' ? 'regular' : 'normal');
+  const [weekDays, setWeekDays] = useState<number[]>([]);
 
   // Recalculate totals if items exist but total is invalid
   useEffect(() => {
@@ -35,6 +51,22 @@ export const CartScreen = ({ navigation }: any) => {
       dispatch(calculateTotals());
     }
   }, [items, total, dispatch]);
+
+  useEffect(() => {
+    if (route?.params?.orderKind === 'regular') {
+      setOrderKind('regular');
+    }
+  }, [route?.params?.orderKind]);
+
+  useEffect(() => {
+    if (!regularPlan) return;
+    if (regularPlan.deliveryTime) setDeliveryTime(regularPlan.deliveryTime);
+    const days = String(regularPlan.weekDays || '')
+      .split(',')
+      .map((part: string) => Number(part))
+      .filter((day: number) => day >= 0 && day <= 6);
+    if (days.length) setWeekDays(days);
+  }, [regularPlan]);
 
   const navigateToShop = () => {
     // Cart is a Stack screen; the Shop tab lives inside BuyerApp's Tab Navigator.
@@ -112,13 +144,24 @@ export const CartScreen = ({ navigation }: any) => {
       return;
     }
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate) || scheduledDate < today) {
-      Alert.alert('Delivery date', 'Choose today or a future date. Past dates are not allowed.');
-      return;
-    }
-    if (!isFutureDeliverySlot(scheduledDate, deliveryTime)) {
-      Alert.alert('Delivery time', 'Choose a future time. Past time is not allowed.');
-      return;
+    if (orderKind === 'regular') {
+      if (weekDays.length === 0) {
+        Alert.alert('Delivery days', 'Choose at least one day for the regular order.');
+        return;
+      }
+      if (!/^\d{2}:\d{2}$/.test(deliveryTime)) {
+        Alert.alert('Delivery time', 'Choose the time for each regular delivery.');
+        return;
+      }
+    } else {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate) || scheduledDate < today) {
+        Alert.alert('Delivery date', 'Choose today or a future date. Past dates are not allowed.');
+        return;
+      }
+      if (!isFutureDeliverySlot(scheduledDate, deliveryTime)) {
+        Alert.alert('Delivery time', 'Choose a future time. Past time is not allowed.');
+        return;
+      }
     }
 
     // Show location selection modal first
@@ -178,6 +221,39 @@ export const CartScreen = ({ navigation }: any) => {
 
       if (finalTotal <= 0) {
         Alert.alert('Invalid Total', 'Cart total must be greater than 0. Please check your cart items.');
+        return;
+      }
+
+      if (orderKind === 'regular') {
+        const validLatitude = (latitude !== undefined && validateCoordinates(latitude, longitude))
+          ? latitude
+          : undefined;
+        const validLongitude = (longitude !== undefined && validateCoordinates(latitude, longitude))
+          ? longitude
+          : undefined;
+        await saveRegularOrder({
+          deliveryTime,
+          weekDays: [...weekDays].sort((a, b) => a - b).join(','),
+          deliveryAddress: address.trim(),
+          latitude: validLatitude,
+          longitude: validLongitude,
+          items: items.map((item) => ({
+            menuItemId: item.menuItem.id,
+            itemName: item.menuItem.name,
+            quantity: item.quantity,
+            rate: Number(item.menuItem.rate || 0),
+          })),
+        }).unwrap();
+        clearCart();
+        setDeliveryAddress('');
+        setDeliveryLatitude(undefined);
+        setDeliveryLongitude(undefined);
+        navigateToShop();
+        const dayLabel = WEEK_DAYS.filter((day) => weekDays.includes(day.id)).map((day) => day.label).join(', ');
+        Alert.alert(
+          'Regular order saved',
+          `This repeats on ${dayLabel} at ${formatClockAmPm(deliveryTime)}.\n\nThe seller gets a notification one day before each delivery. Edit or pause it from Profile.`
+        );
         return;
       }
 
@@ -362,7 +438,42 @@ export const CartScreen = ({ navigation }: any) => {
               </View>
             </Card>
             <Card style={styles.deliveryCard}>
-              <Text style={styles.deliveryTitle}>When should we deliver?</Text>
+              <Text style={styles.deliveryTitle}>Order type</Text>
+              <View style={styles.choiceRow}>
+                {([
+                  { id: 'normal' as const, label: 'Normal order' },
+                  { id: 'regular' as const, label: 'Regular order' },
+                ]).map((option) => (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={[styles.choice, orderKind === option.id && styles.choiceActive]}
+                    onPress={() => setOrderKind(option.id)}
+                  >
+                    <Text style={[styles.choiceText, orderKind === option.id && styles.choiceTextActive]}>{option.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.deliveryTitle}>
+                {orderKind === 'regular' ? 'Which days should this repeat?' : 'When should we deliver?'}
+              </Text>
+              {orderKind === 'regular' && (
+                <View style={styles.choiceRow}>
+                  {WEEK_DAYS.map((day) => {
+                    const selected = weekDays.includes(day.id);
+                    return (
+                      <TouchableOpacity
+                        key={day.id}
+                        style={[styles.choice, selected && styles.choiceActive]}
+                        onPress={() => setWeekDays((current) => (
+                          selected ? current.filter((value) => value !== day.id) : [...current, day.id]
+                        ))}
+                      >
+                        <Text style={[styles.choiceText, selected && styles.choiceTextActive]}>{day.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
               <DeliverySlotFields
                 choice={deliveryChoice}
                 onChoiceChange={setDeliveryChoice}
@@ -370,8 +481,36 @@ export const CartScreen = ({ navigation }: any) => {
                 onCustomDateChange={setCustomDate}
                 time={deliveryTime}
                 onTimeChange={setDeliveryTime}
+                hideDate={orderKind === 'regular'}
               />
-              <Text style={styles.deliveryHint}>Seller and you get an alert one day before.</Text>
+              {regularPlan && (
+                <TouchableOpacity style={styles.pauseRow} onPress={async () => {
+                  try {
+                    if (regularPlan.paused) {
+                      await resumeRegularOrder().unwrap();
+                      Alert.alert('Resumed', 'Regular order will deliver on the selected days again.');
+                    } else {
+                      await pauseRegularOrder().unwrap();
+                      Alert.alert('Paused', 'No new regular delivery will be created until you resume.');
+                    }
+                  } catch (error: any) {
+                    Alert.alert('Could not update', error?.data?.message || 'Try again.');
+                  }
+                }}>
+                  <Text style={styles.pauseText}>
+                    {pausing || resuming
+                      ? 'Updating...'
+                      : regularPlan.paused
+                        ? 'Regular order is paused. Tap to resume.'
+                        : 'Pause regular order'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <Text style={styles.deliveryHint}>
+                {orderKind === 'regular'
+                  ? 'This repeats on the days you pick. The seller is notified one day before each delivery. You can edit or pause it from Profile.'
+                  : 'Seller and you get an alert one day before.'}
+              </Text>
             </Card>
           </View>
         }
@@ -385,9 +524,9 @@ export const CartScreen = ({ navigation }: any) => {
           style={styles.clearButton}
         />
         <Button
-          title={`Checkout (${formatCurrency(total)})`}
+          title={orderKind === 'regular' ? `Save regular order (${formatCurrency(total)})` : `Checkout (${formatCurrency(total)})`}
           onPress={handleCheckout}
-          loading={isLoading}
+          loading={isLoading || savingRegular}
           style={styles.checkoutButton}
         />
       </View>
@@ -506,6 +645,8 @@ const styles = StyleSheet.create({
   deliveryCard: { marginTop: spacing.md, padding: spacing.md, width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden', alignSelf: 'stretch' },
   deliveryTitle: { fontWeight: typography.fontWeight.bold, color: colors.textPrimary, marginBottom: spacing.sm },
   deliveryHint: { color: colors.textSecondary, marginTop: spacing.sm },
+  pauseRow: { marginTop: spacing.md },
+  pauseText: { color: colors.primary, fontWeight: typography.fontWeight.semibold },
   dateField: { marginTop: spacing.sm, width: '100%', maxWidth: '100%', minWidth: 0, alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: colors.border, borderRadius: 8, backgroundColor: colors.white, paddingVertical: 10, paddingHorizontal: 12, position: 'relative', overflow: 'hidden' },
   dateValue: { color: colors.textPrimary, fontSize: typography.fontSize.base },
   dateIcon: { fontSize: 18, marginLeft: spacing.sm },

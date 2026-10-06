@@ -465,16 +465,31 @@ const AdminTabs = ({ navigation }: any) => {
         options={{ title: 'Users', tabBarIcon: tabIcon('people-outline', 'people') }} 
       />
     )}
-    <Tab.Screen
-      name="Profile"
-      component={ProfileScreen}
-      options={{
-        title: 'Profile',
-        tabBarLabel: 'Profile',
-        tabBarIcon: tabIcon('person-outline', 'person'),
-        headerLeft: () => isSeller() ? <View style={styles.headerBrandWrap}>{sellerBrand}</View> : undefined,
-      }}
-    />
+    {isSeller() ? (
+      <Tab.Screen
+        name="ShopCustomers"
+        component={ShopCustomersScreen}
+        options={{
+          title: 'Customer ledger',
+          tabBarLabel: 'Customer ledger',
+          tabBarIcon: tabIcon('book-outline', 'book'),
+          headerLeft: () => <View style={styles.headerBrandWrap}>{sellerBrand}</View>,
+        }}
+      />
+    ) : (
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          title: 'Profile',
+          tabBarLabel: 'Profile',
+          tabBarIcon: tabIcon('person-outline', 'person'),
+        }}
+      />
+    )}
+    {isSeller() && (
+      <Tab.Screen name="Profile" component={ProfileScreen} options={hiddenPageOptions('Profile')} />
+    )}
     <Tab.Screen
       name="More"
       component={MoreScreen}
@@ -533,6 +548,7 @@ export const AppNavigator = () => {
           headerStyle: { backgroundColor: colors.primary },
           headerTintColor: colors.white,
           gestureEnabled: Platform.OS !== 'web',
+          headerMode: 'float',
         }}
       >
         {/* Authentication Screens - Start here */}
@@ -627,7 +643,7 @@ export const AppNavigator = () => {
         <Stack.Screen
           name="ShopCustomers"
           component={ShopCustomersScreen}
-          options={{ title: 'Shop Customers' }}
+          options={{ title: 'Customer ledger' }}
         />
         <Stack.Screen
           name="AddShopCustomer"

@@ -6,8 +6,9 @@ import { Card, Loading, DatePicker, StatusPill, DashboardRevenueChart, EarningsP
 import { useAuth } from '../../hooks';
 import { useGetDashboardStatsQuery } from '../../store/api/dashboardApi';
 import { useGetPlatformDashboardQuery } from '../../store/api/platformAdminApi';
-import { useCreateTodayRegularOrdersMutation, useGetCanLedgerQuery, useGetRegularOrderPromptQuery, useGetSellerSubscriptionQuery, useGetShopBuyersQuery, useGetShopCompanyQuery, useGetShopCustomersQuery, useGetShopInboxQuery, useMarkShopInboxReadMutation, useSubscribeSellerMutation } from '../../store/api/shopApi';
+import { useGetCanLedgerQuery, useGetSellerSubscriptionQuery, useGetShopBuyersQuery, useGetShopCompanyQuery, useGetShopCustomersQuery, useGetShopInboxQuery, useMarkShopInboxReadMutation, useSubscribeSellerMutation } from '../../store/api/shopApi';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
+import { regularNoticeLook, regularNoticeTone } from '../../utils/regularNotice';
 import { 
   useGetUnreadAdminNotificationsQuery, 
   useGetUnreadAdminNotificationCountQuery,
@@ -25,9 +26,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
   const { data: shopBuyers = [] } = useGetShopBuyersQuery(undefined, { skip: !isSeller() });
   const { data: shopCustomers = [] } = useGetShopCustomersQuery(undefined, { skip: !isSeller() });
   const { data: canLedger = [] } = useGetCanLedgerQuery(undefined, { skip: !isSeller() });
-  const { data: shopInbox = [] } = useGetShopInboxQuery(undefined, { skip: !isSeller() });
-  const { data: regularPrompt } = useGetRegularOrderPromptQuery(undefined, { skip: !isSeller() });
-  const [createRegularOrders, { isLoading: creatingRegular }] = useCreateTodayRegularOrdersMutation();
+  const { data: shopInbox = [] } = useGetShopInboxQuery(undefined, { skip: !isSeller(), pollingInterval: isSeller() ? 15000 : 0 });
   const [markInboxRead] = useMarkShopInboxReadMutation();
   const [dismissedInboxIds, setDismissedInboxIds] = useState<number[]>([]);
   const [renewSeller, { isLoading: renewing }] = useSubscribeSellerMutation();
@@ -254,37 +253,31 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
         </Card>
       )}
 
-      {isSeller() && (regularPrompt?.buyerCount || 0) > 0 && (
-        <Card style={styles.reminderCard}>
-          <Text style={styles.reminderTitle}>Today's regular orders</Text>
-          <Text style={styles.reminderCopy}>
-            Create regular orders for {regularPrompt?.buyerNames?.join(', ')}? Seller and buyer both get a notification.
-          </Text>
+      {isSeller() && shopInbox.filter((item) => !item.isRead && !dismissedInboxIds.includes(item.id) && regularNoticeTone(item.title)).map((item) => {
+        const tone = regularNoticeTone(item.title)!;
+        const look = regularNoticeLook[tone];
+        return (
           <TouchableOpacity
-            style={styles.reminderButton}
-            disabled={creatingRegular}
-            onPress={async () => {
-              try {
-                const result = await createRegularOrders().unwrap();
-                showSuccessToast(`${result.created} regular order${result.created === 1 ? '' : 's'} created`);
-              } catch (error: any) {
-                showErrorToast(error?.data?.message || 'Could not create regular orders');
-              }
-            }}
+            key={item.id}
+            style={[styles.pauseNotice, { backgroundColor: look.background, borderColor: look.border }]}
+            onPress={() => setInboxPreview(item)}
           >
-            <Text style={styles.reminderButtonText}>{creatingRegular ? 'Creating...' : 'Yes, create orders'}</Text>
+            <Text style={[styles.pauseBadge, { backgroundColor: look.border }]}>{look.badge}</Text>
+            <View style={styles.pauseCopy}>
+              <Text style={[styles.pauseTitle, { color: look.text }]}>{item.title}</Text>
+              <Text style={[styles.pauseText, { color: look.text }]} numberOfLines={2}>{item.message}</Text>
+            </View>
           </TouchableOpacity>
-        </Card>
-      )}
-
-      {isSeller() && shopInbox.filter((item) => !item.isRead && !dismissedInboxIds.includes(item.id)).length > 0 && (
+        );
+      })}
+      {isSeller() && shopInbox.filter((item) => !item.isRead && !dismissedInboxIds.includes(item.id) && !regularNoticeTone(item.title)).length > 0 && (
         <TouchableOpacity
           style={styles.noticeBar}
-          onPress={() => setInboxPreview(shopInbox.find((item) => !item.isRead && !dismissedInboxIds.includes(item.id)))}
+          onPress={() => setInboxPreview(shopInbox.find((item) => !item.isRead && !dismissedInboxIds.includes(item.id) && !regularNoticeTone(item.title)))}
         >
           <Text style={styles.noticeText}>
-            {shopInbox.filter((item) => !item.isRead && !dismissedInboxIds.includes(item.id)).length} new message
-            {shopInbox.filter((item) => !item.isRead && !dismissedInboxIds.includes(item.id)).length > 1 ? 's' : ''}
+            {shopInbox.filter((item) => !item.isRead && !dismissedInboxIds.includes(item.id) && !regularNoticeTone(item.title)).length} new message
+            {shopInbox.filter((item) => !item.isRead && !dismissedInboxIds.includes(item.id) && !regularNoticeTone(item.title)).length > 1 ? 's' : ''}
           </Text>
           <Text style={styles.noticeAction}>Open</Text>
         </TouchableOpacity>
@@ -452,7 +445,9 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
             <TouchableOpacity
               key={item.screen}
               style={styles.hubCard}
-              onPress={() => navigation.getParent()?.navigate(item.screen) || navigation.navigate(item.screen)}
+              onPress={() => item.screen === 'ShopCustomers'
+                ? navigation.navigate('ShopCustomers')
+                : navigation.getParent()?.navigate(item.screen) || navigation.navigate(item.screen)}
             >
               <View style={styles.hubTop}>
                 {item.screen === 'PhoneOrder' ? (
@@ -573,6 +568,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
         visible={!!inboxPreview}
         message={inboxPreview ? `${inboxPreview.title}: ${inboxPreview.message}` : ''}
         createdAt={inboxPreview?.createdAt}
+        tone={regularNoticeTone(inboxPreview?.title) || 'default'}
         isRead={false}
         onClose={() => setInboxPreview(null)}
         onRead={async () => {
@@ -902,6 +898,40 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.bold,
+  },
+  pauseNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    borderRadius: 12,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 2,
+    borderColor: '#EA580C',
+  },
+  pauseBadge: {
+    backgroundColor: '#EA580C',
+    color: colors.white,
+    fontWeight: typography.fontWeight.bold,
+    fontSize: typography.fontSize.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  pauseCopy: {
+    flex: 1,
+  },
+  pauseTitle: {
+    color: '#9A3412',
+    fontWeight: typography.fontWeight.bold,
+    fontSize: typography.fontSize.sm,
+  },
+  pauseText: {
+    color: '#9A3412',
+    marginTop: 2,
+    fontSize: typography.fontSize.sm,
   },
   noticeBar: {
     flexDirection: 'row',

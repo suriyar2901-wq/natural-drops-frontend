@@ -19,6 +19,7 @@ export const IssuedCansScreen = ({ navigation }: any) => {
   const totals = useMemo(() => ({
     clients: rows.length,
     given: rows.reduce((sum, row) => sum + (row.given || 0), 0),
+    returned: rows.reduce((sum, row) => sum + (row.returned || 0), 0),
     toReturn: rows.reduce((sum, row) => sum + (row.toReturn || 0), 0),
   }), [rows]);
 
@@ -30,10 +31,11 @@ export const IssuedCansScreen = ({ navigation }: any) => {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>20 Litre Cans</Text>
       <Text style={styles.subtitle}>Each client, how many cans were given, and how many are still to return.</Text>
-      <View style={styles.chips}>
-        <Chip label={`Clients ${totals.clients}`} />
-        <Chip label={`Given ${totals.given}`} />
-        <Chip label={`To return ${totals.toReturn}`} />
+      <View style={styles.summary}>
+        <Summary value={totals.clients} label="Clients" />
+        <Summary value={totals.given} label="Given" />
+        <Summary value={totals.returned} label="Returned" />
+        <Summary value={totals.toReturn} label="To return" highlight />
       </View>
       <Input label="Search client" placeholder="Name or mobile" value={search} onChangeText={setSearch} />
       {filtered.length === 0 ? (
@@ -47,12 +49,16 @@ export const IssuedCansScreen = ({ navigation }: any) => {
           onPress={() => navigation.navigate('ShopCustomerDetail', { customerId: row.customerId })}
         >
           <Card style={styles.card}>
-            <Text style={styles.name}>{row.name}</Text>
-            <Text style={styles.meta}>{row.mobile}</Text>
+            <View style={styles.cardTop}>
+              <View style={styles.who}>
+                <Text style={styles.name}>{row.name}</Text>
+                <Text style={styles.meta}>{row.mobile}</Text>
+              </View>
+            </View>
             <View style={styles.counts}>
-              <Text style={styles.count}>Given {row.given || 0}</Text>
-              <Text style={styles.count}>Returned {row.returned || 0}</Text>
-              <Text style={styles.pending}>To return {row.toReturn || 0}</Text>
+              <Count value={row.given || 0} label="Given" />
+              <Count value={row.returned || 0} label="Returned" />
+              <Count value={row.toReturn || 0} label="To return" highlight />
             </View>
           </Card>
         </TouchableOpacity>
@@ -61,9 +67,17 @@ export const IssuedCansScreen = ({ navigation }: any) => {
   );
 };
 
-const Chip = ({ label }: { label: string }) => (
-  <View style={styles.chip}>
-    <Text style={styles.chipText}>{label}</Text>
+const Summary = ({ value, label, highlight }: { value: number; label: string; highlight?: boolean }) => (
+  <View style={styles.summaryItem}>
+    <Text style={[styles.summaryValue, highlight && styles.highlight]}>{value}</Text>
+    <Text style={styles.summaryLabel}>{label}</Text>
+  </View>
+);
+
+const Count = ({ value, label, highlight }: { value: number; label: string; highlight?: boolean }) => (
+  <View style={styles.countBox}>
+    <Text style={[styles.countValue, highlight && styles.highlight]}>{value}</Text>
+    <Text style={styles.countLabel}>{label}</Text>
   </View>
 );
 
@@ -72,15 +86,20 @@ const styles = StyleSheet.create({
   content: { padding: spacing.md, paddingBottom: spacing.xl },
   title: { fontSize: typography.fontSize['2xl'], fontWeight: typography.fontWeight.bold, color: colors.textPrimary },
   subtitle: { color: colors.textSecondary, marginTop: spacing.xs, marginBottom: spacing.md },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
-  chip: { backgroundColor: colors.white, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
-  chipText: { fontSize: typography.fontSize.sm, color: colors.textSecondary },
+  summary: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  summaryItem: { flex: 1, backgroundColor: colors.white, borderRadius: 12, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs, alignItems: 'center' },
+  summaryValue: { fontSize: typography.fontSize.xl, fontWeight: typography.fontWeight.bold, color: colors.textPrimary },
+  summaryLabel: { marginTop: 2, fontSize: typography.fontSize.xs, color: colors.textSecondary, textAlign: 'center' },
   card: { marginTop: spacing.md, padding: spacing.md },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  who: { flex: 1, minWidth: 0 },
   name: { fontSize: typography.fontSize.lg, fontWeight: typography.fontWeight.semibold, color: colors.textPrimary },
   meta: { color: colors.textSecondary, marginTop: 2 },
-  counts: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.sm },
-  count: { color: colors.textPrimary, fontWeight: typography.fontWeight.medium },
-  pending: { color: colors.primary, fontWeight: typography.fontWeight.bold },
+  counts: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  countBox: { flex: 1, backgroundColor: colors.background, borderRadius: 10, paddingVertical: spacing.sm, alignItems: 'center' },
+  countValue: { fontSize: typography.fontSize.xl, fontWeight: typography.fontWeight.bold, color: colors.textPrimary },
+  countLabel: { marginTop: 2, fontSize: typography.fontSize.xs, color: colors.textSecondary },
+  highlight: { color: colors.primary },
   empty: { marginTop: spacing.lg, padding: spacing.lg },
   emptyText: { textAlign: 'center', color: colors.textSecondary },
 });

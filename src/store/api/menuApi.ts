@@ -66,6 +66,7 @@ export const menuApi = baseApi.injectEndpoints({
       invalidatesTags: (_result, _error, { id }) => [
         { type: 'Menu', id }, 
         'Menu',
+        'Shop',
       ],
     }),
     updateStock: builder.mutation<MenuItem, { id: number; data: UpdateStockRequest }>({
@@ -74,7 +75,7 @@ export const menuApi = baseApi.injectEndpoints({
         method: 'PUT',
         body: data,
       }),
-      invalidatesTags: (_result, _error, { id }) => [{ type: 'Menu', id }, 'Menu'],
+      invalidatesTags: (_result, _error, { id }) => [{ type: 'Menu', id }, 'Menu', 'Shop'],
     }),
     deleteMenuItem: builder.mutation<void, number>({
       query: (id) => ({

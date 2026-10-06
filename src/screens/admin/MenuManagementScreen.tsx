@@ -78,7 +78,6 @@ export const MenuManagementScreen = () => {
     category: 'water' as 'water' | 'beverage',
     rate: '',
     stockQuantity: '',
-    lowStockThreshold: '10',
     image: '',
     description: '',
   });
@@ -164,7 +163,6 @@ export const MenuManagementScreen = () => {
       category: 'water',
       rate: '',
       stockQuantity: '',
-      lowStockThreshold: '10',
       image: '',
       description: '',
     });
@@ -184,7 +182,6 @@ export const MenuManagementScreen = () => {
       category: item.category as 'water' | 'beverage',
       rate: item.rate.toString(),
       stockQuantity: item.stockQuantity?.toString() || '0',
-      lowStockThreshold: item.lowStockThreshold?.toString() || '10',
       image: imageUrl,
       description: (item.description ?? '') as string,
     });
@@ -203,7 +200,6 @@ export const MenuManagementScreen = () => {
     
     const rate = parseFloat(productForm.rate);
     const stockQuantity = parseInt(productForm.stockQuantity);
-    const lowStockThreshold = parseInt(productForm.lowStockThreshold);
     
     if (isNaN(rate) || rate <= 0) {
       Alert.alert('Error', 'Please enter a valid price');
@@ -229,7 +225,6 @@ export const MenuManagementScreen = () => {
           category: productForm.category as any,
           rate,
           stockQuantity,
-          lowStockThreshold,
           description: productForm.description?.trim() ? productForm.description : null,
         };
         
@@ -287,7 +282,6 @@ export const MenuManagementScreen = () => {
           category: productForm.category as any,
           rate,
           stockQuantity,
-          lowStockThreshold,
           image: effectivePrimaryImage,
           description: productForm.description?.trim() ? productForm.description : null,
         }).unwrap();
@@ -718,15 +712,6 @@ export const MenuManagementScreen = () => {
                 onChangeText={(text) => setProductForm({ ...productForm, stockQuantity: text })}
                 keyboardType="numeric"
                 placeholder="e.g., 100"
-              />
-              
-              <Text style={styles.inputLabel}>Low Stock Threshold</Text>
-              <TextInput
-                style={styles.input}
-                value={productForm.lowStockThreshold}
-                onChangeText={(text) => setProductForm({ ...productForm, lowStockThreshold: text })}
-                keyboardType="numeric"
-                placeholder="e.g., 10"
               />
               
               <Text style={styles.inputLabel}>Product Photos</Text>

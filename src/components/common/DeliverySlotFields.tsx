@@ -12,6 +12,7 @@ type Props = {
   onCustomDateChange: (value: string) => void;
   time: string;
   onTimeChange: (value: string) => void;
+  hideDate?: boolean;
 };
 
 export const toDeliveryYmd = (offsetDays: number) => {
@@ -73,6 +74,7 @@ export const DeliverySlotFields = ({
   onCustomDateChange,
   time,
   onTimeChange,
+  hideDate = false,
 }: Props) => {
   const today = toDeliveryYmd(0);
   const scheduledDate = deliveryDateFor(choice, customDate);
@@ -90,11 +92,11 @@ export const DeliverySlotFields = ({
   }, []);
 
   useEffect(() => {
-    if (!scheduledDate || isFutureDeliverySlot(scheduledDate, time)) return;
+    if (hideDate || !scheduledDate || isFutureDeliverySlot(scheduledDate, time)) return;
     const slots = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`);
     const next = slots.find((slot) => isFutureDeliverySlot(scheduledDate, slot));
     if (next) onTimeChange(next);
-  }, [scheduledDate, time, onTimeChange]);
+  }, [hideDate, scheduledDate, time, onTimeChange]);
 
   useEffect(() => {
     const parts = clockParts(time);
@@ -104,7 +106,7 @@ export const DeliverySlotFields = ({
 
   const applyClock = (hour12: number, minute: number, suffix: 'AM' | 'PM') => {
     const value = toClockValue(hour12, minute, suffix);
-    if (scheduledDate && !isFutureDeliverySlot(scheduledDate, value)) return false;
+    if (!hideDate && scheduledDate && !isFutureDeliverySlot(scheduledDate, value)) return false;
     onTimeChange(value);
     return true;
   };
@@ -132,6 +134,8 @@ export const DeliverySlotFields = ({
 
   return (
     <View>
+      {!hideDate && (
+      <View>
       <View style={styles.choiceRow}>
         {(['Today', 'Tomorrow', 'Date'] as DeliveryChoice[]).map((item) => (
           <TouchableOpacity
@@ -173,8 +177,10 @@ export const DeliverySlotFields = ({
           )}
         </View>
       )}
+      </View>
+      )}
       <Text style={styles.hint}>Time</Text>
-      {scheduledDate === today && !earliestToday ? (
+      {!hideDate && scheduledDate === today && !earliestToday ? (
         <Text style={styles.hint}>No time left today. Choose Tomorrow or another date.</Text>
       ) : (
         <View style={styles.clockBox}>

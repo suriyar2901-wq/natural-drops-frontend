@@ -31,7 +31,7 @@ export const OrderManagementScreen = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const [category, setCategory] = useState<'active' | 'complete'>('active');
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | 'ALL'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | 'ALL' | 'REGULAR'>('ALL');
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [sellerFilter, setSellerFilter] = useState<string>('ALL');
   const [fromDate, setFromDate] = useState<string>(''); // yyyy-MM-dd
@@ -200,6 +200,9 @@ export const OrderManagementScreen = () => {
       list = list.filter((order) => (order.sellerBusinessName || '').trim() === sellerFilter);
     }
     list = list.filter((order) => {
+      if (statusFilter === 'REGULAR') {
+        return (order.billingNotes || '').toLowerCase().includes('regular');
+      }
       const status = normalizeStatus(order.status);
       if (statusFilter === OrderStatus.CONFIRMED) {
         return status === normalizeStatus(OrderStatus.CONFIRMED)
@@ -281,7 +284,8 @@ export const OrderManagementScreen = () => {
       const date = toLocalYmd(new Date());
       const filename = `orders_${date}.pdf`;
       const params = new URLSearchParams();
-      if (statusFilter !== 'ALL') params.set('status', String(statusFilter));
+      if (statusFilter === 'REGULAR') params.set('kind', 'regular');
+      else if (statusFilter !== 'ALL') params.set('status', String(statusFilter));
       else if (category === 'complete') params.set('status', OrderStatus.DELIVERED);
       if (fromDate) params.set('fromDate', fromDate);
       if (toDate) params.set('toDate', toDate);
@@ -799,9 +803,11 @@ export const OrderManagementScreen = () => {
                 <Text style={styles.statusMenuText}>
                   {statusFilter === 'ALL'
                     ? 'All status'
-                    : statusFilter === OrderStatus.CANCELED
-                      ? 'Cancelled'
-                      : formatOrderStatus(statusFilter)}
+                    : statusFilter === 'REGULAR'
+                      ? 'Regular order'
+                      : statusFilter === OrderStatus.CANCELED
+                        ? 'Cancelled'
+                        : formatOrderStatus(statusFilter)}
                 </Text>
                 <Text style={styles.statusMenuCaret}>{statusMenuOpen ? '▴' : '▾'}</Text>
               </TouchableOpacity>
@@ -813,6 +819,7 @@ export const OrderManagementScreen = () => {
                     { id: OrderStatus.CONFIRMED, label: 'Confirmed' },
                     { id: OrderStatus.DELIVERED, label: 'Delivered' },
                     { id: OrderStatus.CANCELED, label: 'Cancelled' },
+                    { id: 'REGULAR' as const, label: 'Regular order' },
                   ]).map((option) => (
                     <TouchableOpacity
                       key={option.id}

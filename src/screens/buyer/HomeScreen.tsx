@@ -7,7 +7,7 @@ import { useGetMenuItemsQuery } from '../../store/api/menuApi';
 import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
 import { useGetBuyerOrdersQuery } from '../../store/api/orderApi';
 import { useCart, useAuth } from '../../hooks';
-import { moneyValue } from '../../types/shop.types';
+import { moneyValue, orderBillPending } from '../../types/shop.types';
 import { MenuItem, Order } from '../../types';
 import { formatCurrency, formatDeliverySlot } from '../../utils/formatters';
 import { shopAvailability } from '../../utils/shopHours';
@@ -37,6 +37,11 @@ export const HomeScreen = ({ navigation }: any) => {
     });
     return open[0];
   }, [buyerOrders]);
+  const dueAmount = useMemo(() => {
+    const openBills = (buyerOrders as Order[]).filter((order) => order.status !== 'canceled');
+    if (openBills.length === 0) return moneyValue(account?.due);
+    return openBills.reduce((sum, order) => sum + orderBillPending(order), 0);
+  }, [buyerOrders, account?.due]);
   const shopHours = shopAvailability(account?.shopOpenTime, account?.shopCloseTime, account?.shopOpenDays, account?.shopLeaveDates);
   const shopClosed = isBuyer() && shopHours.hasHours && !shopHours.openNow;
 
@@ -229,7 +234,7 @@ export const HomeScreen = ({ navigation }: any) => {
               style={styles.accountChip}
               onPress={() => navigation.navigate('BuyerPayments')}
             >
-              <Text style={styles.accountValue}>{formatCurrency(moneyValue(account?.due))}</Text>
+              <Text style={styles.accountValue}>{formatCurrency(dueAmount)}</Text>
               <Text style={styles.accountLabel}>Due</Text>
             </TouchableOpacity>
             <TouchableOpacity

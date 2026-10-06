@@ -1,10 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Platform, TextInput } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useDispatch } from 'react-redux';
 import { colors, typography, spacing } from '../../theme';
 import { Card, EmptyState, Loading, OrderTimer } from '../../components/common';
 import { useAuth, useCart } from '../../hooks';
-import { useGetBuyerOrdersQuery } from '../../store/api/orderApi';
+import { useGetBuyerOrdersQuery, useGetBuyerRegularOrderQuery } from '../../store/api/orderApi';
+import { replaceCart } from '../../store/slices/cartSlice';
 import { 
   useGetUnreadBuyerNotificationsQuery, 
   useGetUnreadBuyerNotificationCountQuery,
@@ -13,14 +15,25 @@ import {
 import { MenuItem, Order, OrderStatus } from '../../types';
 import { formatCurrency, formatDateTime, formatOrderStatus } from '../../utils/formatters';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
+import { API_BASE_URL } from '../../utils/constants';
+import { storageService } from '../../services/storage.service';
 import { ORDER_STATUS_COLORS } from '../../utils/constants';
 import { useNotifications } from '../../hooks/useNotifications';
 import { NotificationPreview } from '../../components/common/NotificationPreview';
 import { DeliverySlotBadge } from '../../components/common/DeliverySlotBadge';
+import { Ionicons } from '@expo/vector-icons';
+
+const isRegularOrder = (order: Order) => (order.billingNotes || '').toLowerCase().includes('regular');
 
 export const OrdersScreen = ({ navigation }: any) => {
   const { addToCart } = useCart();
+  const dispatch = useDispatch();
   const { user } = useAuth();
+  const [orderFilter, setOrderFilter] = useState<'all' | 'normal' | 'regular'>('all');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const { data: regularPlan } = useGetBuyerRegularOrderQuery(undefined, { skip: !user });
   const { data: orders, isLoading, refetch, error } = useGetBuyerOrdersQuery(user?.id || 0, {
     skip: !user,
     // Polling disabled - only refetch on screen focus or manual refresh
@@ -152,16 +165,172 @@ export const OrdersScreen = ({ navigation }: any) => {
     else navigation.navigate('Cart');
   };
 
+  const openCart = (params?: { orderKind: 'regular' }) => {
+    const parentNav = navigation?.getParent?.();
+    if (parentNav?.navigate) parentNav.navigate('Cart', params);
+    else navigation.navigate('Cart', params);
+  };
+
+  const editRegularOrder = (order: Order) => {
+    const planItems = Array.isArray(regularPlan?.items) ? regularPlan.items : [];
+    const lines = planItems.length > 0
+      ? planItems.map((line: any) => ({
+          id: Number(line.menuItemId),
+          name: line.itemName,
+          quantity: Number(line.quantity) || 1,
+          rate: Number(line.rate) || 0,
+        }))
+      : (order.items || [])
+          .filter((line) => line.menuItemId && line.quantity > 0)
+          .map((line) => ({
+            id: line.menuItemId,
+            name: line.itemName,
+            quantity: line.quantity,
+            rate: line.rate || 0,
+          }));
+    if (lines.length === 0) {
+      showErrorToast('This regular order has no products to edit');
+      return;
+    }
+    dispatch(replaceCart(lines.map((line) => ({
+      quantity: line.quantity,
+      menuItem: {
+        id: line.id,
+        name: line.name,
+        category: 'water',
+        stockQuantity: 0,
+        rate: line.rate,
+        createdAt: '',
+        updatedAt: '',
+      } as MenuItem,
+    }))));
+    openCart({ orderKind: 'regular' });
+  };
+
+  const orderDay = (order: Order) => String(order.orderDate || '').slice(0, 10);
+
+  const visibleOrders = useMemo(() => {
+    let list = orders || [];
+    if (orderFilter === 'regular') list = list.filter(isRegularOrder);
+    else if (orderFilter === 'normal') list = list.filter((order) => !isRegularOrder(order));
+    if (fromDate) list = list.filter((order) => orderDay(order) >= fromDate);
+    if (toDate) list = list.filter((order) => orderDay(order) <= toDate);
+    return list;
+  }, [orders, orderFilter, fromDate, toDate]);
+
+  const exportOrders = async () => {
+    if (fromDate && toDate && fromDate > toDate) {
+      showErrorToast('From date must be on or before the To date');
+      return;
+    }
+    if (visibleOrders.length === 0) {
+      showErrorToast('No orders in this date range');
+      return;
+    }
+    try {
+      setExporting(true);
+      const params = new URLSearchParams();
+      if (fromDate) params.set('fromDate', fromDate);
+      if (toDate) params.set('toDate', toDate);
+      if (orderFilter !== 'all') params.set('kind', orderFilter);
+      const buyerName = user?.fullName || user?.username || 'Buyer';
+      params.set('sellerName', buyerName);
+      const token = await storageService.getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/orders/export/pdf?${params.toString()}`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        let message = 'Could not export orders';
+        try {
+          const body = JSON.parse(text);
+          message = body?.message || message;
+        } catch {
+          if (text) message = text;
+        }
+        throw new Error(message);
+      }
+      const blob = await res.blob();
+      const filename = `my-orders${fromDate ? `-${fromDate}` : ''}${toDate ? `-to-${toDate}` : ''}.pdf`;
+      if (Platform.OS === 'web') {
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+      }
+      showSuccessToast('Orders exported');
+    } catch (exportError: any) {
+      showErrorToast(exportError?.message || 'Could not export orders');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const downloadBill = async (order: Order) => {
+    try {
+      setExporting(true);
+      const buyerName = user?.fullName || user?.username || 'Buyer';
+      const token = await storageService.getAuthToken();
+      const res = await fetch(
+        `${API_BASE_URL}/orders/${order.id}/export/pdf?sellerName=${encodeURIComponent(buyerName)}`,
+        {
+          method: 'GET',
+          credentials: 'include',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
+      );
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        let message = 'Could not download this bill';
+        try {
+          message = JSON.parse(text)?.message || message;
+        } catch {
+          if (text) message = text;
+        }
+        throw new Error(message);
+      }
+      const blob = await res.blob();
+      const filename = `order-${order.id}-bill.pdf`;
+      if (Platform.OS === 'web') {
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+      }
+      showSuccessToast('Bill downloaded');
+    } catch (downloadError: any) {
+      showErrorToast(downloadError?.message || 'Could not download this bill');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const renderOrder = ({ item }: { item: Order }) => {
     return (
         <Card style={styles.orderCard}>
+      <TouchableOpacity
+        style={styles.billDownload}
+        onPress={() => downloadBill(item)}
+        disabled={exporting}
+      >
+        <Ionicons name="download-outline" size={18} color={colors.primary} />
+      </TouchableOpacity>
       <TouchableOpacity
         onPress={() => navigation.navigate('OrderDetail', { order: item })}
       >
           <View style={styles.orderHeader}>
             <Text style={styles.orderId}>Order #{item.id}</Text>
             <View style={styles.headerRight}>
-              {/* Timer at top-right (above status) */}
               <OrderTimer order={item} position="header-right" />
               <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
                 <Text style={styles.statusText}>{formatOrderStatus(item.status)}</Text>
@@ -242,9 +411,16 @@ export const OrdersScreen = ({ navigation }: any) => {
           </View>
         </View>
       </TouchableOpacity>
-        <TouchableOpacity style={styles.reorderButton} onPress={() => reorder(item)}>
-          <Text style={styles.reorderText}>Order again</Text>
-        </TouchableOpacity>
+        <View style={styles.actionRow}>
+          {isRegularOrder(item) && (
+            <TouchableOpacity style={styles.editButton} onPress={() => editRegularOrder(item)}>
+              <Text style={styles.editText}>Edit regular order</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.reorderButton} onPress={() => reorder(item)}>
+            <Text style={styles.reorderText}>Order again</Text>
+          </TouchableOpacity>
+        </View>
       </Card>
     );
   };
@@ -273,8 +449,78 @@ export const OrdersScreen = ({ navigation }: any) => {
         onRead={handleReadPreview}
       />
 
+      <View style={styles.filterRow}>
+        {([
+          { id: 'all' as const, label: 'All' },
+          { id: 'normal' as const, label: 'Normal order' },
+          { id: 'regular' as const, label: 'Regular order' },
+        ]).map((option) => {
+          const selected = orderFilter === option.id;
+          return (
+            <TouchableOpacity
+              key={option.id}
+              style={[styles.filterChip, selected && styles.filterChipActive]}
+              onPress={() => setOrderFilter(option.id)}
+            >
+              <Text style={[styles.filterText, selected && styles.filterTextActive]}>{option.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <View style={styles.exportRow}>
+        <View style={styles.dateBox}>
+          <Text style={styles.dateLabel}>From</Text>
+          {Platform.OS === 'web' ? (
+            React.createElement('input', {
+              type: 'date',
+              value: fromDate,
+              onChange: (event: any) => setFromDate(event.target.value || ''),
+              style: dateInputStyle,
+            })
+          ) : (
+            <TextInput
+              value={fromDate}
+              onChangeText={setFromDate}
+              placeholder="yyyy-mm-dd"
+              style={styles.dateInput}
+            />
+          )}
+        </View>
+        <View style={styles.dateBox}>
+          <Text style={styles.dateLabel}>To</Text>
+          {Platform.OS === 'web' ? (
+            React.createElement('input', {
+              type: 'date',
+              value: toDate,
+              min: fromDate || undefined,
+              onChange: (event: any) => setToDate(event.target.value || ''),
+              style: dateInputStyle,
+            })
+          ) : (
+            <TextInput
+              value={toDate}
+              onChangeText={setToDate}
+              placeholder="yyyy-mm-dd"
+              style={styles.dateInput}
+            />
+          )}
+        </View>
+        {(fromDate || toDate) && (
+          <TouchableOpacity onPress={() => { setFromDate(''); setToDate(''); }}>
+            <Text style={styles.clearDates}>Clear</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={[styles.exportButton, exporting && styles.exportButtonDisabled]}
+          onPress={exportOrders}
+          disabled={exporting}
+        >
+          <Text style={styles.exportButtonText}>{exporting ? 'Exporting...' : 'Export'}</Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
-        data={orders || []}
+        data={visibleOrders}
         renderItem={renderOrder}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContent}
@@ -291,8 +537,8 @@ export const OrdersScreen = ({ navigation }: any) => {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <EmptyState
-              title="No orders yet"
-              message="Start shopping to place your first order."
+              title={(fromDate || toDate) ? 'No orders in this date range' : orderFilter === 'all' ? 'No orders yet' : orderFilter === 'regular' ? 'No regular orders' : 'No normal orders'}
+              message={(fromDate || toDate) ? 'Choose another date range, or clear the dates.' : orderFilter === 'all' ? 'Start shopping to place your first order.' : 'Try another filter, or place an order from the shop.'}
               actionLabel="Browse shop"
               onAction={() => navigation.navigate('Home')}
             />
@@ -308,6 +554,17 @@ export const OrdersScreen = ({ navigation }: any) => {
   );
 };
 
+const dateInputStyle = {
+  border: '1px solid #d1d5db',
+  borderRadius: 8,
+  padding: '8px 10px',
+  fontSize: 14,
+  backgroundColor: '#fff',
+  color: '#111827',
+  width: '100%',
+  boxSizing: 'border-box' as const,
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -316,8 +573,96 @@ const styles = StyleSheet.create({
   listContent: {
     padding: spacing.md,
   },
-  reorderButton: {
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
+  filterChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.white,
+  },
+  filterChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  filterText: {
+    color: colors.textPrimary,
+  },
+  filterTextActive: {
+    color: colors.white,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  exportRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  dateBox: {
+    width: 160,
+    maxWidth: '46%',
+  },
+  dateLabel: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  dateInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.white,
+    color: colors.textPrimary,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  clearDates: {
+    color: colors.primary,
+    fontWeight: typography.fontWeight.semibold,
+    paddingBottom: spacing.sm,
+  },
+  exportButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  exportButtonDisabled: {
+    opacity: 0.6,
+  },
+  exportButtonText: {
+    color: colors.white,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
     marginTop: spacing.sm,
+  },
+  editButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  editText: {
+    color: colors.primary,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  reorderButton: {
     alignSelf: 'flex-start',
     backgroundColor: colors.primary,
     borderRadius: 8,
@@ -344,6 +689,21 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'flex-start',
     flexShrink: 1,
+    marginTop: 36,
+  },
+  billDownload: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   orderId: {
     flexShrink: 1,

@@ -117,6 +117,7 @@ export const orderApi = baseApi.injectEndpoints({
       invalidatesTags: (_result, _error, { id }) => [
         { type: 'Order', id },
         'Order',
+        'Shop',
         'BuyerNotification',
       ],
     }),
@@ -175,6 +176,7 @@ export const orderApi = baseApi.injectEndpoints({
           { type: 'Order', id }, 
           'Order', 
           'Menu',
+          'Shop',
           'BuyerNotification'
         ];
         // If we have the order result, also invalidate buyer-specific queries
@@ -289,6 +291,7 @@ export const orderApi = baseApi.injectEndpoints({
           { type: 'Order', id }, 
           'Order', 
           'Menu',
+          'Shop',
           'BuyerNotification'
         ];
         // If we have the order result, also invalidate buyer-specific queries
@@ -339,6 +342,34 @@ export const orderApi = baseApi.injectEndpoints({
         return tags;
       },
     }),
+
+    getBuyerRegularOrder: builder.query<any, void>({
+      query: () => '/buyer/regular-order',
+      transformResponse: (response: any) => response?.data ?? response ?? null,
+      providesTags: ['BuyerRegularOrder'],
+    }),
+    saveBuyerRegularOrder: builder.mutation<any, Record<string, unknown>>({
+      query: (body) => ({
+        url: '/buyer/regular-order',
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['BuyerRegularOrder'],
+    }),
+    pauseBuyerRegularOrder: builder.mutation<any, void>({
+      query: () => ({
+        url: '/buyer/regular-order/pause',
+        method: 'POST',
+      }),
+      invalidatesTags: ['BuyerRegularOrder'],
+    }),
+    resumeBuyerRegularOrder: builder.mutation<any, void>({
+      query: () => ({
+        url: '/buyer/regular-order/resume',
+        method: 'POST',
+      }),
+      invalidatesTags: ['BuyerRegularOrder'],
+    }),
   }),
 });
 
@@ -359,5 +390,9 @@ export const {
   useCancelOrderMutation,
   useDeleteOrderMutation,
   useUpdateOrderBillMutation,
+  useGetBuyerRegularOrderQuery,
+  useSaveBuyerRegularOrderMutation,
+  usePauseBuyerRegularOrderMutation,
+  useResumeBuyerRegularOrderMutation,
 } = orderApi;
 

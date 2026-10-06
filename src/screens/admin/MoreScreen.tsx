@@ -24,11 +24,11 @@ export const MoreScreen = ({ navigation }: any) => {
       onPress: () => navigation.navigate('OrderManagement'),
       badge: unreadCount > 0 ? unreadCount : undefined,
     },
-    { label: '🛒 Manage Products', onPress: () => navigation.navigate('MenuManagement') },
   ];
 
   if (isStrictAdmin()) {
     actions.push(
+      { label: '🛒 Manage Products', onPress: () => navigation.navigate('MenuManagement') },
       { label: '👥 Manage Users', onPress: () => navigation.navigate('UserManagement') },
       { label: '⚙️ App Settings', onPress: () => navigation.navigate('AppSettings') },
       { label: '🏪 Manage Sellers', onPress: () => navigation.navigate('SellerList') },
@@ -39,7 +39,7 @@ export const MoreScreen = ({ navigation }: any) => {
 
   if (isSeller()) {
     actions.push(
-      { label: '👥 Shop Customers', onPress: () => openParent('ShopCustomers') },
+      { label: '👤 Profile', onPress: () => navigation.navigate('Profile') },
       { label: '🧴 20 Litre Cans', onPress: () => openParent('IssuedCans') },
       { label: '🧑‍🤝‍🧑 My Buyers', onPress: () => openParent('ShopBuyers') },
       { label: '🧾 Shop Profile / QR', onPress: () => openParent('ShopProfile') },

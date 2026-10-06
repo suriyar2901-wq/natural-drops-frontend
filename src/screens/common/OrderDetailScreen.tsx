@@ -8,15 +8,19 @@ import {
   useCancelOrderMutation,
   useConfirmOrderMutation,
   useDeliverOrderMutation,
+  useGetOrderByIdQuery,
   useUpdateOrderBillMutation,
   useUpdateOrderMutation,
 } from '../../store/api/orderApi';
 import { MenuItem, Order, OrderStatus } from '../../types';
 import { canEditOrderBill, formatCurrency, formatDateTime, formatOrderStatus } from '../../utils/formatters';
+import { orderBillPending } from '../../types/shop.types';
 import { DeliverySlotBadge } from '../../components/common/DeliverySlotBadge';
 import { useAuth } from '../../hooks';
 import { storageService } from '../../services/storage.service';
+import { API_BASE_URL } from '../../utils/constants';
 import { showConfirmAlert, showErrorAlert, showSuccessAlert } from '../../utils/alert';
+import { Ionicons } from '@expo/vector-icons';
 
 const VideoTag: any = Platform.OS === 'web' ? 'video' : null;
 
@@ -31,11 +35,16 @@ const statusColor = (status: string): string => {
 export const OrderDetailScreen = () => {
   const route = useRoute<any>();
   const routeOrder: Order | undefined = route?.params?.order;
+  const routeOrderId = Number(route?.params?.orderId || routeOrder?.id || 0);
+  const { data: fetchedOrder, isLoading: loadingOrder, isError: orderError } = useGetOrderByIdQuery(routeOrderId, {
+    skip: !routeOrderId,
+  });
   const [order, setOrder] = useState<Order | undefined>(routeOrder);
   const [billModalVisible, setBillModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [sellerName, setSellerName] = useState('seller');
-  const { isAdmin } = useAuth();
+  const { isAdmin, isBuyer } = useAuth();
+  const [downloadingBill, setDownloadingBill] = useState(false);
   const { data: menuItems, isLoading } = useGetMenuItemsQuery();
   const [updateOrderBill, { isLoading: updatingBill }] = useUpdateOrderBillMutation();
   const [confirmOrder, { isLoading: confirming }] = useConfirmOrderMutation();
@@ -44,8 +53,9 @@ export const OrderDetailScreen = () => {
   const [updateOrder, { isLoading: updatingOrder }] = useUpdateOrderMutation();
 
   useEffect(() => {
-    setOrder(routeOrder);
-  }, [routeOrder]);
+    if (fetchedOrder?.id) setOrder(fetchedOrder);
+    else if (routeOrder) setOrder(routeOrder);
+  }, [routeOrder, fetchedOrder]);
 
   useEffect(() => {
     const loadSellerName = async () => {
@@ -66,6 +76,48 @@ export const OrderDetailScreen = () => {
   const isConfirmed = status === OrderStatus.CONFIRMED || status === OrderStatus.PROCESSING;
   const acting = confirming || canceling || delivering || updatingOrder;
   const canEditOrder = isAdmin() && (isPending || isConfirmed);
+
+  const downloadBill = async () => {
+    if (!order || !isBuyer()) return;
+    try {
+      setDownloadingBill(true);
+      const token = await storageService.getAuthToken();
+      const res = await fetch(
+        `${API_BASE_URL}/orders/${order.id}/export/pdf?sellerName=${encodeURIComponent(sellerName)}`,
+        {
+          method: 'GET',
+          credentials: 'include',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
+      );
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        let message = 'Could not download this bill';
+        try {
+          message = JSON.parse(text)?.message || message;
+        } catch {
+          if (text) message = text;
+        }
+        throw new Error(message);
+      }
+      const blob = await res.blob();
+      if (Platform.OS === 'web') {
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `order-${order.id}-bill.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+      }
+      showSuccessAlert('Bill downloaded');
+    } catch (error: any) {
+      showErrorAlert(error?.message || 'Could not download this bill');
+    } finally {
+      setDownloadingBill(false);
+    }
+  };
 
   const handleSaveOrder = async (data: any) => {
     if (!order) return;
@@ -154,10 +206,13 @@ export const OrderDetailScreen = () => {
   }, [menuItems]);
 
   if (!order) {
+    if (loadingOrder) {
+      return <Loading fullScreen message="Loading order bill..." />;
+    }
     return (
       <View style={styles.container}>
         <Text style={styles.title}>Order Details</Text>
-        <Text style={styles.muted}>No order provided.</Text>
+        <Text style={styles.muted}>{orderError ? 'Could not open this order bill.' : 'No order provided.'}</Text>
       </View>
     );
   }
@@ -184,6 +239,15 @@ export const OrderDetailScreen = () => {
             <View style={[styles.statusBadge, { backgroundColor: statusColor(order.status) }]}>
               <Text style={styles.statusText}>{formatOrderStatus(order.status)}</Text>
             </View>
+            {isBuyer() && (
+              <TouchableOpacity
+                style={[styles.editIconButton, downloadingBill && styles.editIconButtonDisabled]}
+                onPress={downloadBill}
+                disabled={downloadingBill}
+              >
+                <Ionicons name="download-outline" size={18} color={colors.primary} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
         <Text style={styles.muted}>{formatDateTime(order.orderDate || (order as any).createdAt)}</Text>
@@ -192,23 +256,14 @@ export const OrderDetailScreen = () => {
         {!!order.buyerPhone && <Text style={styles.muted}>{order.buyerPhone}</Text>}
         <Text style={styles.sectionLabel}>Delivery Address</Text>
         <Text style={styles.text}>{order.deliveryAddress || order.buyerAddress || 'Not specified'}</Text>
-        <Text style={styles.sectionLabel}>
-          {order.finalBillAmount ? 'Final Bill Amount' : 'Total Amount'}
-        </Text>
-        <Text style={styles.total}>
-          {formatCurrency(order.finalBillAmount || order.total || (order as any).totalAmount)}
+        <Text style={styles.sectionLabel}>Bill total</Text>
+        <Text style={styles.total}>{formatCurrency(order.total || (order as any).totalAmount || 0)}</Text>
+        <Text style={styles.originalAmount}>
+          Paid {formatCurrency(Math.max(0, (Number(order.total) || 0) - orderBillPending(order)))}
+          {' · '}
+          Balance {formatCurrency(orderBillPending(order))}
         </Text>
         <DeliverySlotBadge order={order} />
-        {order.finalBillAmount && order.finalBillAmount !== order.total && (
-          <Text style={styles.originalAmount}>
-            Original: {formatCurrency(order.total)}
-          </Text>
-        )}
-        {order.paymentStatus === 'PARTIALLY_PAID' && order.finalBillAmount != null && order.total > order.finalBillAmount && (
-          <Text style={styles.balanceAmount}>
-            Balance: {formatCurrency(order.total - order.finalBillAmount)}
-          </Text>
-        )}
         
         {order.paymentStatus && (
           <View style={[

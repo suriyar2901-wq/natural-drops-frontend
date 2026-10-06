@@ -88,38 +88,6 @@ export const shopApi = baseApi.injectEndpoints({
       query: () => '/shop/company',
       providesTags: ['Shop'],
     }),
-    getRegularBuyers: builder.query<Array<{
-      buyerId: number;
-      buyerName: string;
-      active: boolean;
-      orderedToday: boolean;
-      promptTime?: string | null;
-      deliveryTime?: string | null;
-      notes?: string | null;
-      items: Array<{ menuItemId: number; itemName: string; quantity: number; rate: number }>;
-    }>, void>({
-      query: () => '/shop/regular-buyers',
-      providesTags: ['Shop'],
-    }),
-    saveRegularBuyer: builder.mutation<void, { buyerId: number; promptTime?: string; deliveryTime?: string; notes?: string; items: Array<{ menuItemId: number; quantity: number }> }>({
-      query: ({ buyerId, items, promptTime, deliveryTime, notes }) => ({
-        url: `/shop/regular-buyers/${buyerId}`,
-        method: 'PUT',
-        body: { items, promptTime, deliveryTime, notes },
-      }),
-      invalidatesTags: ['Shop'],
-    }),
-    getRegularOrderPrompt: builder.query<{ buyerCount: number; buyerNames: string[] }, void>({
-      query: () => '/shop/regular-orders/today',
-      providesTags: ['Shop'],
-    }),
-    createTodayRegularOrders: builder.mutation<{ created: number; orderIds: number[]; skipped: string[] }, void>({
-      query: () => ({
-        url: '/shop/regular-orders/today',
-        method: 'POST',
-      }),
-      invalidatesTags: ['Shop', 'Order', 'Notification', 'BuyerNotification'],
-    }),
     getShopBuyers: builder.query<any[], void>({
       query: () => '/shop/buyers',
       providesTags: ['Shop'],
@@ -213,10 +181,6 @@ export const {
   useCollectShopCansMutation,
   useCreatePhoneOrderMutation,
   useGetShopCompanyQuery,
-  useGetRegularBuyersQuery,
-  useSaveRegularBuyerMutation,
-  useGetRegularOrderPromptQuery,
-  useCreateTodayRegularOrdersMutation,
   useGetShopBuyersQuery,
   useCreateShopBuyerMutation,
   useGetShopInboxQuery,

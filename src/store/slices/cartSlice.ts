@@ -60,6 +60,10 @@ const cartSlice = createSlice({
 
       cartSlice.caseReducers.calculateTotals(state);
     },
+    replaceCart: (state, action: PayloadAction<CartItem[]>) => {
+      state.items = action.payload;
+      cartSlice.caseReducers.calculateTotals(state);
+    },
     clearCart: (state) => {
       state.items = [];
       state.totalItems = 0;
@@ -111,6 +115,7 @@ export const {
   removeFromCart,
   updateQuantity,
   clearCart,
+  replaceCart,
   setDeliveryCharge,
   setTaxRate,
   calculateTotals,

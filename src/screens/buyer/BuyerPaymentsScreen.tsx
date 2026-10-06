@@ -1,48 +1,52 @@
 import React, { useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Input, Loading } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
 import { useClaimBuyerPaymentMutation, useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
 import { useGetBuyerOrdersQuery } from '../../store/api/orderApi';
 import { useAuth } from '../../hooks';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
-import { moneyValue } from '../../types/shop.types';
+import { moneyValue, orderBillPending } from '../../types/shop.types';
 import { Order } from '../../types';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
 
 const orderSplit = (order: Order) => {
   const total = Number(order.total) || 0;
-  const billed = order.finalBillAmount == null ? null : Number(order.finalBillAmount);
+  const billed = order.finalBillAmount == null ? 0 : Number(order.finalBillAmount);
   if (order.paymentStatus === 'PAID') {
-    return { paid: billed != null && billed > 0 ? billed : total, balance: 0 };
+    return { total, paid: billed > 0 ? billed : total, balance: 0 };
   }
   if (order.paymentStatus === 'PARTIALLY_PAID') {
-    const paid = Math.min(total, Math.max(0, billed || 0));
-    return { paid, balance: Math.max(0, total - paid) };
+    const paid = Math.min(total, Math.max(0, billed));
+    return { total, paid, balance: orderBillPending(order) };
   }
-  return { paid: 0, balance: total };
+  return { total, paid: 0, balance: total };
 };
 
 const METHODS = ['UPI', 'CASH'];
 
 export const BuyerPaymentsScreen = () => {
+  const navigation = useNavigation<any>();
   const { user } = useAuth();
   const { data, isLoading, refetch } = useGetBuyerAccountSummaryQuery();
-  const { data: orders = [] } = useGetBuyerOrdersQuery(user?.id || 0, { skip: !user?.id });
+  const { data: orders = [], isLoading: ordersLoading } = useGetBuyerOrdersQuery(user?.id || 0, { skip: !user?.id });
   const [claimPayment, { isLoading: saving }] = useClaimBuyerPaymentMutation();
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('UPI');
 
-  if (isLoading) {
+  if (isLoading || ordersLoading) {
     return <Loading fullScreen message="Loading payments..." />;
   }
 
-  const due = moneyValue(data?.due);
   const ledger = data?.ledger || [];
   const orderBills = (orders as Order[])
     .filter((order) => order.status !== 'canceled')
     .slice()
     .sort((left, right) => right.id - left.id);
+  const orderDue = orderBills.reduce((sum, order) => sum + orderSplit(order).balance, 0);
+  const due = orderBills.length > 0 ? orderDue : moneyValue(data?.due);
+  const payable = moneyValue(data?.due);
 
   const save = async () => {
     const parsed = Number(amount);
@@ -50,8 +54,8 @@ export const BuyerPaymentsScreen = () => {
       showErrorToast('Enter a valid amount');
       return;
     }
-    if (parsed > due) {
-      showErrorToast(`Amount cannot exceed ${formatCurrency(due)}`);
+    if (parsed > payable) {
+      showErrorToast(`Amount cannot exceed ${formatCurrency(payable)}`);
       return;
     }
     try {
@@ -93,14 +97,20 @@ export const BuyerPaymentsScreen = () => {
       {orderBills.map((order) => {
         const split = orderSplit(order);
         return (
-          <Card key={order.id} style={styles.rowCard}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.name}>Order #{order.id}</Text>
-              <Text style={styles.name}>{order.paymentStatus === 'PAID' ? 'Paid' : order.paymentStatus === 'PARTIALLY_PAID' ? 'Partial' : 'Unpaid'}</Text>
-            </View>
-            <Text style={styles.meta}>Paid {formatCurrency(split.paid)}</Text>
-            <Text style={styles.balance}>Balance {formatCurrency(split.balance)}</Text>
-          </Card>
+          <TouchableOpacity
+            key={order.id}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('OrderDetail', { order })}
+          >
+            <Card style={styles.rowCard}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.name}>Order #{order.id}</Text>
+                <Text style={styles.name}>{order.paymentStatus === 'PAID' ? 'Paid' : order.paymentStatus === 'PARTIALLY_PAID' ? 'Partial' : 'Unpaid'}</Text>
+              </View>
+              <Text style={styles.meta}>Bill {formatCurrency(split.total)} · Paid {formatCurrency(split.paid)}</Text>
+              <Text style={styles.balance}>Balance {formatCurrency(split.balance)}</Text>
+            </Card>
+          </TouchableOpacity>
         );
       })}
 

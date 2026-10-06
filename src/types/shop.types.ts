@@ -98,3 +98,17 @@ export const moneyValue = (value: number | string | null | undefined): number =>
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed : 0;
 };
+
+export const orderBillPending = (order: {
+  status?: string;
+  paymentStatus?: string | null;
+  total?: number | string | null;
+  finalBillAmount?: number | string | null;
+}) => {
+  if (order.status === 'canceled') return 0;
+  const total = moneyValue(order.total);
+  const paid = Math.min(total, Math.max(0, moneyValue(order.finalBillAmount)));
+  if (order.paymentStatus === 'PAID') return 0;
+  if (order.paymentStatus === 'PARTIALLY_PAID') return Math.max(0, total - paid);
+  return total;
+};

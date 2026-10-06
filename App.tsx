@@ -22,27 +22,39 @@ if (Platform.OS === 'web') {
     style.textContent = `
       html, body, #root {
         height: 100% !important;
-        min-height: 100% !important;
         width: 100% !important;
         max-width: 100% !important;
-        overflow-x: hidden !important;
-      }
-      body {
         overflow: hidden !important;
       }
-      #root {
-        display: flex;
-        flex: 1 1 auto;
-        min-height: 0;
-      }
-      #root > div {
-        flex: 1 1 auto;
-        min-height: 0;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
+      #root, #root > div {
+        display: flex !important;
+        flex: 1 1 auto !important;
+        flex-direction: column !important;
+        min-height: 0 !important;
+        min-width: 0 !important;
+        height: 100% !important;
+        max-width: 100% !important;
       }
     `;
+    const calmScrollbars = () => {
+      Array.from(document.styleSheets).forEach((sheet) => {
+        let rules: CSSRuleList;
+        try {
+          rules = sheet.cssRules;
+        } catch (_error) {
+          return;
+        }
+        Array.from(rules).forEach((rule) => {
+          if (!(rule instanceof CSSStyleRule)) return;
+          if ((rule.style.transform || '').includes('translateZ')) {
+            rule.style.setProperty('transform', 'none');
+          }
+        });
+      });
+    };
+    calmScrollbars();
+    window.setTimeout(calmScrollbars, 400);
+    window.setTimeout(calmScrollbars, 1500);
     if (!style.parentNode) {
       document.head.appendChild(style);
     }
