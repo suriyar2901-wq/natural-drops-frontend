@@ -12,6 +12,7 @@ export interface ShopCustomer {
   note?: string | null;
   money: number | string;
   emptyCans: number;
+  canDeposit?: number | string | null;
 }
 
 export interface LedgerEvent {
@@ -29,9 +30,65 @@ export interface CanEvent {
   id: number;
   customerId: number;
   changeAmount: number;
+  eventType?: string | null;
+  quantity?: number | null;
+  amount?: number | string | null;
+  note?: string | null;
   copy?: string | null;
   occurredAt: string;
 }
+
+export interface CanStockSummary {
+  totalStock: number;
+  depositPerCan: number | string;
+  damaged: number;
+  missing: number;
+  withCustomers: number;
+  depositHeld: number | string;
+  logs: Array<{ id: number; changeAmount: number; copy?: string | null; occurredAt: string }>;
+}
+
+export interface CanCollectionReport {
+  date: string;
+  returned: number;
+  damaged: number;
+  missing: number;
+  replaced: number;
+  depositCollected: number | string;
+  rows: Array<{
+    id: number;
+    customerId: number;
+    name: string;
+    mobile: string;
+    eventType: string;
+    quantity: number;
+    amount: number | string;
+    copy?: string | null;
+    note?: string | null;
+    occurredAt: string;
+  }>;
+}
+
+export const canEventType = (event: { eventType?: string | null; changeAmount?: number | null }) => {
+  const type = String(event.eventType || '').trim().toUpperCase();
+  if (type) return type;
+  return (event.changeAmount || 0) < 0 ? 'RETURNED' : 'ISSUED';
+};
+
+export const canEventQuantity = (event: { quantity?: number | null; changeAmount?: number | null }) => {
+  if (event.quantity != null) return Math.abs(event.quantity);
+  return Math.abs(event.changeAmount || 0);
+};
+
+export const CAN_ENTRY_LABEL: Record<string, string> = {
+  ISSUED: 'Issued',
+  RETURNED: 'Returned',
+  DAMAGED: 'Damaged can',
+  MISSING: 'Missing can',
+  REPLACEMENT: 'Can replacement',
+  ADJUSTMENT: 'Can adjustment',
+  DEPOSIT: 'Can deposit',
+};
 
 export interface ShopProfile {
   id?: number;

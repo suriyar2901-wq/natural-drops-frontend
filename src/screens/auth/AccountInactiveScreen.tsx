@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Linking, Platform, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, spacing } from '../../theme';
 import { Button } from '../../components/common';
 import { APP_CONFIG } from '../../utils/constants';
@@ -93,7 +94,7 @@ export const AccountInactiveScreen = ({ navigation }: any) => {
       <View style={styles.content}>
         {/* Icon */}
         <View style={styles.iconContainer}>
-          <Text style={styles.icon}>🚫</Text>
+          <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
         </View>
 
         {/* Title */}
@@ -113,7 +114,7 @@ export const AccountInactiveScreen = ({ navigation }: any) => {
           <Text style={styles.contactTitle}>Contact Customer Care</Text>
           
           <Button
-            title="📞 Call Customer Care"
+            title="Call Customer Care"
             onPress={handleCallSupport}
             variant="primary"
             fullWidth
@@ -121,7 +122,7 @@ export const AccountInactiveScreen = ({ navigation }: any) => {
           />
 
           <Button
-            title="📧 Email Support"
+            title="Email Support"
             onPress={handleEmailSupport}
             variant="secondary"
             fullWidth

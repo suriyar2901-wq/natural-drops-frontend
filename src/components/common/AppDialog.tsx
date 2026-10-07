@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors, spacing, typography } from '../../theme';
+import { borderRadius, colors, spacing, typography } from '../../theme';
 
 type DialogButton = {
   text?: string;
@@ -77,9 +77,9 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 360,
+    maxWidth: 420,
     backgroundColor: colors.white,
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
     padding: spacing.lg,
   },
   title: {
@@ -98,9 +98,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   button: {
-    borderRadius: 10,
-    paddingVertical: 12,
+    borderRadius: borderRadius.full,
+    minHeight: 52,
+    paddingHorizontal: spacing.lg,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   primaryButton: { backgroundColor: colors.primary },
   destructiveButton: { backgroundColor: colors.error },

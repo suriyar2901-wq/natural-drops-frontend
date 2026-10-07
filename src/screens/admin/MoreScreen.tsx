@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors, spacing, typography } from '../../theme';
+import { borderRadius, colors, spacing, typography } from '../../theme';
 import { useAuth } from '../../hooks';
 import { useGetUnreadAdminNotificationCountQuery } from '../../store/api/notificationApi';
 
@@ -20,7 +20,7 @@ export const MoreScreen = ({ navigation }: any) => {
 
   const actions: Action[] = [
     {
-      label: '📦 Manage Orders',
+      label: 'Manage Orders',
       onPress: () => navigation.navigate('OrderManagement'),
       badge: unreadCount > 0 ? unreadCount : undefined,
     },
@@ -28,21 +28,21 @@ export const MoreScreen = ({ navigation }: any) => {
 
   if (isStrictAdmin()) {
     actions.push(
-      { label: '🛒 Manage Products', onPress: () => navigation.navigate('MenuManagement') },
-      { label: '👥 Manage Users', onPress: () => navigation.navigate('UserManagement') },
-      { label: '⚙️ App Settings', onPress: () => navigation.navigate('AppSettings') },
-      { label: '🏪 Manage Sellers', onPress: () => navigation.navigate('SellerList') },
-      { label: '🔁 Subscriptions', onPress: () => navigation.navigate('SubscriptionList') },
-      { label: '💳 Subscription Payments', onPress: () => navigation.navigate('PaymentList') },
+      { label: 'Manage Products', onPress: () => navigation.navigate('MenuManagement') },
+      { label: 'Manage Users', onPress: () => navigation.navigate('UserManagement') },
+      { label: 'App Settings', onPress: () => navigation.navigate('AppSettings') },
+      { label: 'Manage Sellers', onPress: () => navigation.navigate('SellerList') },
+      { label: 'Subscriptions', onPress: () => navigation.navigate('SubscriptionList') },
+      { label: 'Subscription Payments', onPress: () => navigation.navigate('PaymentList') },
     );
   }
 
   if (isSeller()) {
     actions.push(
-      { label: '👤 Profile', onPress: () => navigation.navigate('Profile') },
-      { label: '🧴 20 Litre Cans', onPress: () => openParent('IssuedCans') },
-      { label: '🧑‍🤝‍🧑 My Buyers', onPress: () => openParent('ShopBuyers') },
-      { label: '🧾 Shop Profile / QR', onPress: () => openParent('ShopProfile') },
+      { label: 'Profile', onPress: () => navigation.navigate('Profile') },
+      { label: 'Water can management', onPress: () => openParent('IssuedCans') },
+      { label: 'Daily can collection', onPress: () => openParent('CanCollectionReport') },
+      { label: 'Shop Profile / QR', onPress: () => openParent('ShopProfile') },
     );
   }
 
@@ -82,14 +82,14 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     backgroundColor: colors.white,
-    padding: spacing.lg,
-    borderRadius: spacing.md,
-    marginBottom: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    minHeight: 56,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.space12,
+    justifyContent: 'center',
   },
   actionRow: {
     flexDirection: 'row',

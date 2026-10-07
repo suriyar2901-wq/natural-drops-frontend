@@ -1,46 +1,18 @@
 import React, { useLayoutEffect, useState } from 'react';
-import { Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { AutocompleteInput, Button, Card, Input, Loading } from '../../components/common';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Card, Loading } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
-import { useCreateShopBuyerMutation, useGetShopBuyersQuery, useGetShopCompanyQuery, useGetShopInboxQuery, useMarkShopInboxReadMutation } from '../../store/api/shopApi';
+import { useGetShopBuyersQuery, useGetShopCompanyQuery, useGetShopInboxQuery, useMarkShopInboxReadMutation } from '../../store/api/shopApi';
 import { formatDateTime } from '../../utils/formatters';
 import { regularNoticeLook, regularNoticeTone } from '../../utils/regularNotice';
-import { locationApiService, PincodeSuggestion } from '../../services/locationApi.service';
-
-type InviteResult = {
-  username: string;
-  inviteLink: string;
-  shareMessage: string;
-  whatsappUrl: string;
-  smsUrl: string;
-  emailSent: boolean;
-  sellerEmailSent: boolean;
-};
+import { CreateBuyerModal } from './CreateBuyerModal';
 
 export const ShopBuyersScreen = ({ navigation }: any) => {
   const { data: company } = useGetShopCompanyQuery();
   const { data: buyers = [], isLoading } = useGetShopBuyersQuery();
   const { data: inbox = [] } = useGetShopInboxQuery();
   const [markInboxRead] = useMarkShopInboxReadMutation();
-  const [createBuyer, { isLoading: creating }] = useCreateShopBuyerMutation();
-  const [form, setForm] = useState({
-    fullName: '',
-    username: '',
-    phone: '',
-    email: '',
-    houseDoorNo: '',
-    streetArea: '',
-    city: '',
-    district: '',
-    state: '',
-    pincode: '',
-  });
-  const [formError, setFormError] = useState('');
-  const [invite, setInvite] = useState<InviteResult | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [pincodeSuggestions, setPincodeSuggestions] = useState<PincodeSuggestion[]>([]);
-  const [pincodeLoading, setPincodeLoading] = useState(false);
-  const [pincodeError, setPincodeError] = useState('');
 
   useLayoutEffect(() => {
     navigation?.setOptions({
@@ -58,112 +30,6 @@ export const ShopBuyersScreen = ({ navigation }: any) => {
   }, [navigation]);
 
   const unreadInbox = inbox.filter((item) => !item.isRead);
-
-  const setField = (key: keyof typeof form, value: string) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const applyPincodeLocation = (suggestion: PincodeSuggestion) => {
-    setForm((prev) => ({
-      ...prev,
-      pincode: suggestion.pincode,
-      city: suggestion.city,
-      district: suggestion.district,
-      state: suggestion.state,
-    }));
-    setPincodeError('');
-    setPincodeSuggestions([]);
-  };
-
-  const handlePincodeChange = async (text: string) => {
-    const cleanPincode = text.replace(/[^0-9]/g, '').slice(0, 6);
-    setForm((prev) => ({ ...prev, pincode: cleanPincode, city: '', district: '', state: '' }));
-    setPincodeError('');
-    setPincodeSuggestions([]);
-    if (cleanPincode.length !== 6) {
-      return;
-    }
-    setPincodeLoading(true);
-    try {
-      const suggestions = await locationApiService.getPincodeSuggestions(cleanPincode);
-      setPincodeSuggestions(suggestions);
-      if (suggestions.length === 1) {
-        applyPincodeLocation(suggestions[0]);
-      } else if (suggestions.length === 0) {
-        setPincodeError('Invalid pincode. Please enter a valid 6-digit pincode.');
-      }
-    } catch (_error) {
-      setPincodeError('Failed to fetch location. Please enter city, district and state.');
-    } finally {
-      setPincodeLoading(false);
-    }
-  };
-
-  const openShare = async (url?: string) => {
-    if (!url) {
-      return;
-    }
-    try {
-      if (Platform.OS === 'web') {
-        window.open(url, '_blank');
-        return;
-      }
-      await Linking.openURL(url);
-    } catch (_error) {
-      // Keep the invite popup visible if the device cannot open the app.
-    }
-  };
-
-  const handleCreate = async () => {
-    setFormError('');
-    const missing: string[] = [];
-    if (form.fullName.trim().length < 2) missing.push('Buyer name');
-    if (form.username.trim().length < 3) missing.push('Username');
-    if (!/^\d{10}$/.test(form.phone.trim())) missing.push('Mobile');
-    if (!/^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(form.email.trim())) missing.push('Email');
-    if (!form.houseDoorNo.trim()) missing.push('House / door no');
-    if (form.streetArea.trim().length < 2) missing.push('Street / area');
-    if (!/^\d{6}$/.test(form.pincode.trim())) missing.push('Pincode');
-    if (form.city.trim().length < 2) missing.push('City');
-    if (form.district.trim().length < 2) missing.push('District');
-    if (form.state.trim().length < 2) missing.push('State');
-    if (missing.length > 0) {
-      setFormError(`Fill every field before creating the buyer: ${missing.join(', ')}.`);
-      return;
-    }
-    try {
-      const result = await createBuyer({
-        fullName: form.fullName.trim(),
-        username: form.username.trim(),
-        phone: form.phone.trim(),
-        email: form.email.trim(),
-        houseDoorNo: form.houseDoorNo.trim(),
-        streetArea: form.streetArea.trim(),
-        city: form.city.trim(),
-        district: form.district.trim(),
-        state: form.state.trim(),
-        pincode: form.pincode.trim(),
-      }).unwrap();
-      setShowCreate(false);
-      setInvite(result);
-      setForm({
-        fullName: '',
-        username: '',
-        phone: '',
-        email: '',
-        houseDoorNo: '',
-        streetArea: '',
-        city: '',
-        district: '',
-        state: '',
-        pincode: '',
-      });
-      await openShare(result.whatsappUrl);
-      await openShare(result.smsUrl);
-    } catch (error: any) {
-      setFormError(error?.data?.message || error?.message || 'Could not create buyer');
-    }
-  };
 
   if (isLoading) {
     return <Loading fullScreen message="Loading buyers..." />;
@@ -243,80 +109,7 @@ export const ShopBuyersScreen = ({ navigation }: any) => {
         </>
       )}
 
-      <Modal visible={showCreate} transparent animationType="fade" onRequestClose={() => setShowCreate(false)}>
-        <View style={styles.popupOverlay}>
-          <View style={styles.formCard}>
-            <View style={styles.formHeader}>
-              <Text style={styles.popupTitle}>Create buyer</Text>
-              <TouchableOpacity onPress={() => setShowCreate(false)} style={styles.closeButton}>
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView contentContainerStyle={styles.formContent}>
-              <Text style={styles.meta}>Company details are filled from your shop. The buyer is mapped to {company?.companyCode || 'your company'}.</Text>
-              <Input label="Company name" value={company?.companyName || ''} editable={false} />
-              <Input label="Company code" value={company?.companyCode || ''} editable={false} />
-              <Input label="Buyer name *" value={form.fullName} onChangeText={(text) => setField('fullName', text)} placeholder="Full name" />
-              <Input label="Username *" value={form.username} onChangeText={(text) => setField('username', text)} placeholder="At least 3 letters" autoCapitalize="none" />
-              <Input label="Mobile *" value={form.phone} onChangeText={(text) => setField('phone', text.replace(/[^0-9]/g, '').slice(0, 10))} placeholder="10-digit mobile" keyboardType="phone-pad" maxLength={10} />
-              <Input label="Email *" value={form.email} onChangeText={(text) => setField('email', text)} placeholder="Buyer email" autoCapitalize="none" keyboardType="email-address" />
-              <Input label="House / door no *" value={form.houseDoorNo} onChangeText={(text) => setField('houseDoorNo', text)} />
-              <Input label="Street / area *" value={form.streetArea} onChangeText={(text) => setField('streetArea', text)} />
-              <AutocompleteInput
-                label="Pincode *"
-                value={form.pincode}
-                onChangeText={handlePincodeChange}
-                onSelect={(option) => applyPincodeLocation({
-                  pincode: option.pincode || option.name,
-                  name: option.name,
-                  displayName: option.displayName || option.name,
-                  city: option.city || '',
-                  district: option.district || '',
-                  state: option.state || '',
-                })}
-                placeholder="Enter 6-digit pincode"
-                suggestions={pincodeSuggestions}
-                isLoading={pincodeLoading}
-                error={pincodeError}
-                maxLength={6}
-                keyboardType="number-pad"
-                autoCapitalize="none"
-              />
-              <Input label="City *" value={form.city} onChangeText={(text) => setField('city', text)} placeholder="Auto from pincode" />
-              <Input label="District *" value={form.district} onChangeText={(text) => setField('district', text)} placeholder="Auto from pincode" />
-              <Input label="State *" value={form.state} onChangeText={(text) => setField('state', text)} placeholder="Auto from pincode" />
-              {!!formError && <Text style={styles.error}>{formError}</Text>}
-              <Button title={creating ? 'Creating...' : 'Create buyer'} onPress={handleCreate} disabled={creating} fullWidth />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={!!invite} transparent animationType="fade" onRequestClose={() => setInvite(null)}>
-        <View style={styles.popupOverlay}>
-          <View style={styles.popupCard}>
-            <Text style={styles.popupTitle}>Buyer created</Text>
-            <Text style={styles.popupMessage}>
-              Username: {invite?.username}{'\n'}
-              The buyer must open the app link and create a new password before login.
-            </Text>
-            <Text style={styles.meta}>{invite?.inviteLink}</Text>
-            <Text style={styles.meta}>
-              {invite?.emailSent ? 'Email sent to the buyer. ' : 'Buyer email was not sent. '}
-              {invite?.sellerEmailSent ? 'A copy was emailed to you.' : ''}
-            </Text>
-            <TouchableOpacity style={styles.shareButton} onPress={() => openShare(invite?.whatsappUrl)}>
-              <Text style={styles.shareButtonText}>Send WhatsApp</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.shareButton} onPress={() => openShare(invite?.smsUrl)}>
-              <Text style={styles.shareButtonText}>Send SMS</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.popupButton} onPress={() => setInvite(null)}>
-              <Text style={styles.popupButtonText}>OK</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <CreateBuyerModal visible={showCreate} onClose={() => setShowCreate(false)} />
     </ScrollView>
   );
 };

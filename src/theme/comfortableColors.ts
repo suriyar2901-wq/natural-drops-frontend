@@ -19,18 +19,18 @@ export const comfortableColors = {
   textOnPrimary: '#FFFFFF', // White text on colored backgrounds
   
   // Primary colors - Clear and visible
-  primary: '#4F46E5', // Indigo - strong but not harsh
-  primaryDark: '#4338CA', // Darker shade for hover/press
-  primaryLight: '#6366F1', // Lighter shade for backgrounds
-  primaryBackground: '#EEF2FF', // Very light indigo for subtle backgrounds
+  primary: '#0232AA',
+  primaryDark: '#01267F',
+  primaryLight: '#2A55C9',
+  primaryBackground: '#E4EAF9',
   
   // Secondary colors
-  secondary: '#6366F1', // Indigo variant
-  secondaryDark: '#4F46E5',
-  secondaryLight: '#818CF8',
+  secondary: '#2A55C9',
+  secondaryDark: '#01267F',
+  secondaryLight: '#8EA6E6',
   
   // Accent colors - Clear and visible
-  accent: '#6366F1', // Indigo accent
+  accent: '#0232AA',
   accentLight: '#EEF2FF', // Very light accent background
   
   // Status colors - Clear and visible
@@ -66,15 +66,15 @@ export const comfortableColors = {
   gray900: '#0F172A',
   
   // Button colors - High contrast
-  buttonPrimary: '#4F46E5', // Strong indigo
-  buttonPrimaryPressed: '#4338CA',
+  buttonPrimary: '#0232AA',
+  buttonPrimaryPressed: '#01267F',
   buttonSecondary: '#475569', // Dark slate
   buttonSecondaryPressed: '#334155',
   buttonOutline: 'transparent',
-  buttonOutlineBorder: '#4F46E5',
+  buttonOutlineBorder: '#0232AA',
   
   // Header colors
-  headerBackground: '#4F46E5', // Primary color
+  headerBackground: '#0232AA',
   headerText: '#FFFFFF',
   headerSubtext: '#E0E7FF', // Light indigo
   
@@ -86,7 +86,7 @@ export const comfortableColors = {
   // Input colors - High contrast
   inputBackground: '#FFFFFF',
   inputBorder: '#CBD5E1', // Clear border
-  inputBorderFocused: '#4F46E5', // Strong focus color
+  inputBorderFocused: '#0232AA',
   inputPlaceholder: '#94A3B8', // Visible placeholder
   
   // Overlay

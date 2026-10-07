@@ -363,8 +363,6 @@ export const ProductDetailScreen = ({ navigation }: any) => {
           <Text style={styles.price}>{formatCurrency((product as any).rate || (product as any).price || 0)}</Text>
           <Text style={styles.meta}>
             Category: {(product as any).category || '—'}
-            {'  '}|{'  '}
-            Stock: {typeof (product as any).stockQuantity === 'number' ? (product as any).stockQuantity : (product as any).stock || '—'}
           </Text>
           <Text style={styles.meta}>
             Status: {statusText}

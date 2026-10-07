@@ -7,7 +7,7 @@ interface Props {
   points?: MonthlyRevenuePoint[];
 }
 
-const BAR_COLORS = ['#3B82F6', '#14B8A6', '#8B5CF6', '#F59E0B', '#22C55E', '#F97316'];
+const BAR_COLORS = [colors.primary];
 
 export const DashboardRevenueChart = ({ points = [] }: Props) => {
   const maxValue = useMemo(() => {
@@ -19,11 +19,11 @@ export const DashboardRevenueChart = ({ points = [] }: Props) => {
     <View>
       <View style={styles.legend}>
         <View style={styles.legendItem}>
-          <View style={[styles.swatch, { backgroundColor: '#3B82F6' }]} />
+          <View style={[styles.swatch, { backgroundColor: colors.primary }]} />
           <Text style={styles.legendText}>Orders</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.swatch, { backgroundColor: '#F59E0B' }]} />
+          <View style={[styles.swatch, { backgroundColor: colors.blue500 }]} />
           <Text style={styles.legendText}>Subscriptions</Text>
         </View>
       </View>
@@ -54,7 +54,7 @@ export const DashboardRevenueChart = ({ points = [] }: Props) => {
                         styles.segment,
                         {
                           height: Math.max(subscription > 0 ? 4 : 0, subscriptionHeight),
-                          backgroundColor: '#F59E0B',
+                          backgroundColor: colors.blue500,
                           borderTopLeftRadius: subscription > 0 ? 6 : 0,
                           borderTopRightRadius: subscription > 0 ? 6 : 0,
                         },

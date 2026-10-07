@@ -1,5 +1,5 @@
 import { baseApi } from './baseApi';
-import { CanEvent, LedgerEvent, SellerSubscriptionAccess, ShopCustomer, ShopCustomerPayload, ShopProfile } from '../../types/shop.types';
+import { CanCollectionReport, CanEvent, CanStockSummary, LedgerEvent, SellerSubscriptionAccess, ShopCustomer, ShopCustomerPayload, ShopProfile } from '../../types/shop.types';
 
 export const shopApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
@@ -10,6 +10,9 @@ export const shopApi = baseApi.injectEndpoints({
       given: number;
       returned: number;
       toReturn: number;
+      damaged?: number;
+      missing?: number;
+      deposit?: number | string;
     }>, void>({
       query: () => '/shop/can-ledger',
       providesTags: ['Shop'],
@@ -62,6 +65,45 @@ export const shopApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Shop', 'BuyerAccount'],
     }),
+    applyCanAction: builder.mutation<ShopCustomer, {
+      id: number;
+      type: 'DAMAGED' | 'MISSING' | 'REPLACEMENT' | 'ADJUSTMENT' | 'DEPOSIT';
+      quantity?: number;
+      amount?: string;
+      direction?: 'ADD' | 'REMOVE' | 'COLLECT' | 'REFUND';
+      note?: string;
+    }>({
+      query: ({ id, ...body }) => ({
+        url: `/shop/customers/${id}/can-actions`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Shop', 'BuyerAccount'],
+    }),
+    getCanStock: builder.query<CanStockSummary, void>({
+      query: () => '/shop/can-stock',
+      providesTags: ['Shop'],
+    }),
+    saveCanDepositRate: builder.mutation<CanStockSummary, { depositPerCan: string }>({
+      query: (body) => ({
+        url: '/shop/can-stock',
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['Shop'],
+    }),
+    adjustCanStock: builder.mutation<CanStockSummary, { quantity: number; direction: 'ADD' | 'REMOVE'; note?: string }>({
+      query: (body) => ({
+        url: '/shop/can-stock/adjust',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Shop'],
+    }),
+    getCanCollectionReport: builder.query<CanCollectionReport, string>({
+      query: (date) => `/shop/can-report?date=${encodeURIComponent(date)}`,
+      providesTags: ['Shop'],
+    }),
     createPhoneOrder: builder.mutation<any, {
       customerId: number;
       delivery: string;
@@ -75,6 +117,19 @@ export const shopApi = baseApi.injectEndpoints({
         body,
       }),
       invalidatesTags: ['Shop', 'Order', 'BuyerAccount'],
+    }),
+    lookupPincode: builder.query<{
+      valid: boolean;
+      suggestions: Array<{
+        pincode: string;
+        name: string;
+        displayName: string;
+        city: string;
+        district: string;
+        state: string;
+      }>;
+    }, string>({
+      query: (code) => `/shop/pincode/${code}`,
     }),
     getShopCompany: builder.query<{
       sellerId: number;
@@ -179,7 +234,13 @@ export const {
   useRecordShopPaymentMutation,
   useGetShopCanEventsQuery,
   useCollectShopCansMutation,
+  useApplyCanActionMutation,
+  useGetCanStockQuery,
+  useSaveCanDepositRateMutation,
+  useAdjustCanStockMutation,
+  useGetCanCollectionReportQuery,
   useCreatePhoneOrderMutation,
+  useLazyLookupPincodeQuery,
   useGetShopCompanyQuery,
   useGetShopBuyersQuery,
   useCreateShopBuyerMutation,

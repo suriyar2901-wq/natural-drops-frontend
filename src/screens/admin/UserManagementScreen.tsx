@@ -254,20 +254,6 @@ export const UserManagementScreen = () => {
     }
   };
 
-  const getRoleIcon = (role: string | UserRole) => {
-    const roleStr = typeof role === 'string' ? role.toUpperCase() : String(role).toUpperCase();
-    switch (roleStr) {
-      case 'ADMIN':
-        return '👑';
-      case 'SELLER':
-        return '🏪';
-      case 'BUYER':
-        return '🛒';
-      default:
-        return '👤';
-    }
-  };
-
   const filteredUsers = selectedRole === 'ALL' 
     ? users 
     : users?.filter(u => {
@@ -284,7 +270,6 @@ export const UserManagementScreen = () => {
       <View style={styles.userHeader}>
         <View style={styles.userInfo}>
           <View style={styles.userTitleRow}>
-            <Text style={styles.roleIcon}>{getRoleIcon(item.role)}</Text>
             <Text style={styles.username}>{item.username}</Text>
           </View>
           <View style={styles.badgeContainer}>
@@ -305,29 +290,29 @@ export const UserManagementScreen = () => {
       <View style={styles.userDetails}>
         {!!item.shopName && (
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>🏪 Shop:</Text>
+            <Text style={styles.detailLabel}>Shop:</Text>
             <Text style={styles.detailValue}>{item.shopName}</Text>
           </View>
         )}
         <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>📧 Email:</Text>
+          <Text style={styles.detailLabel}>Email:</Text>
           <Text style={styles.detailValue}>{item.email || 'N/A'}</Text>
         </View>
         
         <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>📱 Phone:</Text>
+          <Text style={styles.detailLabel}>Phone:</Text>
           <Text style={styles.detailValue}>{item.phone || 'N/A'}</Text>
         </View>
         
         <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>📍 Address:</Text>
+          <Text style={styles.detailLabel}>Address:</Text>
           <Text style={styles.detailValue} numberOfLines={2}>
             {item.address || 'N/A'}
           </Text>
         </View>
         
         <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>📅 Created:</Text>
+          <Text style={styles.detailLabel}>Created:</Text>
           <Text style={styles.detailValue}>
             {item.createdAt ? formatDateTime(item.createdAt) : 'N/A'}
           </Text>
@@ -335,7 +320,7 @@ export const UserManagementScreen = () => {
         
         {item.createdBy && (
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>👤 Created By:</Text>
+            <Text style={styles.detailLabel}>Created by:</Text>
             <Text style={styles.detailValue}>{item.createdBy}</Text>
           </View>
         )}
@@ -353,14 +338,14 @@ export const UserManagementScreen = () => {
                     style={styles.activateButton}
                     onPress={() => handleActivateUser(item.id, item.username)}
                   >
-                    <Text style={styles.activateButtonText}>✅ Activate</Text>
+                    <Text style={styles.activateButtonText}>Activate</Text>
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
                     style={styles.deactivateButton}
                     onPress={() => handleDeactivateUser(item.id, item.username)}
                   >
-                    <Text style={styles.deactivateButtonText}>❌ Deactivate</Text>
+                    <Text style={styles.deactivateButtonText}>Deactivate</Text>
                   </TouchableOpacity>
                 )}
               </>
@@ -369,13 +354,13 @@ export const UserManagementScreen = () => {
               style={styles.editButton}
               onPress={() => handleEditUser(item)}
             >
-              <Text style={styles.editButtonText}>✏️ Edit</Text>
+              <Text style={styles.editButtonText}>Edit</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.deleteButton}
               onPress={() => handleDeleteUser(item.id, item.username)}
             >
-              <Text style={styles.deleteButtonText}>🗑️ Delete</Text>
+              <Text style={styles.deleteButtonText}>Delete</Text>
             </TouchableOpacity>
           </>
         )}
@@ -393,10 +378,10 @@ export const UserManagementScreen = () => {
     console.error('❌ Error details:', JSON.stringify(error, null, 2));
     return (
       <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>❌ Failed to load users</Text>
+        <Text style={styles.errorText}>Failed to load users</Text>
         <Text style={styles.errorDetails}>{(error as any)?.data?.message || (error as any)?.message || 'Unknown error'}</Text>
         <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
-          <Text style={styles.retryButtonText}>🔄 Retry</Text>
+          <Text style={styles.retryButtonText}>Retry</Text>
         </TouchableOpacity>
       </View>
     );
@@ -407,7 +392,7 @@ export const UserManagementScreen = () => {
     console.error('❌ Users is not an array!', users);
     return (
       <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>⚠️ Data Format Error</Text>
+        <Text style={styles.errorText}>Data format error</Text>
         <Text style={styles.errorDetails}>
           Expected array but got: {typeof users}
         </Text>
@@ -415,7 +400,7 @@ export const UserManagementScreen = () => {
           {JSON.stringify(users, null, 2).substring(0, 200)}...
         </Text>
         <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
-          <Text style={styles.retryButtonText}>🔄 Retry</Text>
+          <Text style={styles.retryButtonText}>Retry</Text>
         </TouchableOpacity>
       </View>
     );
@@ -482,7 +467,7 @@ export const UserManagementScreen = () => {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>👥 No users found</Text>
+            <Text style={styles.emptyText}>No users found</Text>
             <Text style={styles.emptySubtext}>
               {selectedRole !== 'ALL' ? `No ${selectedRole.toLowerCase()}s in the system` : 'No users registered yet'}
             </Text>

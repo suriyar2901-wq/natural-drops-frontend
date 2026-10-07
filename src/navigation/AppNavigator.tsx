@@ -86,6 +86,8 @@ import { ShopCustomerDetailScreen } from '../screens/shop/ShopCustomerDetailScre
 import { RecordShopPaymentScreen } from '../screens/shop/RecordShopPaymentScreen';
 import { ShopEmptyCansScreen } from '../screens/shop/ShopEmptyCansScreen';
 import { IssuedCansScreen } from '../screens/shop/IssuedCansScreen';
+import { CanCollectionReportScreen } from '../screens/shop/CanCollectionReportScreen';
+import { CanReturnHistoryScreen } from '../screens/shop/CanReturnHistoryScreen';
 import { PhoneOrderScreen } from '../screens/shop/PhoneOrderScreen';
 import { ShopProfileScreen } from '../screens/shop/ShopProfileScreen';
 import { ShopBuyersScreen } from '../screens/shop/ShopBuyersScreen';
@@ -106,7 +108,7 @@ import { ActivatePaymentScreen } from '../screens/admin/ActivatePaymentScreen';
 import { SubscriptionListScreen } from '../screens/admin/SubscriptionListScreen';
 import { PaymentListScreen } from '../screens/admin/PaymentListScreen';
 
-import { colors, spacing, typography } from '../theme';
+import { borderRadius, colors, spacing, typography } from '../theme';
 import { SellerSubscriptionGate } from '../components/common/SellerSubscriptionGate';
 import { useAuth } from '../hooks';
 import { useGetUnreadAdminNotificationCountQuery, useGetUnreadBuyerNotificationCountQuery } from '../store/api/notificationApi';
@@ -278,8 +280,10 @@ const HeaderRight = ({ navigation }: any) => {
         onPress={() => navigation.getParent()?.navigate('NotificationHistory') || navigation.navigate('NotificationHistory')}
         style={styles.phoneButton}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Notifications"
       >
-        <Text style={styles.phoneIcon}>🔔</Text>
+        <Ionicons name="notifications-outline" size={22} color={colors.white} />
         {unread > 0 && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
@@ -312,8 +316,10 @@ const HeaderRight = ({ navigation }: any) => {
         style={styles.phoneButton}
         activeOpacity={0.7}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        accessibilityRole="button"
+        accessibilityLabel="Call customer support"
       >
-        <Text style={styles.phoneIcon}>📞</Text>
+        <Ionicons name="call-outline" size={22} color={colors.white} />
       </TouchableOpacity>
       <TouchableOpacity 
         onPress={() => {
@@ -344,6 +350,7 @@ const BuyerTabs = ({ navigation }: any) => {
       tabBarActiveTintColor: colors.primary,
       tabBarInactiveTintColor: colors.textSecondary,
       tabBarLabelPosition: 'below-icon',
+      tabBarStyle: styles.tabBar,
       tabBarItemStyle: styles.adminTabItem,
       tabBarLabelStyle: styles.adminTabLabel,
       tabBarIconStyle: styles.adminTabIcon,
@@ -420,6 +427,7 @@ const AdminTabs = ({ navigation }: any) => {
       tabBarActiveTintColor: colors.primary,
       tabBarInactiveTintColor: colors.textSecondary,
       tabBarLabelPosition: 'below-icon',
+      tabBarStyle: styles.tabBar,
       tabBarItemStyle: styles.adminTabItem,
       tabBarLabelStyle: styles.adminTabLabel,
       tabBarIconStyle: styles.adminTabIcon,
@@ -663,12 +671,22 @@ export const AppNavigator = () => {
         <Stack.Screen
           name="ShopEmptyCans"
           component={ShopEmptyCansScreen}
-          options={{ title: 'Empty Cans' }}
+          options={{ title: 'Can entry' }}
         />
         <Stack.Screen
           name="IssuedCans"
           component={IssuedCansScreen}
-          options={{ title: '20 Litre Cans' }}
+          options={{ title: 'Water can management' }}
+        />
+        <Stack.Screen
+          name="CanCollectionReport"
+          component={CanCollectionReportScreen}
+          options={{ title: 'Daily can collection' }}
+        />
+        <Stack.Screen
+          name="CanReturnHistory"
+          component={CanReturnHistoryScreen}
+          options={{ title: 'Can return history' }}
         />
         <Stack.Screen
           name="PhoneOrder"
@@ -715,6 +733,13 @@ const styles = StyleSheet.create({
     lineHeight: TAB_ICON_SIZE,
     textAlign: 'center',
   },
+  tabBar: {
+    backgroundColor: colors.white,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 8,
+    minHeight: 64,
+  },
   adminTabItem: {
     flex: 1,
     alignItems: 'center',
@@ -728,16 +753,20 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   adminTabLabel: {
-    fontSize: 10,
-    lineHeight: 12,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.caption,
+    fontWeight: typography.fontWeight.medium,
     textAlign: 'center',
     marginTop: 2,
     width: '100%',
   },
   backButton: {
     marginLeft: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xs,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitleSlot: {
     maxWidth: '46%',
@@ -772,9 +801,9 @@ const styles = StyleSheet.create({
   },
   phoneButton: {
     position: 'relative',
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.18)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
@@ -807,7 +836,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.error, // Red background
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: 6,
+    borderRadius: borderRadius.full,
+    minHeight: 44,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,

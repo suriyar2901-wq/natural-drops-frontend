@@ -7,11 +7,13 @@ import { useGetAllOrdersQuery } from '../../store/api/orderApi';
 import { formatCurrency } from '../../utils/formatters';
 import { moneyValue, orderBillPending } from '../../types/shop.types';
 import { Order } from '../../types';
+import { CreateBuyerModal } from './CreateBuyerModal';
 
 export const ShopCustomersScreen = ({ navigation }: any) => {
   const { data: customers = [], isLoading, refetch, isFetching } = useGetShopCustomersQuery();
   const { data: orders = [] } = useGetAllOrdersQuery();
   const [search, setSearch] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -49,7 +51,7 @@ export const ShopCustomersScreen = ({ navigation }: any) => {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Customer ledger</Text>
-        <Button title="+ Add" onPress={() => navigation.navigate('AddShopCustomer')} />
+        <Button title="+ Add" onPress={() => setShowCreate(true)} />
       </View>
 
       <View style={styles.chips}>
@@ -66,11 +68,7 @@ export const ShopCustomersScreen = ({ navigation }: any) => {
       />
 
       <Button title={isFetching ? 'Refreshing…' : 'Refresh'} onPress={() => refetch()} />
-
-      <View style={styles.actions}>
-        <Button title="Add Order" variant="outline" onPress={() => navigation.navigate('PhoneOrder')} />
-        <Button title="Shop Profile" variant="outline" onPress={() => navigation.navigate('ShopProfile')} />
-      </View>
+      <CreateBuyerModal visible={showCreate} onClose={() => setShowCreate(false)} />
 
       {filtered.length === 0 ? (
         <Card style={styles.empty}>
@@ -114,7 +112,6 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
   chip: { backgroundColor: colors.white, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
   chipText: { fontSize: typography.fontSize.sm, color: colors.textSecondary },
-  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
   card: { marginTop: spacing.md, padding: spacing.md },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   code: { fontWeight: typography.fontWeight.bold, color: colors.primary },

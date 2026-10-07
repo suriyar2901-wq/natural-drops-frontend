@@ -19,12 +19,33 @@ if (Platform.OS === 'web') {
   if (typeof document !== 'undefined') {
     const style = document.getElementById('app-phone-scroll') || document.createElement('style');
     style.id = 'app-phone-scroll';
+    const font = document.getElementById('neo-space-grotesk') || document.createElement('link');
+    font.id = 'neo-space-grotesk';
+    font.setAttribute('rel', 'stylesheet');
+    font.setAttribute('href', 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+    if (!font.parentNode) {
+      document.head.appendChild(font);
+    }
     style.textContent = `
+      html, body, #root, button, input, textarea {
+        font-family: "Space Grotesk", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
       html, body, #root {
         height: 100% !important;
         width: 100% !important;
         max-width: 100% !important;
         overflow: hidden !important;
+        background: #F4F5F6;
+      }
+      button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
+        outline: 2px solid #0232AA;
+        outline-offset: 2px;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html * {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
       }
       #root, #root > div {
         display: flex !important;

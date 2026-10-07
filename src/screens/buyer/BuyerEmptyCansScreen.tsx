@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text } from 'react-native';
 import { Card, Loading } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
 import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
+import { canEventQuantity, canEventType } from '../../types/shop.types';
 import { formatDateTime } from '../../utils/formatters';
 
 export const BuyerEmptyCansScreen = () => {
@@ -19,9 +20,17 @@ export const BuyerEmptyCansScreen = () => {
         <Text style={styles.stat}>{data?.emptyCans || 0}</Text>
         <Text style={styles.meta}>20 litre cans still with you. Return these to the seller.</Text>
         <Text style={styles.meta}>
-          Given {Math.max((data?.canEvents || []).filter((event) => event.changeAmount > 0).reduce((sum, event) => sum + event.changeAmount, 0), (data?.emptyCans || 0) + (data?.canEvents || []).filter((event) => event.changeAmount < 0).reduce((sum, event) => sum + Math.abs(event.changeAmount), 0))}
+          Given {(() => {
+            const events = data?.canEvents || [];
+            const qty = (type: string) => events.filter((event) => canEventType(event) === type).reduce((sum, event) => sum + canEventQuantity(event), 0);
+            const returned = qty('RETURNED');
+            return Math.max(qty('ISSUED'), (data?.emptyCans || 0) + returned + qty('DAMAGED') + qty('MISSING'));
+          })()}
           {' • '}
-          Returned {(data?.canEvents || []).filter((event) => event.changeAmount < 0).reduce((sum, event) => sum + Math.abs(event.changeAmount), 0)}
+          Returned {(() => {
+            const events = data?.canEvents || [];
+            return events.filter((event) => canEventType(event) === 'RETURNED').reduce((sum, event) => sum + canEventQuantity(event), 0);
+          })()}
         </Text>
         {!data?.customer && (
           <Text style={styles.meta}>No shop account is linked yet. Ask the seller to add your mobile as a customer.</Text>

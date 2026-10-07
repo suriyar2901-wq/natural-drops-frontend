@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, spacing } from '../../theme';
-import { Card, Loading, DatePicker, StatusPill, DashboardRevenueChart, EarningsPieChart, HeaderBrand } from '../../components/common';
+import { Card, Loading, DatePicker, StatusPill, DashboardRevenueChart, EarningsBarChart, HeaderBrand } from '../../components/common';
 import { useAuth } from '../../hooks';
 import { useGetDashboardStatsQuery } from '../../store/api/dashboardApi';
 import { useGetPlatformDashboardQuery } from '../../store/api/platformAdminApi';
@@ -306,26 +306,26 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
       {/* Date Range Filter Section */}
       {!isStrictAdmin() && <Card style={styles.filterCard}>
         <View style={styles.filterHeader}>
-          <Text style={styles.filterTitle}>📅 Filter by Date Range</Text>
+          <Text style={styles.filterTitle}>Filter by Date Range</Text>
           {(fromDate || toDate || dateFilterParams) && (
             <TouchableOpacity
               style={styles.clearFilterButton}
               onPress={handleResetFilter}
             >
-              <Text style={styles.clearFilterButtonText}>🔄 Clear Filter</Text>
+              <Text style={styles.clearFilterButtonText}>Clear filter</Text>
             </TouchableOpacity>
           )}
         </View>
         
         {dashboardFetching && (
           <View style={styles.loadingIndicator}>
-            <Text style={styles.loadingText}>🔄 Updating dashboard...</Text>
+            <Text style={styles.loadingText}>Updating dashboard...</Text>
           </View>
         )}
         
         {dashboardError && (
           <View style={styles.errorIndicator}>
-            <Text style={styles.errorText}>⚠️ Error loading dashboard data. Please try again.</Text>
+            <Text style={styles.errorText}>Error loading dashboard data. Please try again.</Text>
           </View>
         )}
         
@@ -366,14 +366,14 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
         {fromDate && toDate && new Date(fromDate) > new Date(toDate) && (
           <View style={styles.validationMessage}>
             <Text style={styles.validationText}>
-              ⚠️ From date must be before or equal to To date
+              From date must be before or equal to To date
             </Text>
           </View>
         )}
         
         {dateRangeLabel && (
           <View style={styles.dateRangeLabelContainer}>
-            <Text style={styles.dateRangeLabel}>📊 Showing: {dateRangeLabel}</Text>
+            <Text style={styles.dateRangeLabel}>Showing: {dateRangeLabel}</Text>
           </View>
         )}
       </Card>}
@@ -423,14 +423,11 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
         <Card style={styles.chartCard}>
           <Text style={styles.filterTitle}>Earnings</Text>
           <Text style={styles.chartHint}>
-            Fully paid earnings, partial amount collected, and what is still due
-            {dashboardStats?.dateRangeLabel ? ` · ${dashboardStats.dateRangeLabel}` : ''}
+            {dateFilterParams?.fromDate && dateFilterParams?.toDate
+              ? `Paid, partial, and yet to collect · ${dateRangeLabel}`
+              : 'Paid, partial, and yet to collect · Last 6 months'}
           </Text>
-          <EarningsPieChart
-            paid={Number(dashboardStats?.paidEarnings || 0)}
-            partial={Number(dashboardStats?.partialCollected || 0)}
-            due={Number(dashboardStats?.balanceDue || 0)}
-          />
+          <EarningsBarChart points={dashboardStats?.earningsGraph || []} />
         </Card>
       )}
 
@@ -440,7 +437,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
             { label: 'Add Order', count: '', screen: 'PhoneOrder' },
             { label: 'My Buyers', count: String(shopBuyers.length), screen: 'ShopBuyers' },
             { label: 'Customers', count: String(shopCustomers.length), screen: 'ShopCustomers' },
-            { label: '20L Cans', count: String(canLedger.filter((row) => row.given > 0 || row.toReturn > 0).length), screen: 'IssuedCans' },
+            { label: 'Water can management', count: String(canLedger.filter((row) => row.given > 0 || row.toReturn > 0).length), screen: 'IssuedCans' },
           ].map((item) => (
             <TouchableOpacity
               key={item.screen}

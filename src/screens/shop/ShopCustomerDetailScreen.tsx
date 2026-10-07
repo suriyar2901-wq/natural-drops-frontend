@@ -5,7 +5,7 @@ import { colors, spacing, typography } from '../../theme';
 import { useGetShopCanEventsQuery, useGetShopCustomerQuery, useGetShopLedgerQuery } from '../../store/api/shopApi';
 import { useGetAllOrdersQuery, useGetOrderByIdQuery } from '../../store/api/orderApi';
 import { formatCurrency, formatDateTime, formatOrderStatus } from '../../utils/formatters';
-import { CanEvent, LedgerEvent, moneyValue, orderBillPending } from '../../types/shop.types';
+import { CAN_ENTRY_LABEL, CanEvent, LedgerEvent, canEventQuantity, canEventType, moneyValue, orderBillPending } from '../../types/shop.types';
 import { Order } from '../../types';
 
 const orderIdFromText = (value?: string | null) => {
@@ -58,6 +58,18 @@ export const ShopCustomerDetailScreen = ({ navigation, route }: any) => {
     .filter((order) => order.paymentStatus === 'PARTIALLY_PAID')
     .sort((left, right) => String(right.orderDate || '').localeCompare(String(left.orderDate || '')));
   const pendingTotal = partialOrders.reduce((sum, order) => sum + partialBill(order).pending, 0);
+  const cansOf = (type: string) => canEvents
+    .filter((event) => canEventType(event) === type)
+    .reduce((sum, event) => sum + canEventQuantity(event), 0);
+  const cansReturned = cansOf('RETURNED');
+  const damagedEvents = canEvents.filter((event) => canEventType(event) === 'DAMAGED');
+  const missingEvents = canEvents.filter((event) => canEventType(event) === 'MISSING');
+  const cansDamaged = damagedEvents.reduce((sum, event) => sum + canEventQuantity(event), 0);
+  const cansMissing = missingEvents.reduce((sum, event) => sum + canEventQuantity(event), 0);
+  const cansGiven = Math.max(
+    cansOf('ISSUED'),
+    (customer.emptyCans || 0) + cansReturned + cansOf('DAMAGED') + cansOf('MISSING'),
+  );
   const linkedOrder = (orderId: number) => (
     fetchedOrder?.id === orderId
       ? fetchedOrder
@@ -77,14 +89,17 @@ export const ShopCustomerDetailScreen = ({ navigation, route }: any) => {
 
       <View style={styles.chips}>
         <Card style={styles.stat}><Text style={styles.statValue}>{formatCurrency(outstanding)}</Text><Text style={styles.statLabel}>Outstanding</Text></Card>
-        <Card style={styles.stat}><Text style={styles.statValue}>{Math.max(canEvents.filter((event) => event.changeAmount > 0).reduce((sum, event) => sum + event.changeAmount, 0), (customer.emptyCans || 0) + canEvents.filter((event) => event.changeAmount < 0).reduce((sum, event) => sum + Math.abs(event.changeAmount), 0))}</Text><Text style={styles.statLabel}>Cans given</Text></Card>
-        <Card style={styles.stat}><Text style={styles.statValue}>{canEvents.filter((event) => event.changeAmount < 0).reduce((sum, event) => sum + Math.abs(event.changeAmount), 0)}</Text><Text style={styles.statLabel}>Returned</Text></Card>
+        <Card style={styles.stat}><Text style={styles.statValue}>{cansGiven}</Text><Text style={styles.statLabel}>Cans given</Text></Card>
+        <Card style={styles.stat}><Text style={styles.statValue}>{cansReturned}</Text><Text style={styles.statLabel}>Returned</Text></Card>
         <Card style={styles.stat}><Text style={styles.statValue}>{customer.emptyCans || 0}</Text><Text style={styles.statLabel}>To return</Text></Card>
+        <Card style={styles.stat}><Text style={styles.statValue}>{formatCurrency(moneyValue(customer.canDeposit))}</Text><Text style={styles.statLabel}>Can deposit</Text></Card>
+        <Card style={styles.stat}><Text style={[styles.statValue, styles.damagedText]}>{cansDamaged}</Text><Text style={styles.statLabel}>Damaged cans</Text></Card>
+        <Card style={styles.stat}><Text style={[styles.statValue, styles.missingText]}>{cansMissing}</Text><Text style={styles.statLabel}>Missing cans</Text></Card>
       </View>
 
       <View style={styles.actions}>
         <Button title="Record Payment" onPress={() => navigation.navigate('RecordShopPayment', { customerId })} />
-        <Button title="Record can return" variant="outline" onPress={() => navigation.navigate('ShopEmptyCans', { customerId })} />
+        <Button title="Can entry" variant="outline" onPress={() => navigation.navigate('ShopEmptyCans', { customerId })} />
       </View>
       <View style={styles.actions}>
         <Button title="Add Order" variant="outline" onPress={() => navigation.navigate('PhoneOrder', { customerId })} />
@@ -141,20 +156,58 @@ export const ShopCustomerDetailScreen = ({ navigation, route }: any) => {
         );
       })}
 
+      <Text style={styles.section}>Damaged cans</Text>
+      <Text style={styles.meta}>{cansDamaged} can{cansDamaged === 1 ? '' : 's'} marked damaged. These are not back in seller stock.</Text>
+      {damagedEvents.length === 0 ? (
+        <Card style={styles.empty}><Text style={styles.emptyText}>No damaged cans for this customer.</Text></Card>
+      ) : damagedEvents.map((event) => (
+        <Card key={event.id} style={[styles.row, styles.damagedRow]}>
+          <View style={styles.cardTop}>
+            <Text style={styles.name}>Damaged can</Text>
+            <Text style={styles.damagedValue}>{canEventQuantity(event)} can{canEventQuantity(event) === 1 ? '' : 's'}</Text>
+          </View>
+          <Text style={styles.meta}>{formatDateTime(event.occurredAt)}</Text>
+          {!!event.copy && <Text style={styles.meta}>{event.copy}</Text>}
+          {!!event.note && <Text style={styles.meta}>Note: {event.note}</Text>}
+          {moneyValue(event.amount) !== 0 && <Text style={styles.meta}>Deposit change {formatCurrency(moneyValue(event.amount))}</Text>}
+        </Card>
+      ))}
+
+      <Text style={styles.section}>Missing cans</Text>
+      <Text style={styles.meta}>{cansMissing} can{cansMissing === 1 ? '' : 's'} marked missing. These are not back in seller stock.</Text>
+      {missingEvents.length === 0 ? (
+        <Card style={styles.empty}><Text style={styles.emptyText}>No missing cans for this customer.</Text></Card>
+      ) : missingEvents.map((event) => (
+        <Card key={event.id} style={[styles.row, styles.missingRow]}>
+          <View style={styles.cardTop}>
+            <Text style={styles.name}>Missing can</Text>
+            <Text style={styles.missingValue}>{canEventQuantity(event)} can{canEventQuantity(event) === 1 ? '' : 's'}</Text>
+          </View>
+          <Text style={styles.meta}>{formatDateTime(event.occurredAt)}</Text>
+          {!!event.copy && <Text style={styles.meta}>{event.copy}</Text>}
+          {!!event.note && <Text style={styles.meta}>Note: {event.note}</Text>}
+          {moneyValue(event.amount) !== 0 && <Text style={styles.meta}>Deposit change {formatCurrency(moneyValue(event.amount))}</Text>}
+        </Card>
+      ))}
+
       <Text style={styles.section}>Can history</Text>
       {canEvents.length === 0 ? (
         <Card style={styles.empty}><Text style={styles.emptyText}>No can movements yet.</Text></Card>
       ) : canEvents.map((event) => {
         const open = selected?.kind === 'can' && selected.id === event.id;
         const orderId = orderIdFromText(event.copy);
-        const issued = event.changeAmount > 0;
-        const cans = Math.abs(event.changeAmount);
+        const type = canEventType(event);
+        const cans = canEventQuantity(event);
+        const outward = event.changeAmount > 0;
+        const movement = type === 'DEPOSIT'
+          ? formatCurrency(moneyValue(event.amount))
+          : `${outward ? '+' : event.changeAmount < 0 ? '-' : ''}${cans} can${cans === 1 ? '' : 's'}`;
         return (
           <TouchableOpacity key={event.id} activeOpacity={0.7} style={styles.hit} onPress={() => toggle('can', event.id)}>
             <Card style={[styles.row, open && styles.selectedRow]}>
               <View style={styles.cardTop}>
-                <Text style={styles.name}>{issued ? 'Issued' : 'Returned'}</Text>
-                <Text style={issued ? styles.canOut : styles.canIn}>{issued ? '+' : '-'}{cans} can{cans === 1 ? '' : 's'}</Text>
+                <Text style={styles.name}>{CAN_ENTRY_LABEL[type] || 'Can'}</Text>
+                <Text style={outward ? styles.canOut : styles.canIn}>{movement}</Text>
               </View>
               <Text style={styles.meta}>{orderId ? `Order #${orderId}` : 'No linked order'} · {formatDateTime(event.occurredAt)}</Text>
               {open && <CanDetails event={event} order={orderId ? linkedOrder(orderId) : undefined} loading={!!orderId && loadingBill} onOpenBill={(order) => navigation.navigate('OrderDetail', { order })} />}
@@ -220,8 +273,11 @@ const LedgerDetails = ({ event, order, loading, onOpenBill }: { event: LedgerEve
 
 const CanDetails = ({ event, order, loading, onOpenBill }: { event: CanEvent; order?: Order; loading: boolean; onOpenBill: (order: Order) => void }) => (
   <View style={styles.details}>
+    {detailLine('Type', CAN_ENTRY_LABEL[canEventType(event)] || event.eventType)}
     {detailLine('Movement', event.copy)}
     {detailLine('Cans', `${event.changeAmount > 0 ? '+' : ''}${event.changeAmount}`)}
+    {detailLine('Deposit change', formatCurrency(moneyValue(event.amount)))}
+    {detailLine('Note', event.note)}
     {detailLine('Date', formatDateTime(event.occurredAt))}
     {orderIdFromText(event.copy) ? <OrderBillDetails order={order} loading={loading} onOpenBill={onOpenBill} /> : null}
   </View>
@@ -252,6 +308,12 @@ const styles = StyleSheet.create({
   cardTop: { flexDirection: 'row', justifyContent: 'space-between' },
   name: { flexShrink: 1, fontWeight: typography.fontWeight.semibold, color: colors.textPrimary },
   due: { fontWeight: typography.fontWeight.semibold, color: colors.primary },
+  damagedText: { color: colors.warning },
+  missingText: { color: colors.error },
+  damagedValue: { fontWeight: typography.fontWeight.bold, color: colors.warning, fontSize: typography.fontSize.lg },
+  missingValue: { fontWeight: typography.fontWeight.bold, color: colors.error, fontSize: typography.fontSize.lg },
+  damagedRow: { borderLeftWidth: 4, borderLeftColor: colors.warning },
+  missingRow: { borderLeftWidth: 4, borderLeftColor: colors.error },
   canOut: { fontWeight: typography.fontWeight.bold, color: colors.primary, fontSize: typography.fontSize.lg },
   canIn: { fontWeight: typography.fontWeight.bold, color: colors.success, fontSize: typography.fontSize.lg },
   partialRow: { borderLeftWidth: 4, borderLeftColor: colors.info },

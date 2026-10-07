@@ -134,7 +134,7 @@ export const HomeScreen = ({ navigation }: any) => {
           navigate('ProductDetail', { productId: item.id });
         }}
       >
-        <Card style={styles.productCard}>
+        <Card style={[styles.productCard, { borderLeftColor: String(item.category || '').toLowerCase() === 'beverage' ? '#F59E0B' : colors.primary }]}>
         {isValidImageUrl ? (
           <View style={[styles.imageContainer, { width: photoSize, height: photoSize }]}>
             <Image
@@ -174,7 +174,11 @@ export const HomeScreen = ({ navigation }: any) => {
               {item.description.trim()}
             </Text>
           )}
-          <Text style={styles.description}>{item.category || 'Uncategorized'}</Text>
+          <View style={[styles.categoryChip, { backgroundColor: String(item.category || '').toLowerCase() === 'beverage' ? '#FEF3C7' : '#DBEAFE' }]}>
+            <Text style={[styles.categoryChipText, { color: String(item.category || '').toLowerCase() === 'beverage' ? '#92400E' : '#1D4ED8' }]}>
+              {item.category || 'Product'}
+            </Text>
+          </View>
           
           <View style={styles.quantityRow}>
             <Text style={styles.inCartText}>In Cart: {qty}</Text>
@@ -480,13 +484,18 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     flexDirection: 'row',
     overflow: 'hidden',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
   },
   imageContainer: {
     width: 120,
     height: 120,
-    borderRadius: 8,
+    borderRadius: 16,
     overflow: 'hidden',
     marginRight: spacing.md,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   productImage: {
     width: '100%',
@@ -545,6 +554,18 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
     marginBottom: spacing.md,
+  },
+  categoryChip: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginBottom: spacing.sm,
+  },
+  categoryChipText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    textTransform: 'capitalize',
   },
   productDescription: {
     fontSize: typography.fontSize.sm,

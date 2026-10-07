@@ -54,8 +54,13 @@ export const Input = forwardRef<TextInput, InputProps>(({
           placeholderTextColor={colors.textSecondary}
         />
         {showPasswordToggle && secureTextEntry && (
-          <TouchableOpacity style={styles.passwordToggle} onPress={togglePasswordVisibility}>
-            <Text style={styles.passwordToggleText}>{isPasswordVisible ? '👁️' : '👁️‍🗨️'}</Text>
+          <TouchableOpacity
+            style={styles.passwordToggle}
+            onPress={togglePasswordVisibility}
+            accessibilityRole="button"
+            accessibilityLabel={isPasswordVisible ? 'Hide password' : 'Show password'}
+          >
+            <Text style={styles.passwordToggleText}>{isPasswordVisible ? 'Hide' : 'Show'}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -69,8 +74,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   label: {
+    fontFamily: typography.fontFamily.medium,
     fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.bold,
+    lineHeight: typography.lineHeight.bodySm,
+    fontWeight: typography.fontWeight.medium,
     color: colors.textPrimary,
     marginBottom: spacing.xs,
   },
@@ -79,16 +86,21 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderDark,
     borderRadius: borderRadius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.space12,
+    minHeight: 52,
+    fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.base,
+    lineHeight: typography.lineHeight.body,
     color: colors.textPrimary,
-    backgroundColor: colors.white,
+    backgroundColor: colors.gray100,
   },
   inputFocused: {
+    borderWidth: 2,
     borderColor: colors.primary,
+    backgroundColor: colors.white,
   },
   inputError: {
     borderColor: colors.error,
@@ -98,13 +110,17 @@ const styles = StyleSheet.create({
   },
   passwordToggle: {
     position: 'absolute',
-    right: spacing.md,
+    right: spacing.sm,
     top: 0,
     bottom: 0,
+    minWidth: 44,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   passwordToggleText: {
-    fontSize: typography.fontSize.lg,
+    color: colors.primary,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
   },
   error: {
     fontSize: typography.fontSize.xs,

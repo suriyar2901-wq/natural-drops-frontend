@@ -685,7 +685,7 @@ export const ProfileScreen = () => {
                   <Image source={{ uri: formData.profilePhoto }} style={styles.profilePhoto} />
                 ) : (
                   <View style={styles.photoPlaceholder}>
-                    <Text style={styles.photoPlaceholderText}>📷</Text>
+                    <Ionicons name="camera-outline" size={28} color={colors.textSecondary} />
                     <Text style={styles.photoPlaceholderLabel}>Tap to change</Text>
                   </View>
                 )}
@@ -696,7 +696,7 @@ export const ProfileScreen = () => {
                   <Image source={{ uri: user.profilePhoto }} style={styles.profilePhoto} />
                 ) : (
                   <View style={styles.photoPlaceholder}>
-                    <Text style={styles.photoPlaceholderText}>👤</Text>
+                    <Ionicons name="person-outline" size={28} color={colors.textSecondary} />
                   </View>
                 )}
               </View>

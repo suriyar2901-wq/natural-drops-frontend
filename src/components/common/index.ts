@@ -2,6 +2,7 @@ export * from './Button';
 export * from './StatusPill';
 export * from './DashboardRevenueChart';
 export * from './EarningsPieChart';
+export * from './EarningsBarChart';
 export * from './DeliverySlotFields';
 export * from './EmptyState';
 export * from './ProductPhotoPlaceholder';

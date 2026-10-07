@@ -1,6 +1,6 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, ViewStyle, TextStyle } from 'react-native';
-import { colors, typography, spacing, borderRadius } from '../../theme';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View, ViewStyle, TextStyle } from 'react-native';
+import { borderRadius, colors, spacing, typography } from '../../theme';
 
 interface ButtonProps {
   title: string;
@@ -25,92 +25,92 @@ export const Button: React.FC<ButtonProps> = ({
   style,
   textStyle,
 }) => {
-  const getButtonStyle = (): ViewStyle => {
-    const baseStyle: ViewStyle = {
-      ...styles.button,
-      ...styles[`button_${size}`],
-    };
-
-    if (fullWidth) {
-      baseStyle.width = '100%';
-    }
-
-    if (disabled) {
-      baseStyle.opacity = 0.5;
-    }
-
-    switch (variant) {
-      case 'secondary':
-        return { ...baseStyle, backgroundColor: colors.secondary };
-      case 'outline':
-        return { ...baseStyle, backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary };
-      case 'text':
-        return { ...baseStyle, backgroundColor: 'transparent' };
-      default:
-        return { ...baseStyle, backgroundColor: colors.primary };
-    }
-  };
-
-  const getTextStyle = (): TextStyle => {
-    const baseStyle: TextStyle = {
-      ...styles.text,
-      ...styles[`text_${size}`],
-    };
-
-    switch (variant) {
-      case 'outline':
-      case 'text':
-        return { ...baseStyle, color: colors.primary };
-      default:
-        return { ...baseStyle, color: colors.white };
-    }
-  };
+  const blocked = disabled || loading;
 
   return (
-    <TouchableOpacity
-      style={[getButtonStyle(), style]}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: blocked, busy: loading }}
       onPress={onPress}
-      disabled={disabled || loading}
-      activeOpacity={0.7}
+      disabled={blocked}
+      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+        styles.button,
+        size === 'small' ? styles.buttonSmall : styles.buttonDefault,
+        fullWidth && styles.fullWidth,
+        surfaceStyle(variant, pressed, !!hovered, disabled),
+        style,
+      ]}
     >
-      {loading ? (
-        <ActivityIndicator color={variant === 'outline' || variant === 'text' ? colors.primary : colors.white} />
-      ) : (
-        <Text style={[getTextStyle(), textStyle]}>{title}</Text>
-      )}
-    </TouchableOpacity>
+      <View style={styles.content}>
+        {loading && (
+          <ActivityIndicator color={variant === 'primary' && !disabled ? colors.white : colors.primary} />
+        )}
+        <Text style={[styles.text, size === 'small' && styles.textSmall, labelStyle(variant, disabled), textStyle]}>
+          {title}
+        </Text>
+      </View>
+    </Pressable>
   );
+};
+
+const surfaceStyle = (variant: string, pressed: boolean, hovered: boolean, disabled: boolean): ViewStyle => {
+  if (disabled) {
+    return { backgroundColor: colors.gray200 };
+  }
+  if (variant === 'secondary') {
+    return { backgroundColor: pressed || hovered ? '#D5DEF4' : colors.blue100 };
+  }
+  if (variant === 'outline') {
+    return {
+      backgroundColor: pressed || hovered ? colors.blue50 : 'transparent',
+      borderWidth: 2,
+      borderColor: colors.primary,
+    };
+  }
+  if (variant === 'text') {
+    return { backgroundColor: pressed || hovered ? colors.blue50 : 'transparent' };
+  }
+  return { backgroundColor: pressed ? colors.primaryDark : hovered ? colors.primaryLight : colors.primary };
+};
+
+const labelStyle = (variant: string, disabled: boolean): TextStyle => {
+  if (disabled) return { color: colors.textSecondary };
+  if (variant === 'primary') return { color: colors.white };
+  return { color: colors.primary };
 };
 
 const styles = StyleSheet.create({
   button: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: borderRadius.md,
-  },
-  button_small: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  button_medium: {
+    borderRadius: borderRadius.full,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as object : {}),
   },
-  button_large: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
+  buttonDefault: {
+    minHeight: 52,
+  },
+  buttonSmall: {
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+  },
+  fullWidth: {
+    width: '100%',
+  },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
   },
   text: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.base,
+    lineHeight: typography.lineHeight.button,
     fontWeight: typography.fontWeight.semibold,
   },
-  text_small: {
+  textSmall: {
     fontSize: typography.fontSize.sm,
-  },
-  text_medium: {
-    fontSize: typography.fontSize.base,
-  },
-  text_large: {
-    fontSize: typography.fontSize.lg,
+    lineHeight: typography.lineHeight.bodySm,
   },
 });
-

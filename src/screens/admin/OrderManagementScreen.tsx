@@ -544,7 +544,7 @@ export const OrderManagementScreen = () => {
                 onPress={() => handleEditOrderClick(item)}
                 disabled={processingOrderId === item.id && updatingOrder}
               >
-                <Text style={styles.editIconText}>✏️</Text>
+                <Text style={styles.editIconText}>Edit</Text>
               </TouchableOpacity>
             )}
             <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
@@ -584,7 +584,7 @@ export const OrderManagementScreen = () => {
           </Text>
           {item.latitude && item.longitude && (
             <Text style={styles.coordinatesText}>
-              📍 {item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}
+              {item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}
             </Text>
           )}
         </View>
@@ -611,9 +611,9 @@ export const OrderManagementScreen = () => {
                 item.paymentStatus === 'PARTIALLY_PAID' && styles.paymentStatusPartial,
               ]}>
                 <Text style={styles.paymentStatusText}>
-                  {item.paymentStatus === 'PAID' ? '🟢 PAID' : 
-                   item.paymentStatus === 'UNPAID' ? '🔴 UNPAID' : 
-                   '🟡 PARTIALLY PAID'}
+                  {item.paymentStatus === 'PAID' ? 'PAID' : 
+                   item.paymentStatus === 'UNPAID' ? 'UNPAID' : 
+                   'PARTIALLY PAID'}
                 </Text>
               </View>
             )}
@@ -699,7 +699,7 @@ export const OrderManagementScreen = () => {
                       setBillModalVisible(true);
                     }}
                   >
-                    <Text style={styles.billButtonText}>💰 Add / Edit Bill</Text>
+                    <Text style={styles.billButtonText}>Add / Edit Bill</Text>
                   </TouchableOpacity>
                 )}
                 {item.finalBillAmount && (
@@ -718,7 +718,7 @@ export const OrderManagementScreen = () => {
                     {processingOrderId === item.id && delivering ? (
                       <ActivityIndicator size="small" color={colors.white} />
                     ) : (
-                      <Text style={styles.deliverButtonText}>🚚 Delivery to Client</Text>
+                      <Text style={styles.deliverButtonText}>Delivery to Client</Text>
                     )}
                   </TouchableOpacity>
                 )}
@@ -750,7 +750,7 @@ export const OrderManagementScreen = () => {
                   setBillModalVisible(true);
                 }}
               >
-                <Text style={styles.billButtonText}>💰 Edit Bill</Text>
+                <Text style={styles.billButtonText}>Edit Bill</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -856,12 +856,12 @@ export const OrderManagementScreen = () => {
         </View>
         <View style={styles.dateRangeRow}>
           <TouchableOpacity style={styles.dateRangeButton} onPress={() => setDateModalVisible(true)}>
-            <Text style={styles.dateRangeButtonText}>📅 Select Date Range</Text>
+            <Text style={styles.dateRangeButtonText}>Select Date Range</Text>
           </TouchableOpacity>
 
           {hasDateRange && (
             <View style={styles.datePill}>
-              <Text style={styles.datePillText}>📅 {fromDate} → {toDate}</Text>
+              <Text style={styles.datePillText}>{fromDate} to {toDate}</Text>
               <TouchableOpacity
                 onPress={() => {
                   setSelectedDateRange({ startDate: null, endDate: null });

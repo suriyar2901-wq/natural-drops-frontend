@@ -1,12 +1,10 @@
 export const typography = {
-  // Font families
   fontFamily: {
-    regular: 'System',
-    medium: 'System',
-    bold: 'System',
+    regular: 'Space Grotesk',
+    medium: 'Space Grotesk',
+    bold: 'Space Grotesk',
   },
-  
-  // Font sizes
+
   fontSize: {
     xs: 12,
     sm: 14,
@@ -14,8 +12,10 @@ export const typography = {
     lg: 18,
     xl: 20,
     '2xl': 24,
-    '3xl': 30,
-    '4xl': 36,
+    titleLg: 28,
+    '3xl': 28,
+    display: 40,
+    '4xl': 40,
   },
   
   // Font weights
@@ -28,9 +28,17 @@ export const typography = {
   
   // Line heights
   lineHeight: {
-    tight: 1.2,
-    normal: 1.5,
-    relaxed: 1.75,
+    caption: 16,
+    bodySm: 20,
+    heading: 24,
+    body: 24,
+    button: 24,
+    title: 26,
+    titleLg: 34,
+    display: 44,
+    tight: 16,
+    normal: 24,
+    relaxed: 34,
   },
 };
 

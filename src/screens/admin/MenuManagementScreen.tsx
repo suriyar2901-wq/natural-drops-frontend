@@ -6,8 +6,6 @@ import { Card, EmptyState, Loading, Button, ProductPhotoPlaceholder } from '../.
 import { 
   useGetMenuItemsQuery, 
   useDeleteMenuItemMutation, 
-  useUpdateStockMutation, 
-  useGetLowStockItemsQuery,
   useCreateMenuItemMutation,
   useUpdateMenuItemMutation,
   useAddProductImageMutation,
@@ -21,9 +19,7 @@ import { useRoute, useFocusEffect } from '@react-navigation/native';
 
 export const MenuManagementScreen = () => {
   const { data: products, isLoading, refetch, error } = useGetMenuItemsQuery();
-  const { data: lowStockItems, refetch: refetchLowStock } = useGetLowStockItemsQuery();
   const [deleteMenuItem] = useDeleteMenuItemMutation();
-  const [updateStock] = useUpdateStockMutation();
   const [createMenuItem] = useCreateMenuItemMutation();
   const [updateMenuItem] = useUpdateMenuItemMutation();
   const [addProductImage] = useAddProductImageMutation();
@@ -39,19 +35,16 @@ export const MenuManagementScreen = () => {
   console.log('📦 MenuManagement - first product:', products?.[0]);
   
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
-  const [stockQuantity, setStockQuantity] = useState('');
-  const [showStockModal, setShowStockModal] = useState(false);
-  const [showLowStock, setShowLowStock] = useState(false);
   const [sellerFilter, setSellerFilter] = useState('ALL');
   const sellerOptions = useMemo(() => {
-    const source = showLowStock ? lowStockItems : products;
+    const source = products;
     const names = new Set<string>();
     (source || []).forEach((item) => {
       const name = item.sellerName?.trim();
       if (name) names.add(name);
     });
     return Array.from(names).sort((left, right) => left.localeCompare(right));
-  }, [showLowStock, lowStockItems, products]);
+  }, [products]);
   const [showProductModal, setShowProductModal] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [imagePickerLoading, setImagePickerLoading] = useState(false);
@@ -77,7 +70,6 @@ export const MenuManagementScreen = () => {
     name: '',
     category: 'water' as 'water' | 'beverage',
     rate: '',
-    stockQuantity: '',
     image: '',
     description: '',
   });
@@ -110,48 +102,12 @@ export const MenuManagementScreen = () => {
       
       // Force refresh the product list
       await refetch();
-      await refetchLowStock();
     } catch (error: any) {
       console.error('❌ Delete failed:', error);
       console.error('❌ Error details:', error.data || error.message);
       const errorMessage = error?.data?.message || error?.message || 'Unknown error';
       
       Alert.alert('Error', `Failed to delete product: ${errorMessage}`);
-    }
-  };
-
-  const handleUpdateStock = (item: MenuItem) => {
-    setSelectedItem(item);
-    setStockQuantity(item.stockQuantity?.toString() || '0');
-    setShowStockModal(true);
-  };
-
-  const saveStockUpdate = async () => {
-    if (!selectedItem) return;
-    
-    const quantity = parseInt(stockQuantity);
-    if (isNaN(quantity) || quantity < 0) {
-      Alert.alert('Error', 'Please enter a valid quantity');
-      return;
-    }
-
-    try {
-      await updateStock({
-        id: selectedItem.id,
-        data: {
-          quantity,
-          changedBy: user?.username || 'admin',
-          notes: 'Manual stock update from app',
-        },
-      }).unwrap();
-      Alert.alert('Success', 'Stock updated successfully');
-      setShowStockModal(false);
-      
-      // Force refresh the product list
-      refetch();
-      refetchLowStock();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update stock');
     }
   };
 
@@ -162,7 +118,6 @@ export const MenuManagementScreen = () => {
       name: '',
       category: 'water',
       rate: '',
-      stockQuantity: '',
       image: '',
       description: '',
     });
@@ -181,7 +136,6 @@ export const MenuManagementScreen = () => {
       name: item.name,
       category: item.category as 'water' | 'beverage',
       rate: item.rate.toString(),
-      stockQuantity: item.stockQuantity?.toString() || '0',
       image: imageUrl,
       description: (item.description ?? '') as string,
     });
@@ -199,15 +153,9 @@ export const MenuManagementScreen = () => {
     }
     
     const rate = parseFloat(productForm.rate);
-    const stockQuantity = parseInt(productForm.stockQuantity);
     
     if (isNaN(rate) || rate <= 0) {
       Alert.alert('Error', 'Please enter a valid price');
-      return;
-    }
-    
-    if (isNaN(stockQuantity) || stockQuantity < 0) {
-      Alert.alert('Error', 'Please enter a valid stock quantity');
       return;
     }
 
@@ -224,7 +172,6 @@ export const MenuManagementScreen = () => {
           name: productForm.name,
           category: productForm.category as any,
           rate,
-          stockQuantity,
           description: productForm.description?.trim() ? productForm.description : null,
         };
         
@@ -265,7 +212,6 @@ export const MenuManagementScreen = () => {
         // Force refresh the product list to show updated image
         console.log('🔄 Refetching product list after update...');
         await refetch();
-        await refetchLowStock();
         console.log('✅ Product list refetched');
         
         // Small delay to ensure UI updates
@@ -281,7 +227,7 @@ export const MenuManagementScreen = () => {
           name: productForm.name,
           category: productForm.category as any,
           rate,
-          stockQuantity,
+          stockQuantity: 0,
           image: effectivePrimaryImage,
           description: productForm.description?.trim() ? productForm.description : null,
         }).unwrap();
@@ -300,7 +246,6 @@ export const MenuManagementScreen = () => {
         
         // Force refresh the product list
         await refetch();
-        await refetchLowStock();
         
         // Close modal after successful create
         setShowProductModal(false);
@@ -397,19 +342,7 @@ export const MenuManagementScreen = () => {
     }
   };
 
-  const getStockColor = (item: MenuItem) => {
-    const stock = item.stockQuantity || 0;
-    const threshold = item.lowStockThreshold || 10;
-    
-    if (stock === 0) return colors.error;
-    if (stock <= threshold) return colors.warning;
-    return colors.success;
-  };
-
   const renderProduct = ({ item }: { item: MenuItem }) => {
-    const stock = item.stockQuantity || 0;
-    const isLowStock = stock <= (item.lowStockThreshold || 10);
-    
     // Get image URL - prioritize primary image from images array, then fallback to image field
     let imageUrl: string | null = null;
     if (item.images && Array.isArray(item.images) && item.images.length > 0) {
@@ -439,93 +372,73 @@ export const MenuManagementScreen = () => {
     // Only show image if it's base64 or if it's a valid external URL (not placeholder.com which may fail)
     // Double-check to ensure we never try to load placeholder.com URLs
     const isValidImageUrl = !!imageUri && !isPlaceholderUrl && (isBase64 || isExternalUrl);
+    const isBeverage = String(item.category || '').toLowerCase() === 'beverage';
     
     return (
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={() => {
-          const role = user?.role;
-          const routeName = role === 'admin' ? 'AdminProductDetail' : 'SellerProductDetail';
-          navigate(routeName, { productId: item.id });
-        }}
-      >
-        <Card style={styles.productCard}>
+      <Card style={[styles.productCard, { borderLeftColor: isBeverage ? '#F59E0B' : colors.primary }]}>
         <View style={styles.productRow}>
-          {isValidImageUrl ? (
-            <View style={styles.productImageContainer}>
-              <Image
-                key={`img-${item.id}-${item.updatedAt || item.createdAt || Date.now()}-${imageUri?.substring(0, 50)}`} // Force re-render on update with image change
-                source={{ 
-                  uri: imageUri,
-                  cache: 'reload', // Force reload to avoid stale cache
-                }}
-                style={styles.productImage}
-                resizeMode="cover"
-                onError={(error) => {
-                  console.log('⚠️ Image failed to load for', item.name, 'URL:', imageUri?.substring(0, 100));
-                }}
-                onLoad={() => {
-                  console.log('✅ Image loaded for', item.name, 'from:', imageUri?.substring(0, 50));
-                }}
-              />
-            </View>
-          ) : (
-            <ProductPhotoPlaceholder size={100} style={styles.productPlaceholder} />
-          )}
-          
-          <View style={styles.productContent}>
-            <View style={styles.productHeader}>
-              <View style={styles.productInfo}>
-                <Text style={styles.productName}>{item.name}</Text>
-                {isAdminAccount && !!item.sellerName && (
-                  <Text style={styles.sellerName} numberOfLines={1}>Seller: {item.sellerName}</Text>
-                )}
-                {!!item.description?.trim() && (
-                  <Text style={styles.productDescription} numberOfLines={2}>
-                    {item.description.trim()}
-                  </Text>
-                )}
-                <Text style={styles.productCategory}>{item.category}</Text>
-                <Text style={styles.price}>{formatCurrency(item.rate)}</Text>
-                
-                <View style={styles.stockRow}>
-                  <Text style={styles.stockLabel}>Stock: </Text>
-                  <Text style={[styles.stockValue, { color: getStockColor(item) }]}>
-                    {stock} units
-                  </Text>
-                  {isLowStock && (
-                    <Text style={styles.lowStockBadge}>LOW STOCK</Text>
-                  )}
-                </View>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            style={styles.productMain}
+            onPress={() => {
+              const role = user?.role;
+              const routeName = role === 'admin' ? 'AdminProductDetail' : 'SellerProductDetail';
+              navigate(routeName, { productId: item.id });
+            }}
+          >
+            {isValidImageUrl ? (
+              <View style={[styles.productImageContainer, { backgroundColor: isBeverage ? '#FFF7ED' : '#EFF6FF' }]}>
+                <Image
+                  key={`img-${item.id}-${item.updatedAt || item.createdAt || Date.now()}-${imageUri?.substring(0, 50)}`}
+                  source={{
+                    uri: imageUri,
+                    cache: 'reload',
+                  }}
+                  style={styles.productImage}
+                  resizeMode="contain"
+                />
               </View>
-              
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => handleEditProduct(item)}
-                >
-                  <Text style={styles.editButtonText}>Edit</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={styles.stockButton}
-                  onPress={() => handleUpdateStock(item)}
-                >
-                  <Text style={styles.stockButtonText}>Update Stock</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => handleDelete(item.id, item.name)}
-                >
-                  <Text style={styles.deleteButtonText}>Delete</Text>
-                </TouchableOpacity>
+            ) : (
+              <View style={[styles.productImageContainer, { backgroundColor: isBeverage ? '#FFF7ED' : '#EFF6FF' }]}>
+                <ProductPhotoPlaceholder size={72} />
               </View>
+            )}
+
+            <View style={styles.productInfo}>
+              <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+              {isAdminAccount && !!item.sellerName && (
+                <Text style={styles.sellerName} numberOfLines={1}>{item.sellerName}</Text>
+              )}
+              <View style={[styles.categoryChip, { backgroundColor: isBeverage ? '#FEF3C7' : '#DBEAFE' }]}>
+                <Text style={[styles.categoryChipText, { color: isBeverage ? '#92400E' : '#1D4ED8' }]}>
+                  {item.category || 'Product'}
+                </Text>
+              </View>
+              {!!item.description?.trim() && (
+                <Text style={styles.productDescription} numberOfLines={1}>
+                  {item.description.trim()}
+                </Text>
+              )}
+              <Text style={styles.price}>{formatCurrency(item.rate)}</Text>
             </View>
+          </TouchableOpacity>
+
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => handleEditProduct(item)}
+            >
+              <Text style={styles.editButtonText}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={() => handleDelete(item.id, item.name)}
+            >
+              <Text style={styles.deleteButtonText}>Delete</Text>
+            </TouchableOpacity>
           </View>
         </View>
-        </Card>
-      </TouchableOpacity>
+      </Card>
     );
   };
 
@@ -533,23 +446,13 @@ export const MenuManagementScreen = () => {
     return <Loading fullScreen message="Loading products..." />;
   }
 
-  const productSource = showLowStock ? lowStockItems : products;
   const displayProducts = isAdminAccount && sellerFilter !== 'ALL'
-    ? (productSource || []).filter((item) => (item.sellerName || '').trim() === sellerFilter)
-    : productSource;
+    ? (products || []).filter((item) => (item.sellerName || '').trim() === sellerFilter)
+    : products;
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity
-          style={[styles.filterButton, showLowStock && styles.filterButtonActive]}
-          onPress={() => setShowLowStock(!showLowStock)}
-        >
-          <Text style={[styles.filterButtonText, showLowStock && styles.filterButtonTextActive]}>
-            {showLowStock ? `Low Stock (${lowStockItems?.length || 0})` : 'All Products'}
-          </Text>
-        </TouchableOpacity>
-        
         <TouchableOpacity
           style={styles.addButton}
           onPress={handleAddProduct}
@@ -593,44 +496,6 @@ export const MenuManagementScreen = () => {
           />
         }
       />
-
-      {/* Stock Update Modal */}
-      <Modal
-        visible={showStockModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowStockModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Update Stock</Text>
-            <Text style={styles.modalSubtitle}>{selectedItem?.name}</Text>
-            
-            <Text style={styles.inputLabel}>Current Stock: {selectedItem?.stockQuantity || 0}</Text>
-            <TextInput
-              style={styles.input}
-              value={stockQuantity}
-              onChangeText={setStockQuantity}
-              keyboardType="numeric"
-              placeholder="Enter new stock quantity"
-            />
-            
-            <View style={styles.modalActions}>
-              <Button
-                title="Cancel"
-                onPress={() => setShowStockModal(false)}
-                variant="outline"
-                style={styles.modalButton}
-              />
-              <Button
-                title="Update"
-                onPress={saveStockUpdate}
-                style={styles.modalButton}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Product Add/Edit Modal */}
       <Modal
@@ -705,15 +570,6 @@ export const MenuManagementScreen = () => {
                 placeholder="e.g., 10.00"
               />
               
-              <Text style={styles.inputLabel}>Stock Quantity *</Text>
-              <TextInput
-                style={styles.input}
-                value={productForm.stockQuantity}
-                onChangeText={(text) => setProductForm({ ...productForm, stockQuantity: text })}
-                keyboardType="numeric"
-                placeholder="e.g., 100"
-              />
-              
               <Text style={styles.inputLabel}>Product Photos</Text>
 
               {(existingImages.filter((img) => !imagesToDelete.includes(img.id)).length > 0 || newImages.length > 0) ? (
@@ -773,7 +629,7 @@ export const MenuManagementScreen = () => {
                 </View>
               ) : (
                 <View style={styles.noImagePlaceholder}>
-                  <Text style={styles.noImageText}>🖼️ No photos selected</Text>
+                  <Text style={styles.noImageText}>No photos selected</Text>
                   <Text style={styles.noImageSubtext}>Add one or more product photos</Text>
                 </View>
               )}
@@ -886,25 +742,38 @@ const styles = StyleSheet.create({
   },
   productCard: {
     marginBottom: spacing.md,
+    borderLeftWidth: 4,
+    paddingVertical: spacing.sm,
   },
   productRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+  },
+  productMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
   },
   productImageContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
+    width: 84,
+    height: 84,
+    borderRadius: 16,
     overflow: 'hidden',
     marginRight: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   productImage: {
-    width: '100%',
-    height: '100%',
+    width: 68,
+    height: 68,
   },
   productPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
+    width: 84,
+    height: 84,
+    borderRadius: 16,
     backgroundColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
@@ -929,12 +798,26 @@ const styles = StyleSheet.create({
   },
   productInfo: {
     flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
   },
   productName: {
     fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.semibold,
+    fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
-    marginBottom: spacing.xs,
+    marginBottom: 4,
+  },
+  categoryChip: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginBottom: 6,
+  },
+  categoryChipText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    textTransform: 'capitalize',
   },
   sellerName: {
     fontSize: typography.fontSize.sm,
@@ -965,10 +848,9 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   price: {
-    fontSize: typography.fontSize.lg,
+    fontSize: typography.fontSize.xl,
     fontWeight: typography.fontWeight.bold,
     color: colors.primary,
-    marginBottom: spacing.xs,
   },
   stockRow: {
     flexDirection: 'row',
@@ -994,15 +876,18 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   actions: {
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     alignItems: 'flex-end',
+    marginLeft: spacing.sm,
+    gap: spacing.sm,
   },
   editButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.info || '#2196F3',
-    borderRadius: 4,
-    marginBottom: spacing.xs,
+    minWidth: 72,
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    backgroundColor: colors.primary,
+    borderRadius: 10,
   },
   editButtonText: {
     color: colors.white,
@@ -1022,10 +907,12 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.medium,
   },
   deleteButton: {
+    minWidth: 72,
+    alignItems: 'center',
     backgroundColor: colors.error,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: 10,
   },
   deleteButtonText: {
     color: colors.white,

@@ -233,7 +233,7 @@ export const OrderDetailScreen = () => {
                 onPress={() => setEditModalVisible(true)}
                 disabled={updatingOrder}
               >
-                <Text style={styles.editIconText}>✏️</Text>
+                <Text style={styles.editIconText}>Edit</Text>
               </TouchableOpacity>
             )}
             <View style={[styles.statusBadge, { backgroundColor: statusColor(order.status) }]}>
@@ -273,9 +273,9 @@ export const OrderDetailScreen = () => {
             order.paymentStatus === 'PARTIALLY_PAID' && styles.paymentStatusPartial,
           ]}>
             <Text style={styles.paymentStatusText}>
-              {order.paymentStatus === 'PAID' ? '🟢 PAID' : 
-               order.paymentStatus === 'UNPAID' ? '🔴 UNPAID' : 
-               '🟡 PARTIALLY PAID'}
+              {order.paymentStatus === 'PAID' ? 'PAID' : 
+               order.paymentStatus === 'UNPAID' ? 'UNPAID' : 
+               'PARTIALLY PAID'}
             </Text>
           </View>
         )}
@@ -283,7 +283,7 @@ export const OrderDetailScreen = () => {
         {(order.paymentStatus === 'UNPAID' || order.paymentStatus === 'PARTIALLY_PAID') && (
           <View style={styles.paymentPendingContainer}>
             <Text style={styles.paymentPendingText}>
-              ⚠️ Payment pending. Please contact seller or support.
+              Payment pending. Please contact seller or support.
             </Text>
           </View>
         )}
@@ -297,7 +297,7 @@ export const OrderDetailScreen = () => {
         {order.status === 'delivered' && (
           <View style={styles.deliveryStatusContainer}>
             <Text style={styles.deliveryStatusText}>
-              ✅ Order Delivered
+              Order delivered
             </Text>
             {order.deliveredBy && (
               <Text style={styles.deliveredByText}>
@@ -315,12 +315,12 @@ export const OrderDetailScreen = () => {
           <View style={styles.buttonRow}>
             {canEditBill && (
               <TouchableOpacity style={[styles.actionButton, styles.billButton]} onPress={() => setBillModalVisible(true)} disabled={acting}>
-                <Text style={styles.actionText}>{isConfirmed ? '💰 Add / Edit Bill' : '💰 Edit Bill'}</Text>
+                <Text style={styles.actionText}>{isConfirmed ? 'Add / Edit Bill' : 'Edit Bill'}</Text>
               </TouchableOpacity>
             )}
             {isConfirmed && !!order.finalBillAmount && (
               <TouchableOpacity style={[styles.actionButton, styles.deliverButton]} onPress={handleDeliver} disabled={acting}>
-                {delivering ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.actionText}>🚚 Delivery to Client</Text>}
+                {delivering ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.actionText}>Delivery to Client</Text>}
               </TouchableOpacity>
             )}
             {(isPending || isConfirmed) && (

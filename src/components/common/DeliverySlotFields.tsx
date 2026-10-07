@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../../theme';
 import { formatClockAmPm } from '../../utils/formatters';
 
@@ -150,7 +151,7 @@ export const DeliverySlotFields = ({
       {choice === 'Date' && (
         <View style={styles.dateField}>
           <Text style={styles.dateValue}>{displayDate}</Text>
-          <Text style={styles.dateIcon}>📅</Text>
+          <Ionicons name="calendar-outline" size={20} color={colors.textSecondary} />
           {Platform.OS === 'web' ? (
             React.createElement('input', {
               type: 'date',

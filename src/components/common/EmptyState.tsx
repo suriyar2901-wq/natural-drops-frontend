@@ -42,12 +42,15 @@ const styles = StyleSheet.create({
   button: {
     marginTop: spacing.md,
     backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderRadius: 999,
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonText: {
     color: colors.white,
+    fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.semibold,
   },
 });

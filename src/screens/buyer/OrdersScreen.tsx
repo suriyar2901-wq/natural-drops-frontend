@@ -354,7 +354,7 @@ export const OrdersScreen = ({ navigation }: any) => {
 
         {(item.deliveryAddress || item.buyerAddress) && (
           <View style={styles.addressContainer}>
-            <Text style={styles.addressLabel}>📍 Delivery Address:</Text>
+            <Text style={styles.addressLabel}>Delivery address:</Text>
             <Text style={styles.addressText}>
               {item.deliveryAddress || item.buyerAddress || 'Not specified'}
             </Text>
@@ -383,23 +383,23 @@ export const OrdersScreen = ({ navigation }: any) => {
                 item.paymentStatus === 'PARTIALLY_PAID' && styles.paymentStatusPartial,
               ]}>
                 <Text style={styles.paymentStatusText}>
-                  {item.paymentStatus === 'PAID' ? '🟢 PAID' : 
-                   item.paymentStatus === 'UNPAID' ? '🔴 UNPAID' : 
-                   '🟡 PARTIALLY PAID'}
+                  {item.paymentStatus === 'PAID' ? 'PAID' : 
+                   item.paymentStatus === 'UNPAID' ? 'UNPAID' : 
+                   'PARTIALLY PAID'}
                 </Text>
               </View>
             )}
             {(item.paymentStatus === 'UNPAID' || item.paymentStatus === 'PARTIALLY_PAID') && (
               <View style={styles.paymentPendingContainer}>
                 <Text style={styles.paymentPendingText}>
-                  ⚠️ Payment pending. Please contact seller or support.
+                  Payment pending. Please contact seller or support.
                 </Text>
               </View>
             )}
             {item.status === 'delivered' && (
               <View style={styles.deliveryStatusContainer}>
                 <Text style={styles.deliveryStatusText}>
-                  ✅ Order Delivered
+                  Order delivered
                 </Text>
                 {item.deliveredBy && (
                   <Text style={styles.deliveredByText}>

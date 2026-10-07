@@ -469,7 +469,7 @@ export const LoginScreen = ({ navigation }: any) => {
           
           <View style={styles.serverInfo}>
             <Text style={styles.serverInfoText}>
-              💡 Make sure the backend server is running on port 8080
+              Make sure the backend server is running on port 8080
             </Text>
           </View>
 

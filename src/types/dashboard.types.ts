@@ -19,6 +19,7 @@ export interface DashboardStats {
   dateRangeLabel: string;
   todayOrders?: number; // Count of today's orders
   monthlyRevenue?: MonthlyRevenuePoint[];
+  earningsGraph?: MonthlyRevenuePoint[];
 }
 
 export interface DashboardQueryParams {
