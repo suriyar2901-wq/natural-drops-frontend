@@ -59,6 +59,29 @@ export const ShareAppButton = ({ companyCode, companyName, tone = 'solid' }: Pro
     showSuccessToast('Use WhatsApp to send this application link');
   };
 
+  const downloadQr = async () => {
+    if (!link) {
+      return;
+    }
+    const image = await QRCode.toDataURL(link, {
+      width: 768,
+      margin: 2,
+      color: { dark: '#0232AA', light: '#FFFFFF' },
+    });
+    const fileName = `natural-drops-${code}-qr.png`;
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const anchor = document.createElement('a');
+      anchor.href = image;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      showSuccessToast('QR code downloaded');
+      return;
+    }
+    showSuccessToast('Open this page in the browser to download the QR code');
+  };
+
   const shareLink = async () => {
     if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.share) {
       try {
@@ -103,6 +126,13 @@ export const ShareAppButton = ({ companyCode, companyName, tone = 'solid' }: Pro
             </Text>
             {!!qrImage && <Image source={{ uri: qrImage }} style={styles.qr} />}
             <Text style={styles.link} selectable>{link}</Text>
+            <TouchableOpacity
+              style={styles.sheetButton}
+              onPress={downloadQr}
+              accessibilityLabel="Download QR code"
+            >
+              <Text style={styles.sheetButtonText}>Download QR</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.sheetButton} onPress={shareLink}>
               <Text style={styles.sheetButtonText}>Share link</Text>
             </TouchableOpacity>

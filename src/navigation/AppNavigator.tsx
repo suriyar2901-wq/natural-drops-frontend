@@ -526,12 +526,19 @@ const AdminTabs = ({ navigation }: any) => {
 
 // Main App Navigator - Start with Login Page
 export const AppNavigator = () => {
+  const webOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const linkingPrefixes = [
+    webOrigin,
+    'https://natural-drops-frontend.vercel.app',
+    'http://localhost:8081',
+    'http://localhost:19006',
+  ].filter((prefix, index, all) => !!prefix && all.indexOf(prefix) === index);
+
   return (
     <NavigationContainer
       ref={navigationRef}
       linking={{
-        // Keep this minimal; web will use the current origin automatically.
-        prefixes: ['/', 'http://localhost:8081', 'http://localhost:19006'],
+        prefixes: linkingPrefixes,
         config: {
           screens: {
             Login: 'Login',
