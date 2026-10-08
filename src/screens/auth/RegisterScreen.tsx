@@ -9,8 +9,10 @@ import { UserRole, Gender } from '../../types';
 import { validators, validationMessages } from '../../utils/validators';
 import { pickProfileImage, formatDateForPicker } from '../../utils/imageUtils';
 import { locationApiService, PincodeLocation } from '../../services/locationApi.service';
+import { clearSharedCompanyCode, readSharedCompanyCode, rememberSharedCompanyCode } from '../../utils/appShare';
 
-export const RegisterScreen = ({ navigation }: any) => {
+export const RegisterScreen = ({ navigation, route }: any) => {
+  const sharedCompanyCode = readSharedCompanyCode(route?.params?.companyCode);
   const { register, isLoading } = useAuth();
   const [formData, setFormData] = useState({
     username: '',
@@ -32,7 +34,7 @@ export const RegisterScreen = ({ navigation }: any) => {
     pincode: '',
     landmark: '',
     companyName: '',
-    companyCode: '',
+    companyCode: sharedCompanyCode,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [imagePickerLoading, setImagePickerLoading] = useState(false);
@@ -46,6 +48,19 @@ export const RegisterScreen = ({ navigation }: any) => {
   const [isLoadingState, setIsLoadingState] = useState(false);
   const [isLoadingPincode, setIsLoadingPincode] = useState(false);
   const [pincodeError, setPincodeError] = useState<string>('');
+  const sellerLocked = sharedCompanyCode.length >= 3;
+
+  useEffect(() => {
+    if (!sellerLocked) {
+      return;
+    }
+    rememberSharedCompanyCode(sharedCompanyCode);
+    setFormData((current) => ({
+      ...current,
+      role: UserRole.BUYER,
+      companyCode: sharedCompanyCode,
+    }));
+  }, [sellerLocked, sharedCompanyCode]);
 
   // Inject web-specific CSS for scrolling
   useEffect(() => {
@@ -346,7 +361,7 @@ export const RegisterScreen = ({ navigation }: any) => {
       password: formData.password,
       email: formData.email.trim() || undefined,
       phone: formData.phone.trim(),
-      role: formData.role,
+      role: sellerLocked ? UserRole.BUYER : formData.role,
       gender: formData.gender || undefined,
       dateOfBirth: formData.dateOfBirth || undefined,
       alternatePhone: formData.alternatePhone.trim() || undefined,
@@ -359,12 +374,15 @@ export const RegisterScreen = ({ navigation }: any) => {
       pincode: formData.pincode.trim(),
       landmark: formData.landmark.trim() || undefined,
       companyName: formData.role === UserRole.SELLER ? formData.companyName.trim() : undefined,
-      companyCode: formData.role === UserRole.BUYER ? formData.companyCode.trim() : undefined,
+      companyCode: (sellerLocked || formData.role === UserRole.BUYER)
+        ? (sellerLocked ? sharedCompanyCode : formData.companyCode.trim())
+        : undefined,
     };
 
     const result = await register(registerData);
     
     if (result.success) {
+      clearSharedCompanyCode();
       const goToLogin = () => {
         navigation.replace('Login');
       };
@@ -380,7 +398,7 @@ export const RegisterScreen = ({ navigation }: any) => {
       } else {
         message += ' You can log in now.';
       }
-      message += ' Please go to Login.';
+      message += ' We emailed your username, application link, and reset password link when an email address was entered. Please go to Login.';
 
       Alert.alert('Account created successfully', message, [
         { text: 'Go to Login', onPress: goToLogin },
@@ -637,7 +655,14 @@ export const RegisterScreen = ({ navigation }: any) => {
             placeholder="Enter landmark (optional)"
           />
 
-          {/* Role Selector */}
+          {sellerLocked ? (
+            <View style={styles.pickerContainer}>
+              <Text style={styles.label}>Account type</Text>
+              <Text style={styles.lockedNote}>
+                Buyer account for seller code {sharedCompanyCode}. This link cannot create a seller or admin account, and the company code cannot be changed.
+              </Text>
+            </View>
+          ) : (
           <View style={styles.pickerContainer}>
             <Text style={styles.label}>Account Type *</Text>
             <View style={styles.pickerWrapper}>
@@ -652,6 +677,7 @@ export const RegisterScreen = ({ navigation }: any) => {
               </Picker>
             </View>
           </View>
+          )}
 
           {formData.role === UserRole.SELLER && (
             <Input
@@ -662,13 +688,18 @@ export const RegisterScreen = ({ navigation }: any) => {
               error={errors.companyName}
             />
           )}
-          {formData.role === UserRole.BUYER && (
+          {(sellerLocked || formData.role === UserRole.BUYER) && (
             <Input
               label="Seller company code *"
-              value={formData.companyCode}
-              onChangeText={(text) => setFormData({ ...formData, companyCode: text.toUpperCase() })}
+              value={sellerLocked ? sharedCompanyCode : formData.companyCode}
+              onChangeText={(text) => {
+                if (!sellerLocked) {
+                  setFormData({ ...formData, companyCode: text.toUpperCase() });
+                }
+              }}
               placeholder="Example: RAVI-0001"
               autoCapitalize="characters"
+              editable={!sellerLocked}
               error={errors.companyCode}
             />
           )}
@@ -768,6 +799,10 @@ const styles = StyleSheet.create({
   },
   pickerContainer: {
     marginVertical: spacing.md,
+  },
+  lockedNote: {
+    color: colors.textSecondary,
+    lineHeight: 22,
   },
   label: {
     fontSize: typography.fontSize.sm,

@@ -1,6 +1,7 @@
 import { baseApi } from './baseApi';
 
 export type AppSettings = Record<string, string>;
+export type SupportContacts = { phone: string; whatsapp: string; email: string };
 
 export const settingsApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
@@ -42,6 +43,19 @@ export const settingsApi = baseApi.injectEndpoints({
       invalidatesTags: ['Settings'],
     }),
 
+    getSupportContacts: builder.query<SupportContacts, void>({
+      query: () => '/settings/support-contacts',
+      transformResponse: (response: any) => {
+        const data = response?.phone !== undefined ? response : (response?.data || {});
+        return {
+          phone: String(data.phone || ''),
+          whatsapp: String(data.whatsapp || ''),
+          email: String(data.email || ''),
+        };
+      },
+      providesTags: ['Settings'],
+    }),
+
     getCustomerSupportEmail: builder.query<string, void>({
       query: () => '/settings/customer-support-email',
       transformResponse: (response: any) => {
@@ -77,6 +91,7 @@ export const {
   useGetCustomerContactNumberQuery,
   useUpdateCustomerContactNumberMutation,
   useGetCustomerSupportEmailQuery,
+  useGetSupportContactsQuery,
   useUpdateCustomerSupportEmailMutation,
   useUpdateSettingsMutation,
 } = settingsApi;

@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Card, Loading } from '../../components/common';
+import { Card, ContactActions, Loading } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
 import { useGetShopBuyersQuery, useGetShopCompanyQuery, useGetShopInboxQuery, useMarkShopInboxReadMutation } from '../../store/api/shopApi';
 import { formatDateTime } from '../../utils/formatters';
@@ -57,6 +57,7 @@ export const ShopBuyersScreen = ({ navigation }: any) => {
           <Text style={styles.meta}>
             {[buyer.houseDoorNo, buyer.streetArea, buyer.city, buyer.pincode].filter(Boolean).join(', ') || 'No address'}
           </Text>
+          <ContactActions phone={buyer.phone || buyer.phoneNumber} email={buyer.email} message={`Hello ${buyer.fullName || buyer.username}, this is your Natural Drops seller.`} />
         </Card>
       ))}
 

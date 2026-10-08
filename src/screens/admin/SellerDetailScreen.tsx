@@ -8,6 +8,7 @@ import {
   useReactivateAdminSellerMutation,
   useRenewAdminSubscriptionMutation,
 } from '../../store/api/platformAdminApi';
+import { useGetSettingsQuery } from '../../store/api/settingsApi';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 
 const REASONS = ['Business Closed', 'Seller Requested', 'Payment Issue', 'Admin Decision', 'Other'];
@@ -18,6 +19,7 @@ export const SellerDetailScreen = ({ navigation, route }: any) => {
   const [deactivate, { isLoading: deactivating }] = useDeactivateAdminSellerMutation();
   const [reactivate, { isLoading: reactivating }] = useReactivateAdminSellerMutation();
   const [renew, { isLoading: renewing }] = useRenewAdminSubscriptionMutation();
+  const { data: settings } = useGetSettingsQuery();
   const [reason, setReason] = useState(REASONS[0]);
   const [adminNote, setAdminNote] = useState('');
   const [renewPlan, setRenewPlan] = useState('MONTHLY');
@@ -35,7 +37,7 @@ export const SellerDetailScreen = ({ navigation, route }: any) => {
   const accountOff = seller.loginActive === false || (seller.loginActive == null && seller.accountStatus === 'DEACTIVATED');
 
   const openRenew = () => {
-    setRenewPlan(seller.plan || 'MONTHLY');
+    setRenewPlan(seller.plan === 'YEARLY' ? 'YEARLY' : 'MONTHLY');
     const now = new Date();
     const pad = (value: number) => String(value).padStart(2, '0');
     setPaidAt(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`);
@@ -113,6 +115,7 @@ export const SellerDetailScreen = ({ navigation, route }: any) => {
           <Info label="Seller ID" value={seller.sellerCode} />
           <Info label="Company code" value={seller.companyCode || '—'} />
           <Info label="Owner" value={seller.ownerName} />
+          <Info label="Username" value={seller.username || '—'} />
           <Info label="Mobile" value={seller.mobile} />
           <Info label="Alternate" value={seller.alternateMobile || '—'} />
           <Info label="Email" value={seller.email || '—'} />
@@ -121,11 +124,11 @@ export const SellerDetailScreen = ({ navigation, route }: any) => {
         <Card style={styles.card}>
           <Text style={styles.section}>Subscription</Text>
           <Text style={styles.amount}>{formatCurrency(seller.amount)}</Text>
-          <Text style={styles.hint}>{seller.plan || 'MONTHLY'}</Text>
+          <Text style={styles.hint}>{seller.plan === 'FREE' ? 'Free account' : seller.plan || 'MONTHLY'}</Text>
           <Info label="Start" value={seller.startDate || '—'} />
-          <Info label="Expiry" value={seller.expiryDate ? `${seller.expiryDate} (${seller.daysRemaining ?? '—'} days)` : '—'} />
+          <Info label="Expiry" value={seller.plan === 'FREE' ? 'No expiry while free' : seller.expiryDate ? `${seller.expiryDate} (${seller.daysRemaining ?? '—'} days)` : '—'} />
           <TouchableOpacity style={styles.wideBtn} onPress={openRenew}>
-            <Text style={styles.primaryText}>Record cash renewal</Text>
+            <Text style={styles.primaryText}>{seller.plan === 'FREE' ? 'Change to paid plan' : 'Record cash renewal'}</Text>
           </TouchableOpacity>
         </Card>
       </View>
@@ -167,8 +170,8 @@ export const SellerDetailScreen = ({ navigation, route }: any) => {
       <Modal visible={showRenew} transparent animationType="fade" onRequestClose={() => setShowRenew(false)}>
         <Pressable style={styles.overlay} onPress={() => setShowRenew(false)}>
           <Pressable style={styles.popup}>
-            <Text style={styles.popupTitle}>Record Cash Renewal</Text>
-            <Text style={styles.hint}>Cash collected outside the app. Amount follows the selected plan.</Text>
+            <Text style={styles.popupTitle}>{seller.plan === 'FREE' ? 'Change to paid plan' : 'Record Cash Renewal'}</Text>
+            <Text style={styles.hint}>Cash collected outside the app. Amount follows the selected paid plan.</Text>
             <Text style={styles.fieldLabel}>Plan</Text>
             <TouchableOpacity style={styles.field} onPress={() => setPlanOpen((open) => !open)}>
               <Text>{renewPlan === 'YEARLY' ? 'Yearly' : 'Monthly'}</Text>
@@ -183,7 +186,7 @@ export const SellerDetailScreen = ({ navigation, route }: any) => {
               </View>
             )}
             <Text style={styles.fieldLabel}>Amount</Text>
-            <View style={styles.field}><Text>{formatCurrency(seller.amount)}</Text></View>
+            <View style={styles.field}><Text>{formatCurrency(renewPlan === 'YEARLY' ? Number(settings?.planYearlyAmount || 5389.2) : Number(settings?.planMonthlyAmount || 499))}</Text></View>
             <Text style={styles.fieldLabel}>Payment method</Text>
             <View style={styles.field}><Text>Cash</Text></View>
             <Text style={styles.fieldLabel}>Payment date & time</Text>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Button, Card, Loading, StatusPill } from '../../components/common';
+import { Button, Card, ContactActions, Loading, StatusPill } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
 import { useGetShopCanEventsQuery, useGetShopCustomerQuery, useGetShopLedgerQuery } from '../../store/api/shopApi';
 import { useGetAllOrdersQuery, useGetOrderByIdQuery } from '../../store/api/orderApi';
@@ -83,6 +83,7 @@ export const ShopCustomerDetailScreen = ({ navigation, route }: any) => {
         <StatusPill label={customer.customerCode} />
       </View>
       <Text style={styles.meta}>{customer.mobile}</Text>
+      <ContactActions phone={customer.mobile} message={`Hello ${customer.name}, this is your Natural Drops seller.`} />
       <Text style={styles.meta}>
         {[customer.house, customer.area, customer.city, customer.pin].filter(Boolean).join(', ') || 'No address'}
       </Text>

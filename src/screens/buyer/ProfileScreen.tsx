@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Ima
 import { useNavigation } from '@react-navigation/native';
 import { Picker } from '@react-native-picker/picker';
 import { colors, typography, spacing } from '../../theme';
-import { Card, Button, Input, DatePicker } from '../../components/common';
+import { Card, Button, Input, DatePicker, ContactActions, SupportContactCard } from '../../components/common';
 import { AutocompleteInput, AutocompleteOption } from '../../components/common/AutocompleteInput';
 import { useAuth } from '../../hooks';
 import { useUpdateOwnProfileMutation } from '../../store/api/userApi';
@@ -17,7 +17,7 @@ import { setUser } from '../../store/slices/authSlice';
 import { storageService } from '../../services/storage.service';
 import { pickProfileImage, formatDateForPicker } from '../../utils/imageUtils';
 import { locationApiService } from '../../services/locationApi.service';
-import { useGetShopProfileQuery, useSaveShopProfileMutation } from '../../store/api/shopApi';
+import { useGetShopBuyersQuery, useGetShopProfileQuery, useSaveShopProfileMutation } from '../../store/api/shopApi';
 import { formatClockAmPm } from '../../utils/formatters';
 import { Ionicons } from '@expo/vector-icons';
 import { BuyerRegularOrderCard } from '../../components/buyer/BuyerRegularOrderCard';
@@ -214,6 +214,7 @@ const ShopClock = ({ label, value, onChange, disabled }: { label: string; value:
 export const ProfileScreen = () => {
   const { user, isBuyer, isSeller, isAdmin } = useAuth();
   const { data: shopProfile } = useGetShopProfileQuery(undefined, { skip: !isSeller() });
+  const { data: shopBuyers = [] } = useGetShopBuyersQuery(undefined, { skip: !isSeller() });
   const [saveShopProfile, { isLoading: savingHours }] = useSaveShopProfileMutation();
   const [openTime, setOpenTime] = useState('08:00');
   const [closeTime, setCloseTime] = useState('20:00');
@@ -1074,6 +1075,23 @@ export const ProfileScreen = () => {
                 </View>
               )}
 
+              <SupportContactCard title={isAdmin() ? 'Customer contact details' : 'Contact admin'} />
+              {isSeller() && (
+                <View style={styles.securitySection}>
+                  <Text style={styles.sectionTitle}>Buyer contacts</Text>
+                  <Text style={styles.metaText}>Call, SMS, WhatsApp, or email a buyer who completed their account.</Text>
+                  {shopBuyers.length === 0 ? (
+                    <Text style={styles.metaText}>No completed buyers yet.</Text>
+                  ) : shopBuyers.map((buyer) => (
+                    <View key={buyer.id} style={styles.buyerContact}>
+                      <Text style={styles.actionRowText}>{buyer.fullName || buyer.username}</Text>
+                      <Text style={styles.metaText}>{buyer.phone || buyer.phoneNumber || 'No mobile'}{buyer.email ? ` · ${buyer.email}` : ''}</Text>
+                      <ContactActions phone={buyer.phone || buyer.phoneNumber} email={buyer.email} message={`Hello ${buyer.fullName || buyer.username}, this is your Natural Drops seller.`} />
+                    </View>
+                  ))}
+                </View>
+              )}
+
               <View style={styles.securitySection}>
                 {(isSeller() || isAdmin()) && (
                   <TouchableOpacity style={styles.actionRow} onPress={() => navigation.navigate('ShopProfile' as never)}>
@@ -1522,6 +1540,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+  metaText: { color: colors.textSecondary, marginTop: spacing.xs },
+  buyerContact: { marginTop: spacing.md },
   changePasswordButton: {
     marginTop: spacing.sm,
   },

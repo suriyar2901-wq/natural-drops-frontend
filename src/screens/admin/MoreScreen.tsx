@@ -1,48 +1,42 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { borderRadius, colors, spacing, typography } from '../../theme';
 import { useAuth } from '../../hooks';
-import { useGetUnreadAdminNotificationCountQuery } from '../../store/api/notificationApi';
 
 type Action = {
   label: string;
+  icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
   badge?: number;
 };
 
 export const MoreScreen = ({ navigation }: any) => {
   const { isStrictAdmin, isSeller } = useAuth();
-  const { data: unreadCount = 0 } = useGetUnreadAdminNotificationCountQuery();
 
   const openParent = (screen: string) => {
     navigation.getParent()?.navigate(screen) || navigation.navigate(screen);
   };
 
-  const actions: Action[] = [
-    {
-      label: 'Manage Orders',
-      onPress: () => navigation.navigate('OrderManagement'),
-      badge: unreadCount > 0 ? unreadCount : undefined,
-    },
-  ];
+  const actions: Action[] = [];
 
   if (isStrictAdmin()) {
     actions.push(
-      { label: 'Manage Products', onPress: () => navigation.navigate('MenuManagement') },
-      { label: 'Manage Users', onPress: () => navigation.navigate('UserManagement') },
-      { label: 'App Settings', onPress: () => navigation.navigate('AppSettings') },
-      { label: 'Manage Sellers', onPress: () => navigation.navigate('SellerList') },
-      { label: 'Subscriptions', onPress: () => navigation.navigate('SubscriptionList') },
-      { label: 'Subscription Payments', onPress: () => navigation.navigate('PaymentList') },
+      { label: 'Manage Products', icon: 'cube-outline', onPress: () => navigation.navigate('MenuManagement') },
+      { label: 'Manage Users', icon: 'people-outline', onPress: () => navigation.navigate('UserManagement') },
+      { label: 'App Settings', icon: 'settings-outline', onPress: () => navigation.navigate('AppSettings') },
+      { label: 'Manage Sellers', icon: 'storefront-outline', onPress: () => navigation.navigate('SellerList') },
+      { label: 'Subscriptions', icon: 'repeat-outline', onPress: () => navigation.navigate('SubscriptionList') },
+      { label: 'Subscription Payments', icon: 'card-outline', onPress: () => navigation.navigate('PaymentList') },
     );
   }
 
   if (isSeller()) {
     actions.push(
-      { label: 'Profile', onPress: () => navigation.navigate('Profile') },
-      { label: 'Water can management', onPress: () => openParent('IssuedCans') },
-      { label: 'Daily can collection', onPress: () => openParent('CanCollectionReport') },
-      { label: 'Shop Profile / QR', onPress: () => openParent('ShopProfile') },
+      { label: 'Profile', icon: 'person-outline', onPress: () => navigation.navigate('Profile') },
+      { label: 'Water can management', icon: 'water-outline', onPress: () => openParent('IssuedCans') },
+      { label: 'Daily can collection', icon: 'calendar-outline', onPress: () => openParent('CanCollectionReport') },
+      { label: 'Shop Profile / QR', icon: 'qr-code-outline', onPress: () => openParent('ShopProfile') },
     );
   }
 
@@ -52,7 +46,12 @@ export const MoreScreen = ({ navigation }: any) => {
       {actions.map((action) => (
         <TouchableOpacity key={action.label} style={styles.actionButton} onPress={action.onPress}>
           <View style={styles.actionRow}>
-            <Text style={styles.actionText}>{action.label}</Text>
+            <View style={styles.actionMain}>
+              <View style={styles.iconWrap}>
+                <Ionicons name={action.icon} size={22} color={colors.primary} />
+              </View>
+              <Text style={styles.actionText}>{action.label}</Text>
+            </View>
             {!!action.badge && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{action.badge}</Text>
@@ -95,6 +94,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  actionMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.space12,
   },
   actionText: {
     fontSize: typography.fontSize.lg,

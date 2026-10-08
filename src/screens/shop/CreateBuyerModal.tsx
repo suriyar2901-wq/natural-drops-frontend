@@ -1,8 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Button, Input } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
 import { useCreateShopBuyerMutation, useGetShopCompanyQuery, useLazyLookupPincodeQuery } from '../../store/api/shopApi';
+import { openContact } from '../../utils/openContact';
 
 type PincodeSuggestion = {
   pincode: string;
@@ -104,22 +105,8 @@ export const CreateBuyerModal = ({ visible, onClose }: { visible: boolean; onClo
     }
   };
 
-  const openShare = async (url?: string) => {
-    if (!url) {
-      return;
-    }
-    try {
-      if (Platform.OS === 'web') {
-        if (!/^https?:\/\//i.test(url)) {
-          return;
-        }
-        window.open(url, '_blank', 'noopener,noreferrer');
-        return;
-      }
-      await Linking.openURL(url);
-    } catch (_error) {
-      // Keep the invite popup visible if the device cannot open the app.
-    }
+  const openShare = (url?: string) => {
+    openContact(url);
   };
 
   const closeForm = () => {
@@ -163,7 +150,9 @@ export const CreateBuyerModal = ({ visible, onClose }: { visible: boolean; onClo
       setPincodeSuggestions([]);
       setPincodeError('');
     } catch (error: any) {
-      setFormError(error?.data?.message || error?.message || 'Could not create buyer');
+      const message = error?.data?.message || error?.message || 'Could not create buyer';
+      setFormError(message);
+      Alert.alert('Cannot create buyer', message);
     }
   };
 

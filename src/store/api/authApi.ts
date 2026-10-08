@@ -73,7 +73,7 @@ export const authApi = baseApi.injectEndpoints({
       // This won't trigger automatic queries - it just marks cache as stale
       invalidatesTags: ['Auth'],
     }),
-    forgotPassword: builder.mutation<void, { email: string }>({
+    forgotPassword: builder.mutation<void, { username: string }>({
       query: (data) => ({
         url: '/auth/forgot-password',
         method: 'POST',

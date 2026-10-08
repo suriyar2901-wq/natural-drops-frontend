@@ -100,10 +100,11 @@ const SellerCard = ({ seller, onPress }: { seller: SellerAdmin; onPress: () => v
       </View>
       <Text style={styles.business}>{seller.businessName}</Text>
       <Text style={styles.meta}>{seller.ownerName} • {seller.mobile}</Text>
+      {!!seller.username && <Text style={styles.meta}>Username {seller.username}</Text>}
       <Text style={styles.meta}>{seller.area}, {seller.city}</Text>
       <View style={styles.cardTop}>
         <Text style={styles.meta}>Code {seller.companyCode || seller.sellerCode}</Text>
-      <Text style={styles.meta}>{seller.plan || 'MONTHLY'} • Exp {seller.expiryDate || '—'}</Text>
+      <Text style={styles.meta}>{seller.plan === 'FREE' ? 'Free account' : `${seller.plan || 'MONTHLY'} • Exp ${seller.expiryDate || '—'}`}</Text>
         <StatusPill label={seller.accountStatus} />
       </View>
     </Card>

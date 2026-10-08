@@ -51,7 +51,7 @@ export const ShopCustomersScreen = ({ navigation }: any) => {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Customer ledger</Text>
-        <Button title="+ Add" onPress={() => setShowCreate(true)} />
+        <Button title="Add buyer" onPress={() => setShowCreate(true)} />
       </View>
 
       <View style={styles.chips}>

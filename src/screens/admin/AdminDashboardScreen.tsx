@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, spacing } from '../../theme';
-import { Card, Loading, DatePicker, StatusPill, DashboardRevenueChart, EarningsBarChart, HeaderBrand } from '../../components/common';
+import { Card, Loading, DatePicker, StatusPill, DashboardRevenueChart, EarningsBarChart, HeaderBrand, ShareAppButton } from '../../components/common';
 import { useAuth } from '../../hooks';
 import { useGetDashboardStatsQuery } from '../../store/api/dashboardApi';
 import { useGetPlatformDashboardQuery } from '../../store/api/platformAdminApi';
@@ -244,6 +244,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
           <Text style={styles.reminderCopy}>
             Buyers who register with this code see only your products. Buyers: {shopCompany.buyerCount}
           </Text>
+          <ShareAppButton companyCode={shopCompany.companyCode} companyName={shopCompany.companyName} />
           <TouchableOpacity
             style={styles.reminderButton}
             onPress={() => navigation.getParent()?.navigate('ShopBuyers') || navigation.navigate('ShopBuyers')}

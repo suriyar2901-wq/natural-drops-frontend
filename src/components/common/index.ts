@@ -22,8 +22,11 @@ export * from './OrderTimer';
 export * from './DateRangeModal';
 export * from './EditOrderModal';
 export * from './CustomerServiceModal';
+export * from './ContactActions';
+export * from './SupportContactCard';
 export * from './BillEditModal';
 export * from './HeaderBrand';
+export * from './ShareAppButton';
 // MapboxMapView is platform-specific - only export on mobile
 // Use MapView instead for cross-platform compatibility
 

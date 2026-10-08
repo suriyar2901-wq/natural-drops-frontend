@@ -1,7 +1,7 @@
 export type AccountStatus = 'PENDING' | 'ACTIVE' | 'DEACTIVATED';
-export type SubscriptionStatus = 'Active' | 'Expiring Soon' | 'Expired' | 'Payment Pending';
+export type SubscriptionStatus = 'Active' | 'Expiring Soon' | 'Expired' | 'Payment Pending' | 'Free';
 export type PaymentStatus = 'SUCCESSFUL' | 'PENDING' | 'FAILED';
-export type PlanType = 'MONTHLY' | 'YEARLY';
+export type PlanType = 'FREE' | 'MONTHLY' | 'YEARLY';
 export type PaymentMethod = 'CASH' | 'UPI' | 'GATEWAY';
 
 export interface SellerPayment {
@@ -43,6 +43,11 @@ export interface SellerAdmin {
   adminNote?: string;
   createdAt?: string;
   createdBy?: string;
+  username?: string;
+  inviteLink?: string;
+  whatsappUrl?: string;
+  smsUrl?: string;
+  emailSent?: boolean;
   subscriptionId?: number;
   plan?: PlanType;
   amount?: number;
@@ -84,6 +89,7 @@ export interface PlatformDashboard {
 
 export interface CreateSellerPayload {
   ownerName: string;
+  username?: string;
   mobile: string;
   alternateMobile?: string;
   email?: string;

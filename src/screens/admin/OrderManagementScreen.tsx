@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, ScrollView, ActivityIndicator, Platform, Dimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import { colors, typography, spacing } from '../../theme';
 import { Card, EmptyState, Loading, DateRangeModal, EditOrderModal, BillEditModal } from '../../components/common';
@@ -527,15 +528,26 @@ export const OrderManagementScreen = () => {
     });
 
     return (
-      <Card style={styles.orderCard}>
+      <Card style={[styles.orderCard, { borderLeftColor: getStatusColor(item.status) }]}>
         <View style={styles.orderHeader}>
-          <View>
-            <Text style={styles.orderId}>Order #{item.id}</Text>
-            {isStrictAdmin() && !!item.sellerBusinessName && (
-              <Text style={styles.sellerName}>Seller: {item.sellerBusinessName}</Text>
-            )}
-            <Text style={styles.customerName}>{item.buyerName}</Text>
-            <Text style={styles.customerPhone}>{item.buyerPhone}</Text>
+          <View style={styles.orderIdentity}>
+            <View style={styles.billIcon}>
+              <Ionicons name="receipt-outline" size={22} color={colors.primary} />
+            </View>
+            <View style={styles.orderIdentityText}>
+              <Text style={styles.orderId}>Order #{item.id}</Text>
+              {isStrictAdmin() && !!item.sellerBusinessName && (
+                <Text style={styles.sellerName}>Seller: {item.sellerBusinessName}</Text>
+              )}
+              <View style={styles.personRow}>
+                <Ionicons name="person-outline" size={14} color={colors.textSecondary} />
+                <Text style={styles.customerName}>{item.buyerName}</Text>
+              </View>
+              <View style={styles.personRow}>
+                <Ionicons name="call-outline" size={14} color={colors.textSecondary} />
+                <Text style={styles.customerPhone}>{item.buyerPhone}</Text>
+              </View>
+            </View>
           </View>
           <View style={styles.headerRight}>
             {isEditable && (
@@ -543,8 +555,9 @@ export const OrderManagementScreen = () => {
                 style={[styles.editIconButton, (processingOrderId === item.id && updatingOrder) && styles.editIconButtonDisabled]}
                 onPress={() => handleEditOrderClick(item)}
                 disabled={processingOrderId === item.id && updatingOrder}
+                accessibilityLabel="Edit order"
               >
-                <Text style={styles.editIconText}>Edit</Text>
+                <Ionicons name="create-outline" size={18} color={colors.primary} />
               </TouchableOpacity>
             )}
             <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
@@ -557,20 +570,27 @@ export const OrderManagementScreen = () => {
                 onPress={() => handleExportSingle(item)}
                 disabled={exporting}
               >
-                <Text style={styles.exportUnderStatusIcon}>⤓</Text>
+                <Ionicons name="download-outline" size={18} color={colors.primary} />
               </TouchableOpacity>
             )}
           </View>
         </View>
 
-        <Text style={styles.orderDate}>{formatDateTime(item.orderDate)}</Text>
+        <View style={styles.metaRow}>
+          <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+          <Text style={styles.orderDate}>{formatDateTime(item.orderDate)}</Text>
+        </View>
 
         <View style={styles.orderItems}>
           {item.items && item.items.length > 0 ? (
             item.items.map((orderItem, index) => (
-              <Text key={index} style={styles.itemText}>
-                {orderItem.quantity}x {orderItem.itemName} - {formatCurrency(orderItem.subtotal)}
-              </Text>
+              <View key={index} style={styles.itemRow}>
+                <View style={styles.qtyChip}>
+                  <Text style={styles.qtyChipText}>{orderItem.quantity}</Text>
+                </View>
+                <Text style={styles.itemName}>{orderItem.itemName}</Text>
+                <Text style={styles.itemPrice}>{formatCurrency(orderItem.subtotal)}</Text>
+              </View>
             ))
           ) : (
             <Text style={styles.itemText}>No items</Text>
@@ -578,7 +598,10 @@ export const OrderManagementScreen = () => {
         </View>
 
         <View style={styles.addressContainer}>
-          <Text style={styles.addressLabel}>Delivery Address:</Text>
+          <View style={styles.personRow}>
+            <Ionicons name="location-outline" size={16} color={colors.primary} />
+            <Text style={styles.addressLabel}>Delivery Address</Text>
+          </View>
           <Text style={styles.addressText}>
             {item.deliveryAddress || item.buyerAddress || 'Not specified'}
           </Text>
@@ -591,12 +614,14 @@ export const OrderManagementScreen = () => {
 
         <View style={[styles.orderFooter, getOrderFooterStyle()]}>
           <View style={styles.totalContainer}>
+            <View style={styles.totalBox}>
             <Text style={styles.totalLabel}>
               {item.finalBillAmount ? 'Final Bill Amount' : 'Total Amount'}
             </Text>
             <Text style={styles.totalAmount}>
               {formatCurrency(item.finalBillAmount || item.total)}
             </Text>
+            </View>
             <DeliverySlotBadge order={item} />
             {item.finalBillAmount && item.finalBillAmount !== item.total && (
               <Text style={styles.originalAmount}>
@@ -1158,6 +1183,68 @@ const styles = StyleSheet.create({
   orderCard: {
     marginBottom: spacing.md,
     position: 'relative',
+    borderLeftWidth: 4,
+    overflow: 'hidden',
+  },
+  orderIdentity: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    flex: 1,
+    minWidth: 180,
+  },
+  orderIdentityText: {
+    flex: 1,
+  },
+  billIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: colors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  personRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: spacing.md,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  qtyChip: {
+    minWidth: 28,
+    height: 24,
+    borderRadius: 8,
+    backgroundColor: colors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  qtyChipText: {
+    color: colors.primary,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+  },
+  itemName: {
+    flex: 1,
+    marginLeft: spacing.sm,
+    fontSize: typography.fontSize.sm,
+    color: colors.textPrimary,
+  },
+  itemPrice: {
+    fontSize: typography.fontSize.sm,
+    color: colors.primary,
+    fontWeight: typography.fontWeight.semibold,
   },
   exportUnderStatusButton: {
     width: 34,
@@ -1250,7 +1337,6 @@ const styles = StyleSheet.create({
   orderDate: {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
-    marginBottom: spacing.md,
   },
   orderItems: {
     marginBottom: spacing.md,
@@ -1269,11 +1355,12 @@ const styles = StyleSheet.create({
   addressLabel: {
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
-    marginBottom: spacing.xs,
+    fontWeight: typography.fontWeight.semibold,
   },
   addressText: {
     fontSize: typography.fontSize.sm,
     color: colors.textPrimary,
+    marginTop: spacing.xs,
   },
   coordinatesText: {
     fontSize: typography.fontSize.xs,
@@ -1294,6 +1381,13 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 120,
     marginBottom: spacing.xs,
+  },
+  totalBox: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.secondary,
+    borderRadius: 12,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   totalLabel: {
     fontSize: typography.fontSize.sm,

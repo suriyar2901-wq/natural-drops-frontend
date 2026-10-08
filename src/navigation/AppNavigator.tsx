@@ -535,7 +535,12 @@ export const AppNavigator = () => {
         config: {
           screens: {
             Login: 'Login',
-            Register: 'Register',
+            Register: {
+              path: 'Register',
+              parse: {
+                companyCode: (value: string) => decodeURIComponent(value || ''),
+              },
+            },
             ForgotPassword: 'ForgotPassword',
             ResetPassword: 'ResetPassword',
             AccountInactive: 'AccountInactive',

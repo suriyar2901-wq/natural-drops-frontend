@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Image, Alert, Platform, useWindowDimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, typography, spacing } from '../../theme';
-import { Card, EmptyState, Loading, Input, HeaderBrand, ProductPhotoPlaceholder } from '../../components/common';
+import { Card, EmptyState, Loading, Input, HeaderBrand, ProductPhotoPlaceholder, ShareAppButton } from '../../components/common';
 import { useGetMenuItemsQuery } from '../../store/api/menuApi';
 import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
 import { useGetBuyerOrdersQuery } from '../../store/api/orderApi';
@@ -238,17 +239,34 @@ export const HomeScreen = ({ navigation }: any) => {
               style={styles.accountChip}
               onPress={() => navigation.navigate('BuyerPayments')}
             >
-              <Text style={styles.accountValue}>{formatCurrency(dueAmount)}</Text>
-              <Text style={styles.accountLabel}>Due</Text>
+              <View style={styles.accountIcon}>
+                <Ionicons name="wallet-outline" size={20} color={colors.white} />
+              </View>
+              <View style={styles.accountCopy}>
+                <Text style={styles.accountValue}>{formatCurrency(dueAmount)}</Text>
+                <Text style={styles.accountLabel}>Due</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.accountChip}
               onPress={() => navigation.getParent()?.navigate('BuyerEmptyCans') || navigation.navigate('BuyerEmptyCans')}
             >
-              <Text style={styles.accountValue}>{account?.emptyCans || 0}</Text>
-              <Text style={styles.accountLabel}>Cans to return</Text>
+              <View style={styles.accountIcon}>
+                <Ionicons name="water-outline" size={20} color={colors.white} />
+              </View>
+              <View style={styles.accountCopy}>
+                <Text style={styles.accountValue}>{account?.emptyCans || 0}</Text>
+                <Text style={styles.accountLabel}>Cans to return</Text>
+              </View>
             </TouchableOpacity>
           </View>
+        )}
+        {isBuyer() && !!account?.companyCode && (
+          <ShareAppButton
+            companyCode={account.companyCode}
+            companyName={account.companyName || account.sellerBusiness}
+            tone="light"
+          />
         )}
       </View>
 
@@ -258,9 +276,17 @@ export const HomeScreen = ({ navigation }: any) => {
           onPress={() => navigation.getParent()?.navigate('OrderDetail', { order: nextDelivery }) || navigation.navigate('OrderDetail', { order: nextDelivery })}
         >
           <Card style={styles.nextDelivery}>
-            <Text style={styles.nextDeliveryTitle}>Next delivery</Text>
-            <Text style={styles.nextDeliverySlot}>{formatDeliverySlot(nextDelivery)}</Text>
-            <Text style={styles.nextDeliveryMeta}>Order #{nextDelivery.id}</Text>
+            <View style={styles.nextDeliveryRow}>
+              <View style={styles.nextDeliveryIcon}>
+                <Ionicons name="calendar-outline" size={22} color={colors.primary} />
+              </View>
+              <View style={styles.accountCopy}>
+                <Text style={styles.nextDeliveryTitle}>Next delivery</Text>
+                <Text style={styles.nextDeliverySlot}>{formatDeliverySlot(nextDelivery)}</Text>
+                <Text style={styles.nextDeliveryMeta}>Order #{nextDelivery.id}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+            </View>
           </Card>
         </TouchableOpacity>
       )}
@@ -329,6 +355,7 @@ export const HomeScreen = ({ navigation }: any) => {
           else navigation.navigate('Cart');
         }}
       >
+        <Ionicons name="cart-outline" size={20} color={colors.white} />
         <Text style={styles.cartButtonText}>View Cart{totalItems > 0 ? ` (${totalItems})` : ''}</Text>
       </TouchableOpacity>
     </View>
@@ -435,6 +462,21 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.md,
     marginTop: spacing.md,
     padding: spacing.md,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+  },
+  nextDeliveryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  nextDeliveryIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: colors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.space12,
   },
   nextDeliveryTitle: {
     color: colors.textSecondary,
@@ -452,9 +494,25 @@ const styles = StyleSheet.create({
   },
   accountChip: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.16)',
-    borderRadius: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
     padding: spacing.sm,
+  },
+  accountIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  accountCopy: {
+    flex: 1,
   },
   accountValue: {
     color: colors.white,
@@ -594,8 +652,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: spacing.xl,
     right: spacing.xl,
-    backgroundColor: colors.secondary,
-    paddingHorizontal: spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderRadius: 30,
     ...{

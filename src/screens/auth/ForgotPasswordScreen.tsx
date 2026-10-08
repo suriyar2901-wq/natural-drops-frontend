@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { Alert, View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { colors, typography, spacing } from '../../theme';
 import { Button, Input } from '../../components/common';
 import { useForgotPasswordMutation } from '../../store/api/authApi';
@@ -8,16 +8,16 @@ import { showSuccessToast } from '../../utils/toast';
 
 export const ForgotPasswordScreen = ({ navigation }: any) => {
   const [forgotPassword, { isLoading }] = useForgotPasswordMutation();
-  const [email, setEmail] = useState('');
-  const [errors, setErrors] = useState<{ email?: string }>({});
+  const [username, setUsername] = useState('');
+  const [errors, setErrors] = useState<{ username?: string }>({});
 
   const validate = () => {
-    const newErrors: { email?: string } = {};
-
-    if (!validators.required(email)) {
-      newErrors.email = validationMessages.required;
-    } else if (!validators.email(email)) {
-      newErrors.email = validationMessages.email;
+    const newErrors: { username?: string } = {};
+    const value = username.trim();
+    if (!validators.required(value)) {
+      newErrors.username = validationMessages.required;
+    } else if (value.includes('@')) {
+      newErrors.username = 'Enter the username, not the email';
     }
 
     setErrors(newErrors);
@@ -30,26 +30,13 @@ export const ForgotPasswordScreen = ({ navigation }: any) => {
     }
 
     try {
-      await forgotPassword({ email }).unwrap();
-
-      // Show success toast with user-friendly message
-      // Auto-dismisses after 3-4 seconds (configured in toast utility)
-      showSuccessToast('Password reset instructions have been sent to your email.');
-
-      // Optionally redirect to Login screen after a short delay
-      // This gives user time to see the toast message
+      await forgotPassword({ username: username.trim() }).unwrap();
+      showSuccessToast('Reset password link sent to the email saved on this username.');
       setTimeout(() => {
         navigation.navigate('Login');
       }, 2000);
     } catch (error: any) {
-      // Always show success message (security best practice - prevent email enumeration)
-      // Do NOT reveal whether email exists or not
-      showSuccessToast('Password reset instructions have been sent to your email.');
-
-      // Optionally redirect to Login screen after a short delay
-      setTimeout(() => {
-        navigation.navigate('Login');
-      }, 2000);
+      Alert.alert('Could not send reset link', error?.data?.message || error?.message || 'Try again.');
     }
   };
 
@@ -62,20 +49,20 @@ export const ForgotPasswordScreen = ({ navigation }: any) => {
         <View style={styles.header}>
           <Text style={styles.title}>Forgot Password</Text>
           <Text style={styles.subtitle}>
-            Enter your email address and we'll send you instructions to reset your password
+            Enter the account username. The reset password link is sent to the email saved on that account.
           </Text>
         </View>
 
         <View style={styles.form}>
           <Input
-            label="Email Address"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Enter your email address"
-            keyboardType="email-address"
+            label="Username"
+            value={username}
+            onChangeText={setUsername}
+            placeholder="Enter username"
+            keyboardType="default"
             autoCapitalize="none"
-            autoComplete="email"
-            error={errors.email}
+            autoComplete="username"
+            error={errors.username}
           />
 
           <Button
