@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { AddressMatchFields, Button, Card, Input, Loading, StatusPill } from '../../components/common';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { AddressMatchFields, Button, Card, DatePicker, Input, Loading, StatusPill } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
 import { useGetAdminSellerQuery, useUpdateAdminSellerMutation } from '../../store/api/platformAdminApi';
 
@@ -11,6 +11,9 @@ export const EditSellerScreen = ({ navigation, route }: any) => {
   const { data: seller, isLoading } = useGetAdminSellerQuery(sellerId, { skip: !sellerId });
   const [updateSeller, { isLoading: saving }] = useUpdateAdminSellerMutation();
   const [ownerName, setOwnerName] = useState('');
+  const [gender, setGender] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [aadhaarNumber, setAadhaarNumber] = useState('');
   const [mobile, setMobile] = useState('');
   const [alternateMobile, setAlternateMobile] = useState('');
   const [email, setEmail] = useState('');
@@ -25,6 +28,9 @@ export const EditSellerScreen = ({ navigation, route }: any) => {
   useEffect(() => {
     if (!seller) return;
     setOwnerName(seller.ownerName || '');
+    setGender(seller.gender || '');
+    setDateOfBirth(seller.dateOfBirth || '');
+    setAadhaarNumber(seller.aadhaarNumber || '');
     setMobile(seller.mobile || '');
     setAlternateMobile(seller.alternateMobile || '');
     setEmail(seller.email || '');
@@ -38,13 +44,16 @@ export const EditSellerScreen = ({ navigation, route }: any) => {
 
   const error = useMemo(() => {
     if (ownerName.trim().length < 2) return 'Owner name is required';
+    if (!gender) return 'Gender is required';
+    if (!dateOfBirth) return 'Date of birth is required';
+    if (!/^[0-9]{12}$/.test(aadhaarNumber)) return 'Aadhaar number must be 12 digits';
     if (!/^[0-9]{10}$/.test(mobile)) return 'Mobile must be 10 digits';
     if (email.trim() && !EMAIL_RE.test(email.trim())) return 'Invalid email format';
-    if (businessName.trim().length < 2) return 'Business name is required';
+    if (businessName.trim().length < 2) return 'Shop name is required';
     if (businessAddress.trim().length < 4) return 'Business address is required';
     if (!addressMatched) return 'Pick an area suggestion so city and pincode match';
     return '';
-  }, [ownerName, mobile, email, businessName, businessAddress, addressMatched]);
+  }, [ownerName, gender, dateOfBirth, aadhaarNumber, mobile, email, businessName, businessAddress, addressMatched]);
 
   const handleSave = async () => {
     if (error) {
@@ -56,6 +65,9 @@ export const EditSellerScreen = ({ navigation, route }: any) => {
         id: sellerId,
         body: {
           ownerName: ownerName.trim(),
+          gender,
+          dateOfBirth,
+          aadhaarNumber,
           mobile,
           alternateMobile: alternateMobile || undefined,
           email: email.trim() || undefined,
@@ -95,6 +107,26 @@ export const EditSellerScreen = ({ navigation, route }: any) => {
         <Text style={styles.section}>Seller Identity</Text>
         <Text style={styles.readonly}>Seller ID: {seller.sellerCode}</Text>
         <Input label="Owner name *" value={ownerName} onChangeText={setOwnerName} />
+        <Text style={styles.fieldLabel}>Gender *</Text>
+        <View style={styles.choiceRow}>
+          {(['Male', 'Female', 'Other'] as const).map((option) => (
+            <TouchableOpacity
+              key={option}
+              style={[styles.choice, gender === option && styles.choiceActive]}
+              onPress={() => setGender(option)}
+            >
+              <Text style={[styles.choiceText, gender === option && styles.choiceTextActive]}>{option}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <DatePicker label="Date of birth *" value={dateOfBirth} onChange={setDateOfBirth} maxDate={new Date().toISOString().slice(0, 10)} />
+        <Input
+          label="Aadhaar number *"
+          value={aadhaarNumber}
+          onChangeText={(text) => setAadhaarNumber(text.replace(/[^0-9]/g, '').slice(0, 12))}
+          keyboardType="numeric"
+          placeholder="12-digit Aadhaar number"
+        />
       </Card>
       <Card style={styles.card}>
         <Text style={styles.section}>Contact Details</Text>
@@ -104,7 +136,7 @@ export const EditSellerScreen = ({ navigation, route }: any) => {
       </Card>
       <Card style={styles.card}>
         <Text style={styles.section}>Business Details</Text>
-        <Input label="Business / shop name *" value={businessName} onChangeText={setBusinessName} />
+        <Input label="Shop name *" value={businessName} onChangeText={setBusinessName} />
         <Input label="Business address *" value={businessAddress} onChangeText={setBusinessAddress} />
         <AddressMatchFields
           area={area}
@@ -137,5 +169,11 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.textSecondary, marginBottom: spacing.md },
   card: { padding: spacing.md, marginBottom: spacing.md },
   readonly: { color: colors.textSecondary, marginBottom: spacing.sm },
+  fieldLabel: { marginTop: spacing.sm, marginBottom: spacing.xs, color: colors.textPrimary, fontWeight: typography.fontWeight.medium },
+  choiceRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
+  choice: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white },
+  choiceActive: { borderColor: colors.primary, backgroundColor: '#E3F2FD' },
+  choiceText: { color: colors.textPrimary, fontWeight: typography.fontWeight.semibold },
+  choiceTextActive: { color: colors.primary },
   cancel: { marginTop: spacing.sm },
 });

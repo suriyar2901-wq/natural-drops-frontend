@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert, Image, TouchableOpacity } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
-import { colors, typography, spacing } from '../../theme';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert, Image, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
 import { Button, Input, DatePicker } from '../../components/common';
 import { AutocompleteInput, AutocompleteOption } from '../../components/common/AutocompleteInput';
 import { useAuth } from '../../hooks';
@@ -14,8 +14,11 @@ import { clearSharedCompanyCode, readSharedCompanyCode, rememberSharedCompanyCod
 export const RegisterScreen = ({ navigation, route }: any) => {
   const sharedCompanyCode = readSharedCompanyCode(route?.params?.companyCode);
   const { register, isLoading } = useAuth();
+  const { width } = useWindowDimensions();
+  const twoCol = width >= 760;
   const [formData, setFormData] = useState({
     username: '',
+    fullName: '',
     password: '',
     email: '',
     phone: '',
@@ -35,6 +38,7 @@ export const RegisterScreen = ({ navigation, route }: any) => {
     landmark: '',
     companyName: '',
     companyCode: sharedCompanyCode,
+    aadhaarNumber: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [imagePickerLoading, setImagePickerLoading] = useState(false);
@@ -274,6 +278,13 @@ export const RegisterScreen = ({ navigation, route }: any) => {
   const validate = () => {
     const newErrors: Record<string, string> = {};
 
+    const name = formData.fullName.trim();
+    if (name.length < 2) {
+      newErrors.fullName = 'Name is required';
+    } else if (name.length > 100) {
+      newErrors.fullName = 'Name must be 100 characters or less';
+    }
+
     // Username
     if (!validators.required(formData.username)) {
       newErrors.username = validationMessages.required;
@@ -340,7 +351,10 @@ export const RegisterScreen = ({ navigation, route }: any) => {
     }
 
     if (formData.role === UserRole.SELLER && formData.companyName.trim().length < 2) {
-      newErrors.companyName = 'Company name is required';
+      newErrors.companyName = 'Shop name is required';
+    }
+    if (formData.role === UserRole.SELLER && !/^[0-9]{12}$/.test(formData.aadhaarNumber)) {
+      newErrors.aadhaarNumber = 'Aadhaar number must be 12 digits';
     }
     if (formData.role === UserRole.BUYER && formData.companyCode.trim().length < 3) {
       newErrors.companyCode = 'Seller company code is required';
@@ -358,6 +372,7 @@ export const RegisterScreen = ({ navigation, route }: any) => {
 
     const registerData = {
       username: formData.username.trim(),
+      fullName: formData.fullName.trim(),
       password: formData.password,
       email: formData.email.trim() || undefined,
       phone: formData.phone.trim(),
@@ -373,6 +388,7 @@ export const RegisterScreen = ({ navigation, route }: any) => {
       state: formData.state.trim(),
       pincode: formData.pincode.trim(),
       landmark: formData.landmark.trim() || undefined,
+      aadhaarNumber: formData.role === UserRole.SELLER ? formData.aadhaarNumber : undefined,
       companyName: formData.role === UserRole.SELLER ? formData.companyName.trim() : undefined,
       companyCode: (sellerLocked || formData.role === UserRole.BUYER)
         ? (sellerLocked ? sharedCompanyCode : formData.companyCode.trim())
@@ -436,16 +452,9 @@ export const RegisterScreen = ({ navigation, route }: any) => {
           contentInsetAdjustmentBehavior: 'automatic' as const,
         } : {})}
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Register to get started</Text>
-        </View>
-
-        <View style={styles.form}>
-          {/* Profile Photo */}
-          <View style={styles.photoSection}>
-            <Text style={styles.label}>Profile Photo (Optional)</Text>
-            <TouchableOpacity 
+        <View style={styles.card}>
+          <View style={styles.header}>
+            <TouchableOpacity
               style={styles.photoContainer}
               onPress={handlePickImage}
               disabled={imagePickerLoading}
@@ -454,255 +463,319 @@ export const RegisterScreen = ({ navigation, route }: any) => {
                 <Image source={{ uri: formData.profilePhoto }} style={styles.profilePhoto} />
               ) : (
                 <View style={styles.photoPlaceholder}>
-                  <Text style={styles.photoPlaceholderText}>📷</Text>
-                  <Text style={styles.photoPlaceholderLabel}>Tap to add photo</Text>
+                  <Ionicons name="camera-outline" size={22} color={colors.primary} />
                 </View>
               )}
             </TouchableOpacity>
-            {errors.profilePhoto && <Text style={styles.errorText}>{errors.profilePhoto}</Text>}
-          </View>
-
-          <Input
-            label="Username *"
-            value={formData.username}
-            onChangeText={(text) => {
-              setFormData({ ...formData, username: text });
-              if (errors.username) setErrors({ ...errors, username: '' });
-            }}
-            placeholder="Choose a username"
-            autoCapitalize="none"
-            error={errors.username}
-          />
-
-          <Input
-            label="Password *"
-            value={formData.password}
-            onChangeText={(text) => {
-              setFormData({ ...formData, password: text });
-              if (errors.password) setErrors({ ...errors, password: '' });
-            }}
-            placeholder="Choose a password"
-            secureTextEntry
-            showPasswordToggle
-            error={errors.password}
-          />
-
-          <Input
-            label="Email"
-            value={formData.email}
-            onChangeText={(text) => setFormData({ ...formData, email: text })}
-            placeholder="Enter your email (optional)"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            error={errors.email}
-          />
-
-          <Input
-            label="Phone Number *"
-            value={formData.phone}
-            onChangeText={(text) => {
-              setFormData({ ...formData, phone: text.replace(/[^0-9]/g, '') });
-              if (errors.phone) setErrors({ ...errors, phone: '' });
-            }}
-            placeholder="Enter 10-digit phone number"
-            keyboardType="phone-pad"
-            maxLength={10}
-            error={errors.phone}
-          />
-
-          <Input
-            label="Alternate Phone Number"
-            value={formData.alternatePhone}
-            onChangeText={(text) => {
-              setFormData({ ...formData, alternatePhone: text.replace(/[^0-9]/g, '') });
-              if (errors.alternatePhone) setErrors({ ...errors, alternatePhone: '' });
-            }}
-            placeholder="Enter alternate phone (optional)"
-            keyboardType="phone-pad"
-            maxLength={10}
-            error={errors.alternatePhone}
-          />
-
-          {/* Gender Picker */}
-          <View style={styles.pickerContainer}>
-            <Text style={styles.label}>Gender (Optional)</Text>
-            <View style={styles.pickerWrapper}>
-              <Picker
-                selectedValue={formData.gender}
-                onValueChange={(itemValue) => setFormData({ ...formData, gender: itemValue })}
-                style={styles.picker}
-              >
-                <Picker.Item label="Select Gender" value="" />
-                <Picker.Item label="Male" value={Gender.MALE} />
-                <Picker.Item label="Female" value={Gender.FEMALE} />
-                <Picker.Item label="Other" value={Gender.OTHER} />
-              </Picker>
+            <View style={styles.headerText}>
+              <Text style={styles.title}>Create account</Text>
+              <Text style={styles.subtitle}>Fill the details in order. Fields with * are required.</Text>
+              {errors.profilePhoto ? <Text style={styles.errorText}>{errors.profilePhoto}</Text> : (
+                <Text style={styles.photoHint}>Tap the photo to add one. This is optional.</Text>
+              )}
             </View>
           </View>
 
-          {/* Date of Birth */}
-          <DatePicker
-            label="Date of Birth (Optional)"
-            value={formData.dateOfBirth}
-            onChange={(date) => {
-              setFormData({ ...formData, dateOfBirth: date });
-              if (errors.dateOfBirth) setErrors({ ...errors, dateOfBirth: '' });
-            }}
-            maxDate={formatDateForPicker(new Date())} // Today's date in YYYY-MM-DD format
-            placeholder="Select date of birth"
-          />
-          {errors.dateOfBirth && <Text style={styles.errorText}>{errors.dateOfBirth}</Text>}
-
-          {/* Address Section */}
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Address Details *</Text>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>1. Account type</Text>
+            {sellerLocked ? (
+              <Text style={styles.lockedNote}>
+                Buyer account for seller code {sharedCompanyCode}. This link cannot create a seller or admin account, and the company code cannot be changed.
+              </Text>
+            ) : (
+              <View style={styles.choiceRow}>
+                {[
+                  { label: 'Buyer', value: UserRole.BUYER },
+                  { label: 'Seller', value: UserRole.SELLER },
+                  { label: 'Admin', value: UserRole.ADMIN },
+                ].map((option) => {
+                  const active = formData.role === option.value;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[styles.choice, active && styles.choiceActive]}
+                      onPress={() => setFormData({ ...formData, role: option.value })}
+                    >
+                      <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{option.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
           </View>
 
-          <Input
-            label="House / Door No *"
-            value={formData.houseDoorNo}
-            onChangeText={(text) => {
-              setFormData({ ...formData, houseDoorNo: text });
-              if (errors.houseDoorNo) setErrors({ ...errors, houseDoorNo: '' });
-            }}
-            placeholder="Enter house/door number"
-            error={errors.houseDoorNo}
-          />
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>2. Login</Text>
+            <View style={[styles.row, !twoCol && styles.rowStack]}>
+              <View style={[styles.col, !twoCol && styles.colStack]}>
+                <Input
+                  label="Username *"
+                  value={formData.username}
+                  onChangeText={(text) => {
+                    setFormData({ ...formData, username: text });
+                    if (errors.username) setErrors({ ...errors, username: '' });
+                  }}
+                  placeholder="Choose a username"
+                  autoCapitalize="none"
+                  error={errors.username}
+                />
+              </View>
+              <View style={[styles.col, !twoCol && styles.colStack]}>
+                <Input
+                  label="Password *"
+                  value={formData.password}
+                  onChangeText={(text) => {
+                    setFormData({ ...formData, password: text });
+                    if (errors.password) setErrors({ ...errors, password: '' });
+                  }}
+                  placeholder="At least 6 characters"
+                  secureTextEntry
+                  showPasswordToggle
+                  error={errors.password}
+                />
+              </View>
+            </View>
+          </View>
 
-          <Input
-            label="Street / Area *"
-            value={formData.streetArea}
-            onChangeText={(text) => {
-              setFormData({ ...formData, streetArea: text });
-              if (errors.streetArea) setErrors({ ...errors, streetArea: '' });
-            }}
-            placeholder="Enter street/area"
-            error={errors.streetArea}
-          />
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>3. Your details</Text>
+            <Input
+              label="Name *"
+              value={formData.fullName}
+              onChangeText={(text) => {
+                setFormData({ ...formData, fullName: text });
+                if (errors.fullName) setErrors({ ...errors, fullName: '' });
+              }}
+              placeholder="Your name"
+              autoCapitalize="words"
+              maxLength={100}
+              error={errors.fullName}
+            />
+            {formData.role === UserRole.SELLER && (
+              <View style={[styles.row, !twoCol && styles.rowStack]}>
+                <View style={[styles.col, !twoCol && styles.colStack]}>
+                  <Input
+                    label="Shop name *"
+                    value={formData.companyName}
+                    onChangeText={(text) => setFormData({ ...formData, companyName: text })}
+                    placeholder="Your shop name"
+                    error={errors.companyName}
+                  />
+                </View>
+                <View style={[styles.col, !twoCol && styles.colStack]}>
+                  <Input
+                    label="Aadhaar number *"
+                    value={formData.aadhaarNumber}
+                    onChangeText={(text) => {
+                      setFormData({ ...formData, aadhaarNumber: text.replace(/[^0-9]/g, '').slice(0, 12) });
+                      if (errors.aadhaarNumber) setErrors({ ...errors, aadhaarNumber: '' });
+                    }}
+                    placeholder="12-digit Aadhaar number"
+                    keyboardType="numeric"
+                    maxLength={12}
+                    error={errors.aadhaarNumber}
+                  />
+                </View>
+              </View>
+            )}
+            {(sellerLocked || formData.role === UserRole.BUYER) && (
+              <Input
+                label="Seller company code *"
+                value={sellerLocked ? sharedCompanyCode : formData.companyCode}
+                onChangeText={(text) => {
+                  if (!sellerLocked) {
+                    setFormData({ ...formData, companyCode: text.toUpperCase() });
+                  }
+                }}
+                placeholder="Example: RAVI-0001"
+                autoCapitalize="characters"
+                editable={!sellerLocked}
+                error={errors.companyCode}
+              />
+            )}
+            <View style={[styles.row, !twoCol && styles.rowStack]}>
+              <View style={[styles.col, !twoCol && styles.colStack]}>
+                <Text style={styles.label}>Gender</Text>
+                <View style={styles.choiceRow}>
+                  {[
+                    { label: 'Male', value: Gender.MALE },
+                    { label: 'Female', value: Gender.FEMALE },
+                    { label: 'Other', value: Gender.OTHER },
+                  ].map((option) => {
+                    const active = formData.gender === option.value;
+                    return (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={[styles.choice, active && styles.choiceActive]}
+                        onPress={() => setFormData({ ...formData, gender: option.value })}
+                      >
+                        <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{option.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+              <View style={[styles.col, !twoCol && styles.colStack]}>
+                <DatePicker
+                  label="Date of birth"
+                  value={formData.dateOfBirth}
+                  onChange={(date) => {
+                    setFormData({ ...formData, dateOfBirth: date });
+                    if (errors.dateOfBirth) setErrors({ ...errors, dateOfBirth: '' });
+                  }}
+                  maxDate={formatDateForPicker(new Date())}
+                  placeholder="Select date of birth"
+                />
+                {errors.dateOfBirth ? <Text style={styles.errorText}>{errors.dateOfBirth}</Text> : null}
+              </View>
+            </View>
+          </View>
 
-          <AutocompleteInput
-            label="City *"
-            value={formData.city}
-            onChangeText={handleCityChange}
-            onSelect={(option) => {
-              setFormData(prev => ({ ...prev, city: option.name }));
-              if (option.state && !formData.state) {
-                setFormData(prev => ({ ...prev, state: option.state || '' }));
-              }
-            }}
-            placeholder="Start typing city name..."
-            error={errors.city}
-            suggestions={citySuggestions}
-            isLoading={isLoadingCity}
-            autoCapitalize="words"
-          />
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>4. Contact</Text>
+            <View style={[styles.row, !twoCol && styles.rowStack]}>
+              <View style={[styles.col, !twoCol && styles.colStack]}>
+                <Input
+                  label="Phone number *"
+                  value={formData.phone}
+                  onChangeText={(text) => {
+                    setFormData({ ...formData, phone: text.replace(/[^0-9]/g, '') });
+                    if (errors.phone) setErrors({ ...errors, phone: '' });
+                  }}
+                  placeholder="10-digit phone number"
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  error={errors.phone}
+                />
+              </View>
+              <View style={[styles.col, !twoCol && styles.colStack]}>
+                <Input
+                  label="Alternate phone"
+                  value={formData.alternatePhone}
+                  onChangeText={(text) => {
+                    setFormData({ ...formData, alternatePhone: text.replace(/[^0-9]/g, '') });
+                    if (errors.alternatePhone) setErrors({ ...errors, alternatePhone: '' });
+                  }}
+                  placeholder="Optional"
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  error={errors.alternatePhone}
+                />
+              </View>
+            </View>
+            <Input
+              label="Email"
+              value={formData.email}
+              onChangeText={(text) => setFormData({ ...formData, email: text })}
+              placeholder="Optional"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              error={errors.email}
+            />
+          </View>
 
-          <AutocompleteInput
-            label="District *"
-            value={formData.district}
-            onChangeText={handleDistrictChange}
-            onSelect={(option) => {
-              setFormData(prev => ({ ...prev, district: option.name }));
-              if (option.state && !formData.state) {
-                setFormData(prev => ({ ...prev, state: option.state || '' }));
-              }
-            }}
-            placeholder="Start typing district name..."
-            error={errors.district}
-            suggestions={districtSuggestions}
-            isLoading={isLoadingDistrict}
-            autoCapitalize="words"
-          />
-
-          <AutocompleteInput
-            label="State *"
-            value={formData.state}
-            onChangeText={handleStateChange}
-            onSelect={(option) => {
-              setFormData(prev => ({ ...prev, state: option.name }));
-            }}
-            placeholder="Start typing state name..."
-            error={errors.state}
-            suggestions={stateSuggestions}
-            isLoading={isLoadingState}
-            autoCapitalize="words"
-          />
-
-          <View style={styles.pincodeContainer}>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              {sellerLocked || formData.role === UserRole.BUYER ? '5. Delivery address' : '5. Address'}
+            </Text>
+            <Text style={styles.sectionHint}>Enter the pincode first. City, district, and state fill in from it.</Text>
             <Input
               label="Pincode *"
               value={formData.pincode}
               onChangeText={handlePincodeChange}
-              placeholder="Enter 6-digit pincode"
+              placeholder="6-digit pincode"
               keyboardType="phone-pad"
               maxLength={6}
               error={errors.pincode || pincodeError}
             />
-            {isLoadingPincode && (
-              <View style={styles.pincodeLoader}>
-                <Text style={styles.pincodeLoaderText}>Fetching location...</Text>
+            {isLoadingPincode ? <Text style={styles.pincodeLoaderText}>Fetching location...</Text> : null}
+            {formData.pincode.length === 6 && !isLoadingPincode && !pincodeError ? (
+              <Text style={styles.pincodeSuccess}>Location filled from this pincode</Text>
+            ) : null}
+            <View style={[styles.row, !twoCol && styles.rowStack]}>
+              <View style={[styles.col, !twoCol && styles.colStack]}>
+                <AutocompleteInput
+                  label="City *"
+                  value={formData.city}
+                  onChangeText={handleCityChange}
+                  onSelect={(option) => {
+                    setFormData(prev => ({ ...prev, city: option.name }));
+                    if (option.state && !formData.state) {
+                      setFormData(prev => ({ ...prev, state: option.state || '' }));
+                    }
+                  }}
+                  placeholder="City"
+                  error={errors.city}
+                  suggestions={citySuggestions}
+                  isLoading={isLoadingCity}
+                  autoCapitalize="words"
+                />
               </View>
-            )}
-            {formData.pincode.length === 6 && !isLoadingPincode && !pincodeError && (
-              <Text style={styles.pincodeSuccess}>✓ Location auto-filled</Text>
-            )}
-          </View>
-
-          <Input
-            label="Landmark (Optional)"
-            value={formData.landmark}
-            onChangeText={(text) => setFormData({ ...formData, landmark: text })}
-            placeholder="Enter landmark (optional)"
-          />
-
-          {sellerLocked ? (
-            <View style={styles.pickerContainer}>
-              <Text style={styles.label}>Account type</Text>
-              <Text style={styles.lockedNote}>
-                Buyer account for seller code {sharedCompanyCode}. This link cannot create a seller or admin account, and the company code cannot be changed.
-              </Text>
+              <View style={[styles.col, !twoCol && styles.colStack]}>
+                <AutocompleteInput
+                  label="District *"
+                  value={formData.district}
+                  onChangeText={handleDistrictChange}
+                  onSelect={(option) => {
+                    setFormData(prev => ({ ...prev, district: option.name }));
+                    if (option.state && !formData.state) {
+                      setFormData(prev => ({ ...prev, state: option.state || '' }));
+                    }
+                  }}
+                  placeholder="District"
+                  error={errors.district}
+                  suggestions={districtSuggestions}
+                  isLoading={isLoadingDistrict}
+                  autoCapitalize="words"
+                />
+              </View>
             </View>
-          ) : (
-          <View style={styles.pickerContainer}>
-            <Text style={styles.label}>Account Type *</Text>
-            <View style={styles.pickerWrapper}>
-              <Picker
-                selectedValue={formData.role}
-                onValueChange={(itemValue) => setFormData({ ...formData, role: itemValue })}
-                style={styles.picker}
-              >
-                <Picker.Item label="🛒 Buyer" value={UserRole.BUYER} />
-                <Picker.Item label="🏪 Seller" value={UserRole.SELLER} />
-                <Picker.Item label="👨‍💼 Admin" value={UserRole.ADMIN} />
-              </Picker>
-            </View>
-          </View>
-          )}
-
-          {formData.role === UserRole.SELLER && (
-            <Input
-              label="Company name *"
-              value={formData.companyName}
-              onChangeText={(text) => setFormData({ ...formData, companyName: text })}
-              placeholder="Your water company name"
-              error={errors.companyName}
-            />
-          )}
-          {(sellerLocked || formData.role === UserRole.BUYER) && (
-            <Input
-              label="Seller company code *"
-              value={sellerLocked ? sharedCompanyCode : formData.companyCode}
-              onChangeText={(text) => {
-                if (!sellerLocked) {
-                  setFormData({ ...formData, companyCode: text.toUpperCase() });
-                }
+            <AutocompleteInput
+              label="State *"
+              value={formData.state}
+              onChangeText={handleStateChange}
+              onSelect={(option) => {
+                setFormData(prev => ({ ...prev, state: option.name }));
               }}
-              placeholder="Example: RAVI-0001"
-              autoCapitalize="characters"
-              editable={!sellerLocked}
-              error={errors.companyCode}
+              placeholder="State"
+              error={errors.state}
+              suggestions={stateSuggestions}
+              isLoading={isLoadingState}
+              autoCapitalize="words"
             />
-          )}
+            <View style={[styles.row, !twoCol && styles.rowStack]}>
+              <View style={[styles.col, !twoCol && styles.colStack]}>
+                <Input
+                  label="House / door no *"
+                  value={formData.houseDoorNo}
+                  onChangeText={(text) => {
+                    setFormData({ ...formData, houseDoorNo: text });
+                    if (errors.houseDoorNo) setErrors({ ...errors, houseDoorNo: '' });
+                  }}
+                  placeholder="Door number"
+                  error={errors.houseDoorNo}
+                />
+              </View>
+              <View style={[styles.col, !twoCol && styles.colStack]}>
+                <Input
+                  label="Street / area *"
+                  value={formData.streetArea}
+                  onChangeText={(text) => {
+                    setFormData({ ...formData, streetArea: text });
+                    if (errors.streetArea) setErrors({ ...errors, streetArea: '' });
+                  }}
+                  placeholder="Street or area"
+                  error={errors.streetArea}
+                />
+              </View>
+            </View>
+            <Input
+              label="Landmark"
+              value={formData.landmark}
+              onChangeText={(text) => setFormData({ ...formData, landmark: text })}
+              placeholder="Optional"
+            />
+          </View>
 
           <Button
             title="Register"
@@ -733,50 +806,58 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: spacing.xl,
-    paddingBottom: spacing.xl * 6, // Extra padding at bottom so Register button is always visible (192px)
-    // Ensure content can extend beyond viewport for proper scrolling
+    padding: spacing.lg,
+    paddingBottom: spacing.xl * 4,
+    alignItems: 'center',
     ...Platform.select({
-      web: {
-        // Web: Allow natural content height - no constraints
-      },
       default: {
-        // Mobile: Use flexGrow to ensure proper layout
         flexGrow: 1,
       },
     }),
   },
+  card: {
+    width: '100%',
+    maxWidth: 760,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    ...shadows.sm,
+  },
   header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.xl,
-    marginTop: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  headerText: {
+    flex: 1,
+    marginLeft: spacing.md,
   },
   title: {
-    fontSize: typography.fontSize['3xl'],
+    fontSize: typography.fontSize['2xl'],
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
     marginBottom: spacing.xs,
   },
   subtitle: {
-    fontSize: typography.fontSize.base,
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  photoHint: {
+    marginTop: spacing.xs,
+    fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
   },
-  form: {
-    width: '100%',
-  },
-  photoSection: {
-    marginBottom: spacing.md,
-    alignItems: 'center',
-  },
   photoContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: colors.gray100,
-    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.blue300,
+    backgroundColor: colors.blue50,
   },
   profilePhoto: {
     width: '100%',
@@ -787,22 +868,72 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.gray100,
   },
-  photoPlaceholderText: {
-    fontSize: 40,
-    marginBottom: spacing.xs,
+  section: {
+    marginBottom: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
-  photoPlaceholderLabel: {
+  sectionTitle: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  sectionHint: {
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
+    marginBottom: spacing.sm,
   },
-  pickerContainer: {
-    marginVertical: spacing.md,
+  row: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  rowStack: {
+    flexDirection: 'column',
+    gap: 0,
+  },
+  col: {
+    flex: 1,
+    minWidth: 0,
+  },
+  colStack: {
+    width: '100%',
+  },
+  choiceRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  choice: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.xs,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+  },
+  choiceActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.blue50,
+  },
+  choiceText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textPrimary,
+    fontWeight: typography.fontWeight.medium,
+  },
+  choiceTextActive: {
+    color: colors.primary,
+    fontWeight: typography.fontWeight.bold,
   },
   lockedNote: {
     color: colors.textSecondary,
     lineHeight: 22,
+    marginBottom: spacing.sm,
   },
   label: {
     fontSize: typography.fontSize.sm,
@@ -810,54 +941,26 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginBottom: spacing.xs,
   },
-  pickerWrapper: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    backgroundColor: colors.white,
-    overflow: 'hidden',
-  },
-  picker: {
-    height: 50,
-  },
-  sectionHeader: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.md,
-    paddingBottom: spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  sectionTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.textPrimary,
-  },
   errorText: {
     fontSize: typography.fontSize.xs,
     color: colors.error,
     marginTop: spacing.xs,
   },
   registerButton: {
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
-  },
-  pincodeContainer: {
-    marginBottom: spacing.md,
-  },
-  pincodeLoader: {
-    marginTop: spacing.xs,
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
   pincodeLoaderText: {
     fontSize: typography.fontSize.xs,
     color: colors.primary,
-    fontStyle: 'italic',
+    marginTop: -spacing.sm,
+    marginBottom: spacing.sm,
   },
   pincodeSuccess: {
     fontSize: typography.fontSize.xs,
     color: colors.success,
-    marginTop: spacing.xs,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.sm,
     fontWeight: typography.fontWeight.medium,
   },
 });

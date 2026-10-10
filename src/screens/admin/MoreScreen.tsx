@@ -14,8 +14,13 @@ type Action = {
 export const MoreScreen = ({ navigation }: any) => {
   const { isStrictAdmin, isSeller } = useAuth();
 
-  const openParent = (screen: string) => {
-    navigation.getParent()?.navigate(screen) || navigation.navigate(screen);
+  const openParent = (screen: string, params?: object) => {
+    const parent = navigation.getParent();
+    if (parent) {
+      parent.navigate(screen, params);
+      return;
+    }
+    navigation.navigate(screen, params);
   };
 
   const actions: Action[] = [];
@@ -37,6 +42,7 @@ export const MoreScreen = ({ navigation }: any) => {
       { label: 'Water can management', icon: 'water-outline', onPress: () => openParent('IssuedCans') },
       { label: 'Daily can collection', icon: 'calendar-outline', onPress: () => openParent('CanCollectionReport') },
       { label: 'Shop Profile / QR', icon: 'qr-code-outline', onPress: () => openParent('ShopProfile') },
+      { label: 'Map', icon: 'map-outline', onPress: () => openParent('SellerMap', { mode: 'navigation' }) },
     );
   }
 

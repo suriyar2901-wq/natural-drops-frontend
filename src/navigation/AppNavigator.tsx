@@ -90,6 +90,7 @@ import { CanCollectionReportScreen } from '../screens/shop/CanCollectionReportSc
 import { CanReturnHistoryScreen } from '../screens/shop/CanReturnHistoryScreen';
 import { PhoneOrderScreen } from '../screens/shop/PhoneOrderScreen';
 import { ShopProfileScreen } from '../screens/shop/ShopProfileScreen';
+import { SellerMapScreen } from '../screens/shop/SellerMapScreen';
 import { ShopBuyersScreen } from '../screens/shop/ShopBuyersScreen';
 import { OrderDetailScreen } from '../screens/common/OrderDetailScreen';
 import { ProductDetailScreen } from '../screens/common/ProductDetailScreen';
@@ -709,6 +710,11 @@ export const AppNavigator = () => {
           name="ShopProfile"
           component={ShopProfileScreen}
           options={{ title: 'Shop Profile' }}
+        />
+        <Stack.Screen
+          name="SellerMap"
+          component={SellerMapScreen}
+          options={{ title: 'Map' }}
         />
         <Stack.Screen
           name="ShopBuyers"

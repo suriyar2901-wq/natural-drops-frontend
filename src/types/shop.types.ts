@@ -99,6 +99,7 @@ export interface ShopProfile {
   altMobile?: string;
   email?: string;
   qrData?: string;
+  upiId?: string;
   openTime?: string | null;
   closeTime?: string | null;
   openDays?: string | null;

@@ -22,8 +22,6 @@ import { API_BASE_URL } from '../../utils/constants';
 import { showConfirmAlert, showErrorAlert, showSuccessAlert } from '../../utils/alert';
 import { Ionicons } from '@expo/vector-icons';
 
-const VideoTag: any = Platform.OS === 'web' ? 'video' : null;
-
 const statusColor = (status: string): string => {
   const value = String(status || '').toLowerCase();
   if (value === OrderStatus.CONFIRMED || value === OrderStatus.PROCESSING) return '#2196F3';
@@ -342,7 +340,6 @@ export const OrderDetailScreen = () => {
       {(order.items || []).map((it, idx) => {
         const menuItem = it.menuItemId ? menuMap.get(it.menuItemId) : undefined;
         const images = (menuItem?.images || []).map((img: any) => img.imageUrl || img.url).filter(Boolean);
-        const videos = (menuItem as any)?.videos || [];
 
         return (
           <Card key={`${it.menuItemId || idx}-${idx}`} style={styles.itemCard}>
@@ -362,33 +359,6 @@ export const OrderDetailScreen = () => {
               </View>
             ) : (
               <Text style={styles.muted}>No photos</Text>
-            )}
-
-            <Text style={[styles.sectionLabel, { marginTop: spacing.md }]}>Product Videos</Text>
-            {videos.length > 0 ? (
-              <View style={styles.videoList}>
-                {videos.map((v: any, i: number) => {
-                  const uri = v.videoUrl || v.url;
-                  if (!uri) return null;
-                  if (Platform.OS !== 'web' || !VideoTag) {
-                    return (
-                      <Text key={`${i}`} style={styles.muted} numberOfLines={1}>
-                        🎥 {uri}
-                      </Text>
-                    );
-                  }
-                  return (
-                    <VideoTag
-                      key={`${uri}-${i}`}
-                      src={uri}
-                      controls
-                      style={{ width: '100%', maxHeight: 240, borderRadius: 10, marginBottom: 10 }}
-                    />
-                  );
-                })}
-              </View>
-            ) : (
-              <Text style={styles.muted}>No videos</Text>
             )}
           </Card>
         );
@@ -555,9 +525,6 @@ const styles = StyleSheet.create({
   mediaThumb: {
     width: '100%',
     height: '100%',
-  },
-  videoList: {
-    marginTop: spacing.sm,
   },
   originalAmount: {
     fontSize: typography.fontSize.xs,

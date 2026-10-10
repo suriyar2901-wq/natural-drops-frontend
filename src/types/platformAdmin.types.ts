@@ -29,6 +29,9 @@ export interface SellerAdmin {
   sellerCode: string;
   companyCode?: string;
   ownerName: string;
+  gender?: string;
+  dateOfBirth?: string;
+  aadhaarNumber?: string;
   mobile: string;
   alternateMobile?: string;
   email?: string;
@@ -89,6 +92,9 @@ export interface PlatformDashboard {
 
 export interface CreateSellerPayload {
   ownerName: string;
+  gender?: string;
+  dateOfBirth?: string;
+  aadhaarNumber?: string;
   username?: string;
   mobile: string;
   alternateMobile?: string;

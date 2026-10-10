@@ -36,6 +36,7 @@ export interface User {
   // New fields
   gender?: Gender | string;
   dateOfBirth?: string; // ISO date string
+  aadhaarNumber?: string;
   alternatePhone?: string;
   profilePhoto?: string; // URL or base64
   // Structured address fields
@@ -58,6 +59,7 @@ export interface LoginRequest {
 
 export interface RegisterRequest {
   username: string;
+  fullName: string;
   password: string;
   email?: string;
   phone: string; // Required
@@ -79,6 +81,7 @@ export interface RegisterRequest {
   address?: string;
   companyName?: string;
   companyCode?: string;
+  aadhaarNumber?: string;
 }
 
 export interface AuthResponse {
@@ -97,6 +100,7 @@ export interface UpdateUserRequest {
   // New fields
   gender?: Gender | string;
   dateOfBirth?: string; // ISO date string
+  aadhaarNumber?: string;
   alternatePhone?: string;
   profilePhoto?: string; // base64 or URL
   // Structured address fields

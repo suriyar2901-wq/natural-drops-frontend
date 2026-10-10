@@ -55,11 +55,13 @@ export const MapView: React.FC<MapViewProps> = ({
 }) => {
   const mapConfig = getMapConfig();
   const validation = validateMapConfig(mapConfig);
+  const hasGoogleKey = !!mapConfig.google.mapsApiKey;
 
   // Map state
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
-  const [isMapLoaded, setIsMapLoaded] = useState(false);
+  const [useOsm, setUseOsm] = useState(!hasGoogleKey);
+  const [isMapLoaded, setIsMapLoaded] = useState(!hasGoogleKey);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
 
   // Location state
@@ -70,11 +72,22 @@ export const MapView: React.FC<MapViewProps> = ({
     longitude: initialLocation?.longitude || 77.5946,
   });
 
-  // Initialize Google Maps on web
+  // Google Maps is used only when a key is configured. Otherwise OpenStreetMap shows immediately.
   useEffect(() => {
-    if (typeof window !== 'undefined' && mapConfig.google.mapsApiKey) {
-      loadGoogleMaps();
+    if (typeof window === 'undefined' || !hasGoogleKey) {
+      return;
     }
+    loadGoogleMaps();
+    const timeout = setTimeout(() => {
+      setUseOsm((current) => {
+        if (!current && !mapInstanceRef.current) {
+          setIsMapLoaded(true);
+          return true;
+        }
+        return current;
+      });
+    }, 8000);
+    return () => clearTimeout(timeout);
   }, []);
 
   /**
@@ -260,15 +273,23 @@ export const MapView: React.FC<MapViewProps> = ({
     <View style={styles.container}>
       {/* Map Container */}
       <View style={styles.mapContainer}>
-        <div
-          ref={mapContainerRef}
-          style={{
-            width: '100%',
-            height: '100%',
-            minHeight: height,
-          }}
-        />
-        {!isMapLoaded && (
+        {useOsm ? (
+          <iframe
+            title="Shop map"
+            src={`https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(`${currentCenter.longitude - 0.08},${currentCenter.latitude - 0.08},${currentCenter.longitude + 0.08},${currentCenter.latitude + 0.08}`)}&layer=mapnik&marker=${encodeURIComponent(`${currentCenter.latitude},${currentCenter.longitude}`)}`}
+            style={{ width: '100%', height: '100%', minHeight: height, border: 0 }}
+          />
+        ) : (
+          <div
+            ref={mapContainerRef}
+            style={{
+              width: '100%',
+              height: '100%',
+              minHeight: height,
+            }}
+          />
+        )}
+        {!useOsm && !isMapLoaded && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.loadingText}>Loading map...</Text>

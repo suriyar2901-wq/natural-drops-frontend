@@ -58,33 +58,10 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
         scrollbar-width: thin;
         scrollbar-color: ${colors.primary} ${colors.gray100};
       }
-      
-      /* Horizontal scrollbar for videos */
-      [data-scroll-container="videos"]::-webkit-scrollbar {
-        height: 8px;
-      }
-      [data-scroll-container="videos"]::-webkit-scrollbar-track {
-        background: ${colors.gray100};
-        border-radius: 4px;
-      }
-      [data-scroll-container="videos"]::-webkit-scrollbar-thumb {
-        background: ${colors.primary};
-        border-radius: 4px;
-      }
-      [data-scroll-container="videos"]::-webkit-scrollbar-thumb:hover {
-        background: ${colors.primary};
-        opacity: 0.8;
-      }
-      [data-scroll-container="videos"] {
-        scrollbar-width: thin;
-        scrollbar-color: ${colors.primary} ${colors.gray100};
-      }
     `;
     document.head.appendChild(style);
   }
 }
-
-const VideoTag: any = Platform.OS === 'web' ? 'video' : null;
 
 function resolveAbsoluteMediaUrl(raw?: string | null) {
   if (!raw || typeof raw !== 'string') return undefined;
@@ -107,10 +84,6 @@ function imageUrl(img: any) {
   return img?.imageUrl ?? img?.url;
 }
 
-function videoUrl(v: any) {
-  return v?.videoUrl ?? v?.url;
-}
-
 export const ProductDetailScreen = ({ navigation }: any) => {
   const route = useRoute<any>();
   const { user } = useAuth();
@@ -120,7 +93,6 @@ export const ProductDetailScreen = ({ navigation }: any) => {
   
   const mainScrollRef = useRef<any>(null);
   const thumbScrollRef = useRef<any>(null);
-  const videoScrollRef = useRef<any>(null);
 
   // Get product ID from route params (works for both programmatic navigation and deep linking)
   // React Navigation deep linking automatically parses URL params into route.params
@@ -159,7 +131,6 @@ export const ProductDetailScreen = ({ navigation }: any) => {
         // Find scroll containers by nativeID or data attributes
         const mainContainer = mainScrollRef.current?.getNode?.() || mainScrollRef.current;
         const thumbContainer = thumbScrollRef.current?.getNode?.() || thumbScrollRef.current;
-        const videoContainer = videoScrollRef.current?.getNode?.() || videoScrollRef.current;
         
         if (mainContainer) {
           const element = mainContainer._component || mainContainer;
@@ -171,12 +142,6 @@ export const ProductDetailScreen = ({ navigation }: any) => {
           const element = thumbContainer._component || thumbContainer;
           if (element && element.setAttribute) {
             element.setAttribute('data-scroll-container', 'thumbnails');
-          }
-        }
-        if (videoContainer) {
-          const element = videoContainer._component || videoContainer;
-          if (element && element.setAttribute) {
-            element.setAttribute('data-scroll-container', 'videos');
           }
         }
       };
@@ -211,17 +176,6 @@ export const ProductDetailScreen = ({ navigation }: any) => {
       if (ao !== bo) return ao - bo;
       return Number(a.id ?? 0) - Number(b.id ?? 0);
     });
-    return withUrl;
-  }, [product]);
-
-  // Safely process videos with null checks
-  const videosSorted = useMemo(() => {
-    if (!product) return [];
-    const vids = (product as any)?.videos && Array.isArray((product as any).videos) ? (product as any).videos : [];
-    const withUrl = vids
-      .map((v: any) => ({ ...v, _resolvedUrl: resolveAbsoluteMediaUrl(videoUrl(v)) }))
-      .filter((v: any) => Boolean(v._resolvedUrl));
-    withUrl.sort((a: any, b: any) => Number(a.id ?? 0) - Number(b.id ?? 0));
     return withUrl;
   }, [product]);
 
@@ -470,53 +424,6 @@ export const ProductDetailScreen = ({ navigation }: any) => {
             </View>
           )}
         </View>
-      </Card>
-
-      <Card style={styles.videoCard}>
-        <Text style={styles.sectionTitle}>Product Videos</Text>
-        {videosSorted.length > 0 ? (
-          <ScrollView 
-            ref={videoScrollRef}
-            horizontal 
-            showsHorizontalScrollIndicator={true}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.videoList}
-            style={styles.videoScrollView}
-            nestedScrollEnabled={true}
-            scrollEnabled={true}
-            bounces={false}
-            decelerationRate="fast"
-          >
-            {videosSorted.map((v: any, idx: number) => {
-              const uri = v._resolvedUrl;
-              if (!uri) return null;
-              if (Platform.OS !== 'web' || !VideoTag) {
-                return (
-                  <View key={`${idx}`} style={styles.videoItem}>
-                    <Text style={styles.muted} numberOfLines={1}>
-                      🎥 {uri}
-                    </Text>
-                  </View>
-                );
-              }
-              return (
-                <View key={`${v.id ?? uri}-${idx}`} style={styles.videoItem}>
-                  <VideoTag
-                    src={uri}
-                    controls
-                    preload="none"
-                    onError={() => {
-                      // keep UI stable
-                    }}
-                    style={styles.videoPlayer}
-                  />
-                </View>
-              );
-            })}
-          </ScrollView>
-        ) : (
-          <Text style={styles.muted}>No videos</Text>
-        )}
       </Card>
     </ScrollView>
   );
@@ -785,56 +692,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  videoCard: {
-    marginTop: spacing.md,
-    ...(Platform.OS === 'web' && {
-      width: '100%',
-      maxWidth: '100%',
-      boxSizing: 'border-box',
-    } as any),
-  },
-  sectionTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.textPrimary,
-  },
-  videoScrollView: {
-    ...(Platform.OS === 'web' && {
-      overflowX: 'auto',
-      overflowY: 'hidden',
-      WebkitOverflowScrolling: 'touch',
-    } as any),
-  },
-  videoList: {
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    ...(Platform.OS === 'web' && {
-      display: 'flex',
-      flexDirection: 'row',
-      gap: spacing.md,
-    } as any),
-  },
-  videoItem: {
-    ...(Platform.OS === 'web' && {
-      flexShrink: 0,
-      width: '100%',
-      maxWidth: '100%',
-    } as any),
-    ...(Platform.OS !== 'web' && {
-      width: '100%',
-      marginBottom: spacing.md,
-    } as any),
-  },
-  videoPlayer: {
-    width: '100%',
-    maxHeight: 320,
-    borderRadius: 12,
-    marginTop: 10,
-    ...(Platform.OS === 'web' && {
-      width: '100%',
-      maxWidth: '100%',
-    } as any),
   },
 });
 

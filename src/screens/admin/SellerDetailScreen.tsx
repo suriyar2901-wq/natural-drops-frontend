@@ -115,6 +115,9 @@ export const SellerDetailScreen = ({ navigation, route }: any) => {
           <Info label="Seller ID" value={seller.sellerCode} />
           <Info label="Company code" value={seller.companyCode || '—'} />
           <Info label="Owner" value={seller.ownerName} />
+          <Info label="Gender" value={seller.gender || '—'} />
+          <Info label="Date of birth" value={seller.dateOfBirth || '—'} />
+          <Info label="Aadhaar number" value={seller.aadhaarNumber || '—'} />
           <Info label="Username" value={seller.username || '—'} />
           <Info label="Mobile" value={seller.mobile} />
           <Info label="Alternate" value={seller.alternateMobile || '—'} />

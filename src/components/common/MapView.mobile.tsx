@@ -17,7 +17,7 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
+import RNMapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { colors, typography, spacing } from '../../theme';
 import { GooglePlacesAutocomplete, PlaceDetails } from './GooglePlacesAutocomplete';
 import { locationService } from '../../services/location.service';
@@ -52,7 +52,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const validation = validateMapConfig(mapConfig);
 
   // Map state
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<RNMapView>(null);
   const [region, setRegion] = useState<Region>({
     latitude: initialLocation?.latitude || 12.9716, // Default: Bangalore
     longitude: initialLocation?.longitude || 77.5946,
@@ -277,7 +277,7 @@ export const MapView: React.FC<MapViewProps> = ({
   return (
     <View style={styles.container}>
       {/* Map View */}
-      <MapView
+      <RNMapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={styles.map}
@@ -321,7 +321,7 @@ export const MapView: React.FC<MapViewProps> = ({
             lineDashPattern={[1]}
           />
         )}
-      </MapView>
+      </RNMapView>
 
       {/* Search Bar */}
       {showSearch && validation.isValid && (

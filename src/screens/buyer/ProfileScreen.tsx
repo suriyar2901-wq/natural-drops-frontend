@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image, TouchableOpacity, Alert, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Picker } from '@react-native-picker/picker';
-import { colors, typography, spacing } from '../../theme';
-import { Card, Button, Input, DatePicker, ContactActions, SupportContactCard } from '../../components/common';
+import { colors, typography, spacing, borderRadius } from '../../theme';
+import { Card, Button, Input, DatePicker, SupportContactCard } from '../../components/common';
 import { AutocompleteInput, AutocompleteOption } from '../../components/common/AutocompleteInput';
 import { useAuth } from '../../hooks';
 import { useUpdateOwnProfileMutation } from '../../store/api/userApi';
@@ -17,7 +17,8 @@ import { setUser } from '../../store/slices/authSlice';
 import { storageService } from '../../services/storage.service';
 import { pickProfileImage, formatDateForPicker } from '../../utils/imageUtils';
 import { locationApiService } from '../../services/locationApi.service';
-import { useGetShopBuyersQuery, useGetShopProfileQuery, useSaveShopProfileMutation } from '../../store/api/shopApi';
+import { useGetShopCompanyQuery, useGetShopProfileQuery, useSaveShopProfileMutation } from '../../store/api/shopApi';
+import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
 import { formatClockAmPm } from '../../utils/formatters';
 import { Ionicons } from '@expo/vector-icons';
 import { BuyerRegularOrderCard } from '../../components/buyer/BuyerRegularOrderCard';
@@ -29,6 +30,7 @@ interface FormErrors {
   phone?: string;
   alternatePhone?: string;
   dateOfBirth?: string;
+  aadhaarNumber?: string;
   profilePhoto?: string;
   houseDoorNo?: string;
   streetArea?: string;
@@ -212,9 +214,13 @@ const ShopClock = ({ label, value, onChange, disabled }: { label: string; value:
 };
 
 export const ProfileScreen = () => {
-  const { user, isBuyer, isSeller, isAdmin } = useAuth();
+  const { user, isBuyer, isSeller, isAdmin, isStrictAdmin } = useAuth();
+  const { width } = useWindowDimensions();
+  const twoCol = width >= 760;
+  const roleLabel = isSeller() ? 'Seller' : isStrictAdmin() ? 'Admin' : 'Buyer';
   const { data: shopProfile } = useGetShopProfileQuery(undefined, { skip: !isSeller() });
-  const { data: shopBuyers = [] } = useGetShopBuyersQuery(undefined, { skip: !isSeller() });
+  const { data: shopCompany } = useGetShopCompanyQuery(undefined, { skip: !isSeller() });
+  const { data: buyerAccount } = useGetBuyerAccountSummaryQuery(undefined, { skip: !isBuyer() });
   const [saveShopProfile, { isLoading: savingHours }] = useSaveShopProfileMutation();
   const [openTime, setOpenTime] = useState('08:00');
   const [closeTime, setCloseTime] = useState('20:00');
@@ -251,6 +257,7 @@ export const ProfileScreen = () => {
     alternatePhone: user?.alternatePhone || '',
     gender: user?.gender || '',
     dateOfBirth: user?.dateOfBirth ? formatDateForPicker(user.dateOfBirth) : '',
+    aadhaarNumber: user?.aadhaarNumber || '',
     profilePhoto: user?.profilePhoto || '',
     // Structured address
     houseDoorNo: user?.houseDoorNo || '',
@@ -279,6 +286,7 @@ export const ProfileScreen = () => {
         alternatePhone: user?.alternatePhone || '',
         gender: user?.gender || '',
         dateOfBirth: user?.dateOfBirth ? formatDateForPicker(user.dateOfBirth) : '',
+        aadhaarNumber: user?.aadhaarNumber || '',
         profilePhoto: user?.profilePhoto || '',
         houseDoorNo: user?.houseDoorNo || '',
         streetArea: user?.streetArea || '',
@@ -467,6 +475,9 @@ export const ProfileScreen = () => {
     if (formData.dateOfBirth && !validators.dateOfBirth(formData.dateOfBirth)) {
       newErrors.dateOfBirth = validationMessages.dateOfBirth;
     }
+    if (isSeller() && formData.aadhaarNumber.trim() && !/^[0-9]{12}$/.test(formData.aadhaarNumber.trim())) {
+      newErrors.aadhaarNumber = 'Aadhaar number must be 12 digits';
+    }
 
     // Profile photo validation
     if (formData.profilePhoto && !validators.image(formData.profilePhoto)) {
@@ -529,6 +540,7 @@ export const ProfileScreen = () => {
         alternatePhone: formData.alternatePhone.trim() || undefined,
         gender: formData.gender || undefined,
         dateOfBirth: formData.dateOfBirth || undefined,
+        aadhaarNumber: isSeller() ? formData.aadhaarNumber.trim() : undefined,
         profilePhoto: formData.profilePhoto || undefined,
         houseDoorNo: formData.houseDoorNo.trim() || undefined,
         streetArea: formData.streetArea.trim() || undefined,
@@ -555,6 +567,7 @@ export const ProfileScreen = () => {
             alternatePhone: refreshedUser.alternatePhone || '',
             gender: refreshedUser.gender || '',
             dateOfBirth: refreshedUser.dateOfBirth ? formatDateForPicker(refreshedUser.dateOfBirth) : '',
+            aadhaarNumber: refreshedUser.aadhaarNumber || '',
             profilePhoto: refreshedUser.profilePhoto || '',
             houseDoorNo: refreshedUser.houseDoorNo || '',
             streetArea: refreshedUser.streetArea || '',
@@ -578,6 +591,7 @@ export const ProfileScreen = () => {
             alternatePhone: updatedUser.alternatePhone || '',
             gender: updatedUser.gender || '',
             dateOfBirth: updatedUser.dateOfBirth ? formatDateForPicker(updatedUser.dateOfBirth) : '',
+            aadhaarNumber: updatedUser.aadhaarNumber || '',
             profilePhoto: updatedUser.profilePhoto || '',
             houseDoorNo: updatedUser.houseDoorNo || '',
             streetArea: updatedUser.streetArea || '',
@@ -603,6 +617,7 @@ export const ProfileScreen = () => {
             alternatePhone: updatedUser.alternatePhone || '',
             gender: updatedUser.gender || '',
             dateOfBirth: updatedUser.dateOfBirth ? formatDateForPicker(updatedUser.dateOfBirth) : '',
+            aadhaarNumber: updatedUser.aadhaarNumber || '',
             profilePhoto: updatedUser.profilePhoto || '',
             houseDoorNo: updatedUser.houseDoorNo || '',
             streetArea: updatedUser.streetArea || '',
@@ -630,23 +645,20 @@ export const ProfileScreen = () => {
   };
 
   // Helper to format address for display
-  const formatAddress = () => {
-    if (formData.houseDoorNo || formData.streetArea || formData.city) {
-      const parts = [
-        formData.houseDoorNo,
-        formData.streetArea,
-        formData.city,
-        formData.district,
-        formData.state,
-        formData.pincode,
-      ].filter(Boolean);
-      if (formData.landmark) {
-        parts.push(`(Landmark: ${formData.landmark})`);
-      }
-      return parts.join(', ') || 'Not specified';
-    }
-    return formData.address || 'Not specified';
+  const genderLabel = (value?: string) => {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (normalized === 'MALE') return 'Male';
+    if (normalized === 'FEMALE') return 'Female';
+    if (normalized === 'OTHER') return 'Other';
+    return value || '';
   };
+
+  const detail = (label: string, value?: string | null) => (
+    <View style={[styles.infoCell, !twoCol && styles.infoCellStack]}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value && String(value).trim() ? value : 'Not specified'}</Text>
+    </View>
+  );
 
   return (
     <KeyboardAvoidingView
@@ -661,8 +673,43 @@ export const ProfileScreen = () => {
         showsVerticalScrollIndicator={true}
       >
         <Card style={styles.profileCard}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Profile</Text>
+          <View style={styles.hero}>
+            {isEditMode ? (
+              <TouchableOpacity
+                style={styles.photoContainer}
+                onPress={handlePickImage}
+                disabled={imagePickerLoading}
+              >
+                {formData.profilePhoto ? (
+                  <Image source={{ uri: formData.profilePhoto }} style={styles.profilePhoto} />
+                ) : (
+                  <View style={styles.photoPlaceholder}>
+                    <Ionicons name="camera-outline" size={22} color={colors.primary} />
+                  </View>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.photoContainer}>
+                {user?.profilePhoto ? (
+                  <Image source={{ uri: user.profilePhoto }} style={styles.profilePhoto} />
+                ) : (
+                  <View style={styles.photoPlaceholder}>
+                    <Ionicons name="person-outline" size={22} color={colors.primary} />
+                  </View>
+                )}
+              </View>
+            )}
+            <View style={styles.heroText}>
+              <Text style={styles.title}>{isEditMode ? 'Edit profile' : (user?.fullName || 'Profile')}</Text>
+              <View style={styles.heroMetaRow}>
+                <View style={styles.rolePill}>
+                  <Text style={styles.rolePillText}>{roleLabel}</Text>
+                </View>
+                {!!user?.username && <Text style={styles.heroMeta}>{user.username}</Text>}
+              </View>
+              {isEditMode ? <Text style={styles.heroHint}>Tap the photo to change it.</Text> : null}
+              {errors.profilePhoto ? <Text style={styles.errorText}>{errors.profilePhoto}</Text> : null}
+            </View>
             {!isEditMode && (
               <Button
                 title="Edit"
@@ -674,213 +721,229 @@ export const ProfileScreen = () => {
             )}
           </View>
 
-          {/* Profile Photo */}
-          <View style={styles.photoSection}>
-            {isEditMode ? (
-              <TouchableOpacity 
-                style={styles.photoContainer}
-                onPress={handlePickImage}
-                disabled={imagePickerLoading}
-              >
-                {formData.profilePhoto ? (
-                  <Image source={{ uri: formData.profilePhoto }} style={styles.profilePhoto} />
-                ) : (
-                  <View style={styles.photoPlaceholder}>
-                    <Ionicons name="camera-outline" size={28} color={colors.textSecondary} />
-                    <Text style={styles.photoPlaceholderLabel}>Tap to change</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.photoContainer}>
-                {user?.profilePhoto ? (
-                  <Image source={{ uri: user.profilePhoto }} style={styles.profilePhoto} />
-                ) : (
-                  <View style={styles.photoPlaceholder}>
-                    <Ionicons name="person-outline" size={28} color={colors.textSecondary} />
-                  </View>
-                )}
-              </View>
-            )}
-            {errors.profilePhoto && <Text style={styles.errorText}>{errors.profilePhoto}</Text>}
-          </View>
-
           {isEditMode ? (
-            // Edit Mode
             <>
-              <Input
-                label="Full Name"
-                value={formData.fullName}
-                onChangeText={(value) => handleInputChange('fullName', value)}
-                placeholder="Enter your full name"
-                error={errors.fullName}
-                autoCapitalize="words"
-              />
-
-              <Input
-                label="Username"
-                value={formData.username}
-                onChangeText={(value) => handleInputChange('username', value)}
-                placeholder="Enter username"
-                error={errors.username}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-
-              <Input
-                label="Email"
-                value={formData.email}
-                onChangeText={(value) => handleInputChange('email', value)}
-                placeholder="Enter email"
-                error={errors.email}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-
-              <Input
-                label="Phone"
-                value={formData.phone}
-                onChangeText={(value) => handleInputChange('phone', value.replace(/[^0-9]/g, ''))}
-                placeholder="Enter phone number"
-                error={errors.phone}
-                keyboardType="phone-pad"
-                maxLength={10}
-              />
-
-              <Input
-                label="Alternate Phone"
-                value={formData.alternatePhone}
-                onChangeText={(value) => handleInputChange('alternatePhone', value.replace(/[^0-9]/g, ''))}
-                placeholder="Enter alternate phone (optional)"
-                error={errors.alternatePhone}
-                keyboardType="phone-pad"
-                maxLength={10}
-              />
-
-              {/* Gender Picker */}
-              <View style={styles.pickerContainer}>
-                <Text style={styles.label}>Gender</Text>
-                <View style={styles.pickerWrapper}>
-                  <Picker
-                    selectedValue={formData.gender}
-                    onValueChange={(itemValue) => handleInputChange('gender', itemValue)}
-                    style={styles.picker}
-                  >
-                    <Picker.Item label="Select Gender" value="" />
-                    <Picker.Item label="Male" value={Gender.MALE} />
-                    <Picker.Item label="Female" value={Gender.FEMALE} />
-                    <Picker.Item label="Other" value={Gender.OTHER} />
-                  </Picker>
+              <View style={styles.section}>
+                <Text style={styles.blockTitle}>1. Your details</Text>
+                <View style={[styles.row, !twoCol && styles.rowStack]}>
+                  <View style={[styles.col, !twoCol && styles.colStack]}>
+                    <Input
+                      label="Name"
+                      value={formData.fullName}
+                      onChangeText={(value) => handleInputChange('fullName', value)}
+                      placeholder="Your name"
+                      error={errors.fullName}
+                      autoCapitalize="words"
+                    />
+                  </View>
+                  <View style={[styles.col, !twoCol && styles.colStack]}>
+                    <Input
+                      label="Username"
+                      value={formData.username}
+                      onChangeText={(value) => handleInputChange('username', value)}
+                      placeholder="Username"
+                      error={errors.username}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  </View>
                 </View>
+                {isSeller() && (
+                  <View style={[styles.row, !twoCol && styles.rowStack, styles.identityRow]}>
+                    <View style={[styles.identityCell, !twoCol && styles.infoCellStack]}>
+                      <Text style={styles.identityLabel}>Shop name</Text>
+                      <Text style={styles.identityValue}>{shopProfile?.businessName || 'Not specified'}</Text>
+                    </View>
+                    <View style={[styles.identityCell, !twoCol && styles.infoCellStack]}>
+                      <Text style={styles.identityLabel}>Company code</Text>
+                      <Text style={styles.identityValue}>{shopCompany?.companyCode || 'Not specified'}</Text>
+                    </View>
+                  </View>
+                )}
+                {isBuyer() && (
+                  <View style={styles.identityCell}>
+                    <Text style={styles.identityLabel}>Seller company code</Text>
+                    <Text style={styles.identityValue}>{buyerAccount?.companyCode || 'Not specified'}</Text>
+                  </View>
+                )}
+                <View style={[styles.row, !twoCol && styles.rowStack]}>
+                  <View style={[styles.col, !twoCol && styles.colStack]}>
+                    <Text style={styles.label}>Gender</Text>
+                    <View style={styles.choiceRow}>
+                      {[
+                        { label: 'Male', value: Gender.MALE },
+                        { label: 'Female', value: Gender.FEMALE },
+                        { label: 'Other', value: Gender.OTHER },
+                      ].map((option) => {
+                        const active = formData.gender === option.value;
+                        return (
+                          <TouchableOpacity
+                            key={option.value}
+                            style={[styles.choice, active && styles.choiceActive]}
+                            onPress={() => handleInputChange('gender', option.value)}
+                          >
+                            <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{option.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                  <View style={[styles.col, !twoCol && styles.colStack]}>
+                    <DatePicker
+                      label="Date of birth"
+                      value={formData.dateOfBirth}
+                      onChange={(date) => handleInputChange('dateOfBirth', date)}
+                      maxDate={formatDateForPicker(new Date())}
+                      placeholder="Select date of birth"
+                    />
+                    {errors.dateOfBirth ? <Text style={styles.errorText}>{errors.dateOfBirth}</Text> : null}
+                  </View>
+                </View>
+                {isSeller() && (
+                  <Input
+                    label="Aadhaar number"
+                    value={formData.aadhaarNumber}
+                    onChangeText={(value) => handleInputChange('aadhaarNumber', value.replace(/[^0-9]/g, '').slice(0, 12))}
+                    placeholder="12-digit Aadhaar number"
+                    error={errors.aadhaarNumber}
+                    keyboardType="numeric"
+                    maxLength={12}
+                  />
+                )}
               </View>
 
-              <DatePicker
-                label="Date of Birth"
-                value={formData.dateOfBirth}
-                onChange={(date) => {
-                  handleInputChange('dateOfBirth', date);
-                }}
-                maxDate={formatDateForPicker(new Date())} // Today's date
-                placeholder="Select date of birth"
-              />
-              {errors.dateOfBirth && <Text style={styles.errorText}>{errors.dateOfBirth}</Text>}
-
-              {/* Address Section */}
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Address Details</Text>
+              <View style={styles.section}>
+                <Text style={styles.blockTitle}>2. Contact</Text>
+                <View style={[styles.row, !twoCol && styles.rowStack]}>
+                  <View style={[styles.col, !twoCol && styles.colStack]}>
+                    <Input
+                      label="Phone"
+                      value={formData.phone}
+                      onChangeText={(value) => handleInputChange('phone', value.replace(/[^0-9]/g, ''))}
+                      placeholder="10-digit phone number"
+                      error={errors.phone}
+                      keyboardType="phone-pad"
+                      maxLength={10}
+                    />
+                  </View>
+                  <View style={[styles.col, !twoCol && styles.colStack]}>
+                    <Input
+                      label="Alternate phone"
+                      value={formData.alternatePhone}
+                      onChangeText={(value) => handleInputChange('alternatePhone', value.replace(/[^0-9]/g, ''))}
+                      placeholder="Optional"
+                      error={errors.alternatePhone}
+                      keyboardType="phone-pad"
+                      maxLength={10}
+                    />
+                  </View>
+                </View>
+                <Input
+                  label="Email"
+                  value={formData.email}
+                  onChangeText={(value) => handleInputChange('email', value)}
+                  placeholder="Optional"
+                  error={errors.email}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
               </View>
 
-              <Input
-                label="House / Door No"
-                value={formData.houseDoorNo}
-                onChangeText={(value) => handleInputChange('houseDoorNo', value)}
-                placeholder="Enter house/door number"
-                error={errors.houseDoorNo}
-              />
-
-              <Input
-                label="Street / Area"
-                value={formData.streetArea}
-                onChangeText={(value) => handleInputChange('streetArea', value)}
-                placeholder="Enter street/area"
-                error={errors.streetArea}
-              />
-
-              <AutocompleteInput
-                label="City"
-                value={formData.city}
-                onChangeText={handleCityChange}
-                onSelect={(option) => {
-                  setFormData(prev => ({ ...prev, city: option.name }));
-                  if (option.state && !formData.state) {
-                    setFormData(prev => ({ ...prev, state: option.state || '' }));
-                  }
-                }}
-                placeholder="Start typing city name..."
-                error={errors.city}
-                suggestions={citySuggestions}
-                isLoading={isLoadingCity}
-                autoCapitalize="words"
-              />
-
-              <AutocompleteInput
-                label="District"
-                value={formData.district}
-                onChangeText={handleDistrictChange}
-                onSelect={(option) => {
-                  setFormData(prev => ({ ...prev, district: option.name }));
-                  if (option.state && !formData.state) {
-                    setFormData(prev => ({ ...prev, state: option.state || '' }));
-                  }
-                }}
-                placeholder="Start typing district name..."
-                error={errors.district}
-                suggestions={districtSuggestions}
-                isLoading={isLoadingDistrict}
-                autoCapitalize="words"
-              />
-
-              <AutocompleteInput
-                label="State"
-                value={formData.state}
-                onChangeText={handleStateChange}
-                onSelect={(option) => {
-                  setFormData(prev => ({ ...prev, state: option.name }));
-                }}
-                placeholder="Start typing state name..."
-                error={errors.state}
-                suggestions={stateSuggestions}
-                isLoading={isLoadingState}
-                autoCapitalize="words"
-              />
-
-              <View style={styles.pincodeContainer}>
+              <View style={styles.section}>
+                <Text style={styles.blockTitle}>{isBuyer() ? '3. Delivery address' : '3. Address'}</Text>
+                <Text style={styles.sectionHint}>Enter the pincode first. City, district, and state fill in from it.</Text>
                 <Input
                   label="Pincode"
                   value={formData.pincode}
                   onChangeText={handlePincodeChange}
-                  placeholder="Enter 6-digit pincode"
+                  placeholder="6-digit pincode"
                   keyboardType="phone-pad"
                   maxLength={6}
                   error={errors.pincode || pincodeError}
                 />
-                {isLoadingPincode && (
-                  <View style={styles.pincodeLoader}>
-                    <Text style={styles.pincodeLoaderText}>Fetching location...</Text>
+                {isLoadingPincode ? <Text style={styles.pincodeLoaderText}>Fetching location...</Text> : null}
+                {formData.pincode.length === 6 && !isLoadingPincode && !pincodeError ? (
+                  <Text style={styles.pincodeSuccess}>Location filled from this pincode</Text>
+                ) : null}
+                <View style={[styles.row, !twoCol && styles.rowStack]}>
+                  <View style={[styles.col, !twoCol && styles.colStack]}>
+                    <AutocompleteInput
+                      label="City"
+                      value={formData.city}
+                      onChangeText={handleCityChange}
+                      onSelect={(option) => {
+                        setFormData(prev => ({ ...prev, city: option.name }));
+                        if (option.state && !formData.state) {
+                          setFormData(prev => ({ ...prev, state: option.state || '' }));
+                        }
+                      }}
+                      placeholder="City"
+                      error={errors.city}
+                      suggestions={citySuggestions}
+                      isLoading={isLoadingCity}
+                      autoCapitalize="words"
+                    />
                   </View>
-                )}
-                {formData.pincode.length === 6 && !isLoadingPincode && !pincodeError && (
-                  <Text style={styles.pincodeSuccess}>✓ Location auto-filled</Text>
-                )}
+                  <View style={[styles.col, !twoCol && styles.colStack]}>
+                    <AutocompleteInput
+                      label="District"
+                      value={formData.district}
+                      onChangeText={handleDistrictChange}
+                      onSelect={(option) => {
+                        setFormData(prev => ({ ...prev, district: option.name }));
+                        if (option.state && !formData.state) {
+                          setFormData(prev => ({ ...prev, state: option.state || '' }));
+                        }
+                      }}
+                      placeholder="District"
+                      error={errors.district}
+                      suggestions={districtSuggestions}
+                      isLoading={isLoadingDistrict}
+                      autoCapitalize="words"
+                    />
+                  </View>
+                </View>
+                <AutocompleteInput
+                  label="State"
+                  value={formData.state}
+                  onChangeText={handleStateChange}
+                  onSelect={(option) => {
+                    setFormData(prev => ({ ...prev, state: option.name }));
+                  }}
+                  placeholder="State"
+                  error={errors.state}
+                  suggestions={stateSuggestions}
+                  isLoading={isLoadingState}
+                  autoCapitalize="words"
+                />
+                <View style={[styles.row, !twoCol && styles.rowStack]}>
+                  <View style={[styles.col, !twoCol && styles.colStack]}>
+                    <Input
+                      label="House / door no"
+                      value={formData.houseDoorNo}
+                      onChangeText={(value) => handleInputChange('houseDoorNo', value)}
+                      placeholder="Door number"
+                      error={errors.houseDoorNo}
+                    />
+                  </View>
+                  <View style={[styles.col, !twoCol && styles.colStack]}>
+                    <Input
+                      label="Street / area"
+                      value={formData.streetArea}
+                      onChangeText={(value) => handleInputChange('streetArea', value)}
+                      placeholder="Street or area"
+                      error={errors.streetArea}
+                    />
+                  </View>
+                </View>
+                <Input
+                  label="Landmark"
+                  value={formData.landmark}
+                  onChangeText={(value) => handleInputChange('landmark', value)}
+                  placeholder="Optional"
+                />
               </View>
-
-              <Input
-                label="Landmark (Optional)"
-                value={formData.landmark}
-                onChangeText={(value) => handleInputChange('landmark', value)}
-                placeholder="Enter landmark (optional)"
-              />
 
               <View style={styles.buttonRow}>
                 <Button
@@ -891,7 +954,7 @@ export const ProfileScreen = () => {
                   disabled={isSaving}
                 />
                 <Button
-                  title="Save Changes"
+                  title="Save changes"
                   onPress={handleSave}
                   style={styles.saveButton}
                   loading={isSaving}
@@ -900,52 +963,56 @@ export const ProfileScreen = () => {
               </View>
             </>
           ) : (
-            // View Mode
             <>
-              <View style={styles.fieldContainer}>
-                <Text style={styles.label}>Full Name</Text>
-                <Text style={styles.value}>{user?.fullName || 'Not specified'}</Text>
-              </View>
-
-              <View style={styles.fieldContainer}>
-                <Text style={styles.label}>Username</Text>
-                <Text style={styles.value}>{user?.username}</Text>
-              </View>
-
-              <View style={styles.fieldContainer}>
-                <Text style={styles.label}>Email</Text>
-                <Text style={styles.value}>{user?.email}</Text>
-              </View>
-
-              <View style={styles.fieldContainer}>
-                <Text style={styles.label}>Phone</Text>
-                <Text style={styles.value}>{user?.phone || user?.phoneNumber || 'Not specified'}</Text>
-              </View>
-
-              {user?.alternatePhone && (
-                <View style={styles.fieldContainer}>
-                  <Text style={styles.label}>Alternate Phone</Text>
-                  <Text style={styles.value}>{user.alternatePhone}</Text>
+              <View style={styles.section}>
+                <Text style={styles.blockTitle}>Your details</Text>
+                <View style={styles.grid}>
+                  {detail('Name', user?.fullName)}
+                  {isSeller() && (
+                    <View style={[styles.identityCell, !twoCol && styles.infoCellStack]}>
+                      <Text style={styles.identityLabel}>Shop name</Text>
+                      <Text style={styles.identityValue}>{shopProfile?.businessName || 'Not specified'}</Text>
+                    </View>
+                  )}
+                  {isSeller() && (
+                    <View style={[styles.identityCell, !twoCol && styles.infoCellStack]}>
+                      <Text style={styles.identityLabel}>Company code</Text>
+                      <Text style={styles.identityValue}>{shopCompany?.companyCode || 'Not specified'}</Text>
+                    </View>
+                  )}
+                  {isBuyer() && (
+                    <View style={[styles.identityCell, !twoCol && styles.infoCellStack]}>
+                      <Text style={styles.identityLabel}>Seller company code</Text>
+                      <Text style={styles.identityValue}>{buyerAccount?.companyCode || 'Not specified'}</Text>
+                    </View>
+                  )}
+                  {detail('Gender', genderLabel(user?.gender))}
+                  {detail('Date of birth', user?.dateOfBirth ? formatDateForPicker(user.dateOfBirth) : '')}
+                  {isSeller() && detail('Aadhaar number', user?.aadhaarNumber)}
                 </View>
-              )}
+              </View>
 
-              {user?.gender && (
-                <View style={styles.fieldContainer}>
-                  <Text style={styles.label}>Gender</Text>
-                  <Text style={styles.value}>{user.gender}</Text>
+              <View style={styles.section}>
+                <Text style={styles.blockTitle}>Contact</Text>
+                <View style={styles.grid}>
+                  {detail('Username', user?.username)}
+                  {detail('Phone', user?.phone || user?.phoneNumber)}
+                  {detail('Alternate phone', user?.alternatePhone)}
+                  {detail('Email', user?.email)}
                 </View>
-              )}
+              </View>
 
-              {user?.dateOfBirth && (
-                <View style={styles.fieldContainer}>
-                  <Text style={styles.label}>Date of Birth</Text>
-                  <Text style={styles.value}>{formatDateForPicker(user.dateOfBirth)}</Text>
+              <View style={styles.section}>
+                <Text style={styles.blockTitle}>{isBuyer() ? 'Delivery address' : 'Address'}</Text>
+                <View style={styles.grid}>
+                  {detail('House / door no', user?.houseDoorNo)}
+                  {detail('Street / area', user?.streetArea)}
+                  {detail('City', user?.city)}
+                  {detail('District', user?.district)}
+                  {detail('State', user?.state)}
+                  {detail('Pincode', user?.pincode)}
+                  {detail('Landmark', user?.landmark)}
                 </View>
-              )}
-
-              <View style={styles.fieldContainer}>
-                <Text style={styles.label}>Address</Text>
-                <Text style={styles.value}>{formatAddress()}</Text>
               </View>
 
               {isSeller() && (
@@ -1076,21 +1143,6 @@ export const ProfileScreen = () => {
               )}
 
               <SupportContactCard title={isAdmin() ? 'Customer contact details' : 'Contact admin'} />
-              {isSeller() && (
-                <View style={styles.securitySection}>
-                  <Text style={styles.sectionTitle}>Buyer contacts</Text>
-                  <Text style={styles.metaText}>Call, SMS, WhatsApp, or email a buyer who completed their account.</Text>
-                  {shopBuyers.length === 0 ? (
-                    <Text style={styles.metaText}>No completed buyers yet.</Text>
-                  ) : shopBuyers.map((buyer) => (
-                    <View key={buyer.id} style={styles.buyerContact}>
-                      <Text style={styles.actionRowText}>{buyer.fullName || buyer.username}</Text>
-                      <Text style={styles.metaText}>{buyer.phone || buyer.phoneNumber || 'No mobile'}{buyer.email ? ` · ${buyer.email}` : ''}</Text>
-                      <ContactActions phone={buyer.phone || buyer.phoneNumber} email={buyer.email} message={`Hello ${buyer.fullName || buyer.username}, this is your Natural Drops seller.`} />
-                    </View>
-                  ))}
-                </View>
-              )}
 
               <View style={styles.securitySection}>
                 {(isSeller() || isAdmin()) && (
@@ -1146,38 +1198,67 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: spacing.md,
+    padding: spacing.lg,
     paddingBottom: spacing.xl * 2,
+    alignItems: 'center',
   },
   profileCard: {
     padding: spacing.lg,
+    width: '100%',
+    maxWidth: 760,
   },
-  header: {
+  hero: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  heroText: {
+    flex: 1,
+    marginLeft: spacing.md,
+    marginRight: spacing.sm,
   },
   title: {
     fontSize: typography.fontSize['2xl'],
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
   },
-  editButton: {
-    minWidth: 80,
-  },
-  photoSection: {
+  heroMetaRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginTop: spacing.xs,
+    gap: spacing.sm,
+  },
+  rolePill: {
+    backgroundColor: colors.blue50,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  rolePillText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.primary,
+    fontWeight: typography.fontWeight.bold,
+  },
+  heroMeta: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+  },
+  heroHint: {
+    marginTop: spacing.xs,
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+  },
+  editButton: {
+    minWidth: 72,
   },
   photoContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: colors.gray100,
+    borderWidth: 1,
+    borderColor: colors.blue300,
+    backgroundColor: colors.blue50,
   },
   profilePhoto: {
     width: '100%',
@@ -1188,42 +1269,130 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.gray100,
   },
-  photoPlaceholderText: {
-    fontSize: 50,
+  section: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
-  photoPlaceholderLabel: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  fieldContainer: {
-    marginBottom: spacing.md,
-  },
-  label: {
-    fontSize: typography.fontSize.sm,
+  blockTitle: {
+    fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
+    marginBottom: spacing.md,
+  },
+  sectionHint: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  infoCell: {
+    flexGrow: 1,
+    flexBasis: '46%',
+    minHeight: 72,
+    backgroundColor: colors.gray50,
+    borderRadius: borderRadius.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  infoCellStack: {
+    flexBasis: '100%',
+  },
+  infoLabel: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
     marginBottom: spacing.xs,
   },
-  value: {
-    fontSize: typography.fontSize.base,
+  infoValue: {
+    fontSize: typography.fontSize.lg,
+    color: colors.textPrimary,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  identityRow: {
+    marginBottom: spacing.md,
+  },
+  identityCell: {
+    flexGrow: 1,
+    flexBasis: '46%',
+    minHeight: 84,
+    backgroundColor: colors.blue50,
+    borderRadius: borderRadius.xs,
+    borderWidth: 1,
+    borderColor: colors.blue100,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  identityLabel: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  identityValue: {
+    fontSize: typography.fontSize.xl,
+    color: colors.textPrimary,
+    fontWeight: typography.fontWeight.bold,
+  },
+  addressValue: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textPrimary,
+    lineHeight: 22,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  rowStack: {
+    flexDirection: 'column',
+    gap: 0,
+  },
+  col: {
+    flex: 1,
+    minWidth: 0,
+  },
+  colStack: {
+    width: '100%',
+  },
+  choiceRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  choice: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
+  },
+  choiceActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.blue50,
+  },
+  choiceText: {
+    fontSize: typography.fontSize.sm,
     color: colors.textPrimary,
     fontWeight: typography.fontWeight.medium,
   },
-  pickerContainer: {
-    marginVertical: spacing.md,
+  choiceTextActive: {
+    color: colors.primary,
+    fontWeight: typography.fontWeight.bold,
   },
-  pickerWrapper: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    backgroundColor: colors.white,
-    overflow: 'hidden',
-  },
-  picker: {
-    height: 50,
+  label: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
   },
   sectionHeader: {
     marginTop: spacing.lg,
@@ -1541,7 +1710,6 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   metaText: { color: colors.textSecondary, marginTop: spacing.xs },
-  buyerContact: { marginTop: spacing.md },
   changePasswordButton: {
     marginTop: spacing.sm,
   },

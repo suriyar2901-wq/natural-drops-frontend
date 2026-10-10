@@ -1,6 +1,7 @@
 import React from 'react';
-import { StyleSheet, Text } from 'react-native';
-import { colors, spacing, typography } from '../../theme';
+import { StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, spacing, typography, borderRadius } from '../../theme';
 import { useGetSupportContactsQuery } from '../../store/api/settingsApi';
 import { Card } from './Card';
 import { ContactActions } from './ContactActions';
@@ -12,10 +13,25 @@ export const SupportContactCard = ({ title = 'Contact admin' }: { title?: string
 
   return (
     <Card style={styles.card}>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.copy}>Use the phone, SMS, WhatsApp, and email saved in admin customer details.</Text>
-      {!!phone && <Text style={styles.meta}>{phone}</Text>}
-      {!!email && <Text style={styles.meta}>{email}</Text>}
+      <View style={styles.header}>
+        <View style={styles.iconBadge}>
+          <Ionicons name="headset-outline" size={20} color={colors.primary} />
+        </View>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.copy}>Call, message, or email for help.</Text>
+        </View>
+      </View>
+      <View style={styles.grid}>
+        <View style={styles.cell}>
+          <Text style={styles.label}>Phone</Text>
+          <Text style={styles.value}>{phone || 'Not specified'}</Text>
+        </View>
+        <View style={styles.cell}>
+          <Text style={styles.label}>Email</Text>
+          <Text style={styles.value}>{email || 'Not specified'}</Text>
+        </View>
+      </View>
       <ContactActions
         phone={data?.whatsapp || data?.phone}
         email={email}
@@ -26,8 +42,28 @@ export const SupportContactCard = ({ title = 'Contact admin' }: { title?: string
 };
 
 const styles = StyleSheet.create({
-  card: { marginBottom: spacing.md },
-  title: { fontSize: typography.fontSize.lg, fontWeight: typography.fontWeight.semibold, color: colors.textPrimary },
-  copy: { color: colors.textSecondary, marginTop: spacing.xs },
-  meta: { color: colors.textPrimary, marginTop: spacing.xs },
+  card: { marginTop: spacing.md, marginBottom: spacing.md, padding: spacing.md },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
+  iconBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.blue50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  headerText: { flex: 1 },
+  title: { fontSize: typography.fontSize.lg, fontWeight: typography.fontWeight.bold, color: colors.textPrimary },
+  copy: { color: colors.textSecondary, marginTop: 2, fontSize: typography.fontSize.sm },
+  grid: { gap: spacing.sm },
+  cell: {
+    backgroundColor: colors.gray50,
+    borderRadius: borderRadius.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
+  label: { fontSize: typography.fontSize.sm, color: colors.textSecondary, marginBottom: spacing.xs },
+  value: { fontSize: typography.fontSize.lg, color: colors.textPrimary, fontWeight: typography.fontWeight.semibold },
 });
