@@ -370,6 +370,29 @@ export const orderApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['BuyerRegularOrder'],
     }),
+    skipBuyerRegularDates: builder.mutation<any, { dates: string[] }>({
+      query: (body) => ({
+        url: '/buyer/regular-order/skip',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['BuyerRegularOrder', 'Order', 'BuyerNotification'],
+    }),
+    buyerUpdatePendingOrder: builder.mutation<Order, { id: number; items: UpdateOrderRequest['items'] }>({
+      query: ({ id, items }) => ({
+        url: `/orders/${id}/buyer-items`,
+        method: 'PUT',
+        body: { items },
+      }),
+      invalidatesTags: ['Order', 'BuyerNotification'],
+    }),
+    buyerCancelPendingOrder: builder.mutation<Order, number>({
+      query: (id) => ({
+        url: `/orders/${id}/buyer-cancel`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['Order', 'BuyerNotification'],
+    }),
   }),
 });
 
@@ -394,5 +417,8 @@ export const {
   useSaveBuyerRegularOrderMutation,
   usePauseBuyerRegularOrderMutation,
   useResumeBuyerRegularOrderMutation,
+  useSkipBuyerRegularDatesMutation,
+  useBuyerUpdatePendingOrderMutation,
+  useBuyerCancelPendingOrderMutation,
 } = orderApi;
 

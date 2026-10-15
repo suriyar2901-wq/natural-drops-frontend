@@ -19,7 +19,6 @@ export const ShopProfileScreen = () => {
   const [upiId, setUpiId] = useState('');
   const [qrData, setQrData] = useState('');
   const [temporaryQr, setTemporaryQr] = useState('');
-  const [uploadingQr, setUploadingQr] = useState(false);
 
   useEffect(() => {
     if (editing) {
@@ -72,24 +71,14 @@ export const ShopProfileScreen = () => {
   });
 
   const uploadQr = async () => {
+    if (!editing) {
+      return;
+    }
     const image = await pickProfileImage();
     if (!image) {
       return;
     }
-    if (shopName.trim().length < 2) {
-      showErrorToast('Shop name is required before saving the QR photo');
-      return;
-    }
-    setUploadingQr(true);
-    try {
-      await saveProfile(shopBody(image)).unwrap();
-      setQrData(image);
-      showSuccessToast('QR photo saved');
-    } catch (error: any) {
-      showErrorToast(error?.data?.message || 'Could not save the QR photo');
-    } finally {
-      setUploadingQr(false);
-    }
+    setQrData(image);
   };
 
   const save = async () => {
@@ -170,18 +159,20 @@ export const ShopProfileScreen = () => {
             </View>
           )}
           <Text style={styles.qrNote}>
-            {qrData
-              ? 'This is the QR photo you uploaded.'
-              : upiId.trim()
-                ? 'Temporary QR from your UPI ID. Upload a QR photo to replace it.'
-                : 'Temporary QR. Add a UPI ID or upload your payment QR photo.'}
+            {editing
+              ? 'Choose a new QR photo, then press Save changes.'
+              : qrData
+                ? 'This is the QR photo you uploaded. Press Edit to change it.'
+                : 'Press Edit to change the payment QR.'}
           </Text>
-          <Button
-            title={uploadingQr ? 'Uploading…' : 'Upload QR photo'}
-            onPress={uploadQr}
-            variant="outline"
-            disabled={uploadingQr || saving}
-          />
+          {editing && (
+            <Button
+              title="Upload QR photo"
+              onPress={uploadQr}
+              variant="outline"
+              disabled={saving}
+            />
+          )}
         </View>
 
         {editing && (

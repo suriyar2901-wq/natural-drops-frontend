@@ -75,6 +75,16 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
   const [markAsRead] = useMarkAdminNotificationAsReadMutation();
   const [preview, setPreview] = useState<any>(null);
   const [inboxPreview, setInboxPreview] = useState<any>(null);
+  const openInboxMessage = (item?: { id: number } | null) => {
+    if (!item) return;
+    setInboxPreview({ ...item, isRead: true });
+    setDismissedInboxIds((prev) => (prev.includes(item.id) ? prev : prev.concat(item.id)));
+    markInboxRead(item.id).unwrap().catch(() => {
+      setDismissedInboxIds((prev) => prev.filter((id) => id !== item.id));
+      setInboxPreview((current: { id: number } | null) => (current?.id === item.id ? { ...current, isRead: false } : current));
+      showErrorToast('Could not mark the buyer message as read');
+    });
+  };
   const { showNotification } = useNotifications();
   const previousCountRef = useRef<number>(0);
 
@@ -261,7 +271,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
           <TouchableOpacity
             key={item.id}
             style={[styles.pauseNotice, { backgroundColor: look.background, borderColor: look.border }]}
-            onPress={() => setInboxPreview(item)}
+            onPress={() => openInboxMessage(item)}
           >
             <Text style={[styles.pauseBadge, { backgroundColor: look.border }]}>{look.badge}</Text>
             <View style={styles.pauseCopy}>
@@ -274,7 +284,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
       {isSeller() && shopInbox.filter((item) => !item.isRead && !dismissedInboxIds.includes(item.id) && !regularNoticeTone(item.title)).length > 0 && (
         <TouchableOpacity
           style={styles.noticeBar}
-          onPress={() => setInboxPreview(shopInbox.find((item) => !item.isRead && !dismissedInboxIds.includes(item.id) && !regularNoticeTone(item.title)))}
+          onPress={() => openInboxMessage(shopInbox.find((item) => !item.isRead && !dismissedInboxIds.includes(item.id) && !regularNoticeTone(item.title)))}
         >
           <Text style={styles.noticeText}>
             {shopInbox.filter((item) => !item.isRead && !dismissedInboxIds.includes(item.id) && !regularNoticeTone(item.title)).length} new message
@@ -539,7 +549,15 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
 
       {/* Recent Notifications Section */}
       {unreadCount > 0 && (
-        <TouchableOpacity style={styles.noticeBar} onPress={() => setPreview(notifications?.[0])}>
+        <TouchableOpacity
+          style={styles.noticeBar}
+          onPress={() => {
+            const item = notifications?.[0];
+            if (!item) return;
+            setPreview({ ...item, isRead: true });
+            markAsRead(item.id).catch((error) => console.error('Error marking notification as read:', error));
+          }}
+        >
           <Text style={styles.noticeText}>
             {unreadCount} new update{unreadCount > 1 ? 's' : ''}
           </Text>
@@ -550,13 +568,13 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
         visible={!!preview}
         message={preview?.message?.trim() || (preview ? `New order #${preview.orderId} from ${preview.customerName}` : '')}
         createdAt={preview?.createdAt}
-        isRead={false}
+        isRead={!!preview?.isRead}
         onClose={() => setPreview(null)}
         onRead={async () => {
           if (!preview) return;
           try {
             await markAsRead(preview.id);
-            setPreview(null);
+            setPreview({ ...preview, isRead: true });
           } catch (error) {
             console.error('Error marking notification as read:', error);
           }
@@ -567,19 +585,9 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
         message={inboxPreview ? `${inboxPreview.title}: ${inboxPreview.message}` : ''}
         createdAt={inboxPreview?.createdAt}
         tone={regularNoticeTone(inboxPreview?.title) || 'default'}
-        isRead={false}
+        isRead={!!inboxPreview?.isRead}
         onClose={() => setInboxPreview(null)}
-        onRead={async () => {
-          if (!inboxPreview) return;
-          setDismissedInboxIds((prev) => prev.concat(inboxPreview.id));
-          try {
-            await markInboxRead(inboxPreview.id).unwrap();
-            setInboxPreview(null);
-          } catch (_error) {
-            setDismissedInboxIds((prev) => prev.filter((id) => id !== inboxPreview.id));
-            showErrorToast('Could not mark the buyer message as read');
-          }
-        }}
+        onRead={() => openInboxMessage(inboxPreview)}
       />
 
       {isStrictAdmin() && platform && (
@@ -1151,7 +1159,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   hubCard: {
-    width: 'calc(50% - 8px)' as any,
+    flexGrow: 1,
+    flexBasis: '46%',
+    minWidth: 150,
+    maxWidth: '100%',
     backgroundColor: colors.white,
     borderRadius: spacing.md,
     borderWidth: 1,

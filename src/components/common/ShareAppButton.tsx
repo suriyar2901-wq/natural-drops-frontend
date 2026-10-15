@@ -152,6 +152,7 @@ export const ShareAppButton = ({ companyCode, companyName, tone = 'solid' }: Pro
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     marginTop: spacing.sm,
     marginBottom: spacing.sm,
@@ -165,6 +166,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingHorizontal: spacing.sm,
+    minWidth: 132,
   },
   solidButton: {
     backgroundColor: colors.primary,

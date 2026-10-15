@@ -27,12 +27,10 @@ export const MoreScreen = ({ navigation }: any) => {
 
   if (isStrictAdmin()) {
     actions.push(
-      { label: 'Manage Products', icon: 'cube-outline', onPress: () => navigation.navigate('MenuManagement') },
-      { label: 'Manage Users', icon: 'people-outline', onPress: () => navigation.navigate('UserManagement') },
+      { label: 'Products', icon: 'cube-outline', onPress: () => navigation.navigate('MenuManagement') },
+      { label: 'Users', icon: 'people-outline', onPress: () => navigation.navigate('UserManagement') },
+      { label: 'Profile', icon: 'person-outline', onPress: () => navigation.navigate('Profile') },
       { label: 'App Settings', icon: 'settings-outline', onPress: () => navigation.navigate('AppSettings') },
-      { label: 'Manage Sellers', icon: 'storefront-outline', onPress: () => navigation.navigate('SellerList') },
-      { label: 'Subscriptions', icon: 'repeat-outline', onPress: () => navigation.navigate('SubscriptionList') },
-      { label: 'Subscription Payments', icon: 'card-outline', onPress: () => navigation.navigate('PaymentList') },
     );
   }
 

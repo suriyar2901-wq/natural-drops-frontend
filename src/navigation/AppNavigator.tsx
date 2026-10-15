@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, Linking, useWindowDimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HeaderBrand } from '../components/common';
 import { useGetShopCompanyQuery } from '../store/api/shopApi';
@@ -25,6 +25,8 @@ const tabIcon =
         />
       </View>
     );
+
+const brandOnlyTitle = () => null;
 
 const hiddenTabOptions = {
   tabBarButton: () => null,
@@ -114,8 +116,6 @@ import { SellerSubscriptionGate } from '../components/common/SellerSubscriptionG
 import { useAuth } from '../hooks';
 import { useGetUnreadAdminNotificationCountQuery, useGetUnreadBuyerNotificationCountQuery } from '../store/api/notificationApi';
 import { NotificationHistoryScreen } from '../screens/common/NotificationHistoryScreen';
-import { useGetCustomerContactNumberQuery } from '../store/api/settingsApi';
-
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
@@ -136,7 +136,6 @@ const HeaderRight = ({ navigation }: any) => {
   const { data: buyerUnread = 0 } = useGetUnreadBuyerNotificationCountQuery(user?.id || 0, { skip: !user?.id || !buyer });
   const { data: sellerUnread = 0 } = useGetUnreadAdminNotificationCountQuery(undefined, { skip: !user || buyer });
   const unread = buyer ? buyerUnread : sellerUnread;
-  const { data: customerPhone } = useGetCustomerContactNumberQuery();
 
   const performLogout = async () => {
     console.log('performLogout called');
@@ -279,7 +278,7 @@ const HeaderRight = ({ navigation }: any) => {
       )}
       <TouchableOpacity
         onPress={() => navigation.getParent()?.navigate('NotificationHistory') || navigation.navigate('NotificationHistory')}
-        style={styles.phoneButton}
+        style={[styles.phoneButton, compact && styles.phoneButtonCompact]}
         activeOpacity={0.7}
         accessibilityRole="button"
         accessibilityLabel="Notifications"
@@ -290,37 +289,6 @@ const HeaderRight = ({ navigation }: any) => {
             <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
           </View>
         )}
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={async () => {
-          try {
-            const phone = (customerPhone || '').trim();
-            if (!phone) {
-              Alert.alert('Info', 'Customer support number is not available. Please try again later.');
-              return;
-            }
-            const telUrl = `tel:${phone}`;
-            if (Platform.OS === 'web') {
-              (window as any).location.href = telUrl;
-              return;
-            }
-            const canOpen = await Linking.canOpenURL(telUrl);
-            if (!canOpen) {
-              Alert.alert('Info', 'Customer support number is not available. Please try again later.');
-              return;
-            }
-            await Linking.openURL(telUrl);
-          } catch (e) {
-            Alert.alert('Info', 'Customer support number is not available. Please try again later.');
-          }
-        }}
-        style={styles.phoneButton}
-        activeOpacity={0.7}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        accessibilityRole="button"
-        accessibilityLabel="Call customer support"
-      >
-        <Ionicons name="call-outline" size={22} color={colors.white} />
       </TouchableOpacity>
       <TouchableOpacity 
         onPress={() => {
@@ -340,6 +308,7 @@ const HeaderRight = ({ navigation }: any) => {
 
 // Buyer Tab Navigator
 const BuyerTabs = ({ navigation }: any) => {
+  const { width } = useWindowDimensions();
   const { data: account } = useGetBuyerAccountSummaryQuery();
   const shopName = account?.companyName || account?.sellerBusiness;
   const shopPhoto = account?.sellerProfilePhoto;
@@ -353,10 +322,11 @@ const BuyerTabs = ({ navigation }: any) => {
       tabBarLabelPosition: 'below-icon',
       tabBarStyle: styles.tabBar,
       tabBarItemStyle: styles.adminTabItem,
-      tabBarLabelStyle: styles.adminTabLabel,
+      tabBarLabelStyle: [styles.adminTabLabel, width < 520 && styles.tabLabelCompact],
       tabBarIconStyle: styles.adminTabIcon,
+      headerTitleAlign: 'left',
       headerTitleContainerStyle: styles.headerTitleSlot,
-      headerLeftContainerStyle: styles.headerTitleSlot,
+      headerLeftContainerStyle: styles.headerLeftSlot,
       headerStyle: { backgroundColor: colors.primary },
       headerTintColor: colors.white,
       headerRight: () => <HeaderRight navigation={navigation} />,
@@ -379,6 +349,7 @@ const BuyerTabs = ({ navigation }: any) => {
         title: 'My Orders',
         tabBarLabel: 'My Orders',
         tabBarIcon: tabIcon('receipt-outline', 'receipt'),
+        headerTitle: brandOnlyTitle,
         headerLeft: () => <View style={styles.headerBrandWrap}>{shopBrand}</View>,
       }}
     />
@@ -389,6 +360,7 @@ const BuyerTabs = ({ navigation }: any) => {
         title: 'My Payments',
         tabBarLabel: 'My Payments',
         tabBarIcon: tabIcon('wallet-outline', 'wallet'),
+        headerTitle: brandOnlyTitle,
         headerLeft: () => <View style={styles.headerBrandWrap}>{shopBrand}</View>,
       }}
     />
@@ -399,6 +371,7 @@ const BuyerTabs = ({ navigation }: any) => {
         title: 'Profile',
         tabBarLabel: 'Profile',
         tabBarIcon: tabIcon('person-outline', 'person'),
+        headerTitle: brandOnlyTitle,
         headerLeft: () => <View style={styles.headerBrandWrap}>{shopBrand}</View>,
       }}
     />
@@ -408,6 +381,7 @@ const BuyerTabs = ({ navigation }: any) => {
 
 // Admin Tab Navigator
 const AdminTabs = ({ navigation }: any) => {
+  const { width } = useWindowDimensions();
   const { user, isStrictAdmin, isSeller } = useAuth();
   const { data: shopCompany } = useGetShopCompanyQuery(undefined, { skip: !isSeller() });
   const sellerBrand = (
@@ -430,10 +404,11 @@ const AdminTabs = ({ navigation }: any) => {
       tabBarLabelPosition: 'below-icon',
       tabBarStyle: styles.tabBar,
       tabBarItemStyle: styles.adminTabItem,
-      tabBarLabelStyle: styles.adminTabLabel,
+      tabBarLabelStyle: [styles.adminTabLabel, width < 520 && styles.tabLabelCompact],
       tabBarIconStyle: styles.adminTabIcon,
+      headerTitleAlign: 'left',
       headerTitleContainerStyle: styles.headerTitleSlot,
-      headerLeftContainerStyle: styles.headerTitleSlot,
+      headerLeftContainerStyle: styles.headerLeftSlot,
       headerStyle: { backgroundColor: colors.primary },
       headerTintColor: colors.white,
       headerRight: () => <HeaderRight navigation={navigation} />,
@@ -454,24 +429,42 @@ const AdminTabs = ({ navigation }: any) => {
           title: 'Orders',
           tabBarIcon: tabIcon('receipt-outline', 'receipt'),
           tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          headerTitle: isSeller() ? brandOnlyTitle : undefined,
           headerLeft: () => isSeller() ? <View style={styles.headerBrandWrap}>{sellerBrand}</View> : undefined,
         }} 
       />
-    <Tab.Screen
-      name="MenuManagement"
-      component={MenuManagementScreen}
-      options={{
-        title: 'Products',
-        tabBarIcon: tabIcon('cube-outline', 'cube'),
-        headerLeft: () => isSeller() ? <View style={styles.headerBrandWrap}>{sellerBrand}</View> : undefined,
-      }}
-    />
-    {/* Users tab - Only visible for ADMIN role, not for SELLER */}
+    {isSeller() && (
+      <Tab.Screen
+        name="MenuManagement"
+        component={MenuManagementScreen}
+        options={{
+          title: 'Products',
+          tabBarIcon: tabIcon('cube-outline', 'cube'),
+          headerTitle: brandOnlyTitle,
+          headerLeft: () => <View style={styles.headerBrandWrap}>{sellerBrand}</View>,
+        }}
+      />
+    )}
     {isStrictAdmin() && (
-      <Tab.Screen 
-        name="UserManagement" 
-        component={UserManagementScreen} 
-        options={{ title: 'Users', tabBarIcon: tabIcon('people-outline', 'people') }} 
+      <Tab.Screen
+        name="SubscriptionList"
+        component={SubscriptionListScreen}
+        options={{
+          title: 'Subscriptions',
+          tabBarLabel: 'Subscriptions',
+          tabBarIcon: tabIcon('repeat-outline', 'repeat'),
+        }}
+      />
+    )}
+    {isStrictAdmin() && (
+      <Tab.Screen
+        name="PaymentList"
+        component={PaymentListScreen}
+        options={{
+          title: 'Subscription Payments',
+          tabBarLabel: 'Subscription Payments',
+          tabBarIcon: tabIcon('card-outline', 'card'),
+        }}
       />
     )}
     {isSeller() ? (
@@ -482,20 +475,21 @@ const AdminTabs = ({ navigation }: any) => {
           title: 'Customer ledger',
           tabBarLabel: 'Customer ledger',
           tabBarIcon: tabIcon('book-outline', 'book'),
+          headerTitle: brandOnlyTitle,
           headerLeft: () => <View style={styles.headerBrandWrap}>{sellerBrand}</View>,
         }}
       />
-    ) : (
+    ) : isStrictAdmin() ? (
       <Tab.Screen
-        name="Profile"
-        component={ProfileScreen}
+        name="SellerList"
+        component={SellerListScreen}
         options={{
-          title: 'Profile',
-          tabBarLabel: 'Profile',
-          tabBarIcon: tabIcon('person-outline', 'person'),
+          title: 'Manage Sellers',
+          tabBarLabel: 'Manage Sellers',
+          tabBarIcon: tabIcon('storefront-outline', 'storefront'),
         }}
       />
-    )}
+    ) : null}
     {isSeller() && (
       <Tab.Screen name="Profile" component={ProfileScreen} options={hiddenPageOptions('Profile')} />
     )}
@@ -506,19 +500,20 @@ const AdminTabs = ({ navigation }: any) => {
         title: 'More',
         tabBarLabel: 'More',
         tabBarIcon: tabIcon('ellipsis-horizontal-circle-outline', 'ellipsis-horizontal-circle'),
+        headerTitle: isSeller() ? brandOnlyTitle : undefined,
         headerLeft: () => isSeller() ? <View style={styles.headerBrandWrap}>{sellerBrand}</View> : undefined,
       }}
     />
       {isStrictAdmin() && (
         <>
+          <Tab.Screen name="MenuManagement" component={MenuManagementScreen} options={hiddenPageOptions('Products')} />
+          <Tab.Screen name="UserManagement" component={UserManagementScreen} options={hiddenPageOptions('Users')} />
+          <Tab.Screen name="Profile" component={ProfileScreen} options={hiddenPageOptions('Profile')} />
           <Tab.Screen name="AppSettings" component={AppSettingsScreen} options={hiddenPageOptions('App Settings')} />
-          <Tab.Screen name="SellerList" component={SellerListScreen} options={hiddenPageOptions('Sellers')} />
           <Tab.Screen name="AddSeller" component={AddSellerScreen} options={hiddenPageOptions('Add Seller')} />
           <Tab.Screen name="SellerDetail" component={SellerDetailScreen} options={hiddenPageOptions('Seller Details')} />
           <Tab.Screen name="EditSeller" component={EditSellerScreen} options={hiddenPageOptions('Edit Seller')} />
           <Tab.Screen name="ActivatePayment" component={ActivatePaymentScreen} options={hiddenPageOptions('Payment Activation')} />
-          <Tab.Screen name="SubscriptionList" component={SubscriptionListScreen} options={hiddenPageOptions('Subscriptions')} />
-          <Tab.Screen name="PaymentList" component={PaymentListScreen} options={hiddenPageOptions('Payments')} />
         </>
       )}
   </Tab.Navigator>
@@ -562,7 +557,7 @@ export const AppNavigator = () => {
         console.log('✅ NavigationContainer is ready');
       }}
     >
-      <>
+      <View style={styles.appFrame}>
       <Stack.Navigator
         initialRouteName="Login"
         screenOptions={{
@@ -733,12 +728,17 @@ export const AppNavigator = () => {
         />
       </Stack.Navigator>
       <SellerSubscriptionGate />
-      </>
+      </View>
     </NavigationContainer>
   );
 };
 
 const styles = StyleSheet.create({
+  appFrame: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: colors.background,
+  },
   tabIconBox: {
     width: TAB_ICON_SIZE,
     height: TAB_ICON_SIZE,
@@ -770,6 +770,9 @@ const styles = StyleSheet.create({
     height: TAB_ICON_SIZE,
     marginTop: 4,
   },
+  tabLabelCompact: {
+    fontSize: 10,
+  },
   adminTabLabel: {
     fontFamily: typography.fontFamily.medium,
     fontSize: typography.fontSize.xs,
@@ -778,6 +781,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 2,
     width: '100%',
+    flexShrink: 1,
   },
   backButton: {
     marginLeft: spacing.sm,
@@ -786,12 +790,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerLeftSlot: {
+    marginLeft: spacing.md,
+    flexShrink: 0,
+    justifyContent: 'center',
+  },
   headerTitleSlot: {
-    maxWidth: '46%',
     flexShrink: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
   },
   headerBrandWrap: {
-    marginLeft: spacing.sm,
     maxWidth: '100%',
     flexShrink: 1,
   },
@@ -816,6 +826,12 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
     maxWidth: 88,
     flexShrink: 1,
+  },
+  phoneButtonCompact: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: spacing.xs,
   },
   phoneButton: {
     position: 'relative',

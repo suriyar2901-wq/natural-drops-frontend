@@ -25,7 +25,7 @@ export const HeaderBrand: React.FC<HeaderBrandProps> = ({ name, photo, light }) 
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
-    <View style={[styles.row, { maxWidth: width < 520 ? Math.max(110, width * 0.36) : 220 }]}>
+    <View style={[styles.row, { maxWidth: width < 520 ? Math.max(110, width * 0.42) : width >= 960 ? 320 : 220 }]}>
       {uri ? (
         <Image source={{ uri }} style={[styles.photo, light && styles.photoLight]} />
       ) : (

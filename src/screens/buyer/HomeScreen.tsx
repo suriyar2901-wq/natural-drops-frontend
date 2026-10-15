@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useDispatch } from 'react-redux';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Image, Alert, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -7,7 +8,9 @@ import { Card, EmptyState, Loading, Input, HeaderBrand, ProductPhotoPlaceholder,
 import { useGetMenuItemsQuery } from '../../store/api/menuApi';
 import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
 import { useGetBuyerOrdersQuery } from '../../store/api/orderApi';
+import { replaceCart } from '../../store/slices/cartSlice';
 import { useCart, useAuth } from '../../hooks';
+import { showSuccessToast, showErrorToast } from '../../utils/toast';
 import { moneyValue, orderBillPending } from '../../types/shop.types';
 import { MenuItem, Order } from '../../types';
 import { formatCurrency, formatDeliverySlot } from '../../utils/formatters';
@@ -17,11 +20,14 @@ import { navigate } from '../../navigation/navigationRef';
 
 export const HomeScreen = ({ navigation }: any) => {
   const { width } = useWindowDimensions();
-  const photoSize = width < 520 ? 84 : 120;
+  const compact = width < 520;
+  const columns = width >= 900 ? 2 : 1;
+  const photoSize = 112;
   const { user, isBuyer } = useAuth();
   const { data: products, isLoading, refetch, error } = useGetMenuItemsQuery();
   const { data: account } = useGetBuyerAccountSummaryQuery(undefined, { skip: !isBuyer() });
   const { data: buyerOrders = [] } = useGetBuyerOrdersQuery(user?.id || 0, { skip: !isBuyer() || !user?.id });
+  const dispatch = useDispatch();
   const { addToCart, getItemQuantity, incrementQuantity, decrementQuantity, totalItems } = useCart();
   const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -38,6 +44,14 @@ export const HomeScreen = ({ navigation }: any) => {
     });
     return open[0];
   }, [buyerOrders]);
+  const lastNormal = useMemo(() => (
+    (buyerOrders as Order[]).find((order) => (
+      order.status !== 'canceled'
+      && !(order.billingNotes || '').toLowerCase().includes('regular')
+      && (order.items || []).some((line) => line.menuItemId && line.quantity > 0)
+    ))
+  ), [buyerOrders]);
+
   const dueAmount = useMemo(() => {
     const openBills = (buyerOrders as Order[]).filter((order) => order.status !== 'canceled');
     if (openBills.length === 0) return moneyValue(account?.due);
@@ -135,13 +149,13 @@ export const HomeScreen = ({ navigation }: any) => {
           navigate('ProductDetail', { productId: item.id });
         }}
       >
-        <Card style={[styles.productCard, { borderLeftColor: String(item.category || '').toLowerCase() === 'beverage' ? '#F59E0B' : colors.primary }]}>
+        <Card style={[styles.productCard, columns > 1 && styles.productCardWide, { borderLeftColor: String(item.category || '').toLowerCase() === 'beverage' ? '#F59E0B' : colors.primary }]}>
         {isValidImageUrl ? (
-          <View style={[styles.imageContainer, { width: photoSize, height: photoSize }]}>
+          <View style={[styles.imageContainer, { width: photoSize, height: photoSize, backgroundColor: String(item.category || '').toLowerCase() === 'beverage' ? '#FFF7ED' : '#EFF6FF' }]}>
             <Image
               source={{ uri: imageUri }}
               style={styles.productImage}
-              resizeMode="cover"
+              resizeMode="contain"
               onError={() => {
                 // Mark this image as failed so we show placeholder on next render
                 setFailedImages(prev => new Set(prev).add(item.id));
@@ -171,7 +185,7 @@ export const HomeScreen = ({ navigation }: any) => {
             <Text style={styles.price}>{formatCurrency(item.rate || 0)}</Text>
           </View>
           {!!item.description?.trim() && (
-            <Text style={styles.productDescription} numberOfLines={3}>
+            <Text style={styles.productDescription} numberOfLines={1}>
               {item.description.trim()}
             </Text>
           )}
@@ -182,7 +196,6 @@ export const HomeScreen = ({ navigation }: any) => {
           </View>
           
           <View style={styles.quantityRow}>
-            <Text style={styles.inCartText}>In Cart: {qty}</Text>
             <View style={styles.qtyControl}>
               <TouchableOpacity
                 style={[styles.qtyBtn, qty === 0 && styles.qtyBtnDisabled]}
@@ -215,8 +228,8 @@ export const HomeScreen = ({ navigation }: any) => {
     return <Loading fullScreen message="Loading products..." />;
   }
 
-  return (
-    <View style={styles.container}>
+  const pageHeader = (
+    <>
       <View style={styles.header}>
         {isBuyer() && (
           <View style={styles.shopBrand}>
@@ -234,7 +247,7 @@ export const HomeScreen = ({ navigation }: any) => {
             : 'Order fresh water today'}
         </Text>
         {isBuyer() && (
-          <View style={styles.accountRow}>
+          <View style={[styles.accountRow, compact && styles.accountRowCompact]}>
             <TouchableOpacity
               style={styles.accountChip}
               onPress={() => navigation.navigate('BuyerPayments')}
@@ -291,6 +304,50 @@ export const HomeScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       )}
 
+      {isBuyer() && lastNormal && (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => {
+            const lines = (lastNormal.items || []).filter((line) => line.menuItemId && line.quantity > 0);
+            if (!lines.length) {
+              showErrorToast('This order has no products to add again');
+              return;
+            }
+            dispatch(replaceCart(lines.map((line) => ({
+              quantity: line.quantity,
+              menuItem: {
+                id: line.menuItemId,
+                name: line.itemName,
+                category: 'water',
+                stockQuantity: 0,
+                rate: line.rate || 0,
+                createdAt: '',
+                updatedAt: '',
+              } as MenuItem,
+            }))));
+            showSuccessToast('Last order copied to cart');
+            const parentNav = navigation?.getParent?.();
+            if (parentNav?.navigate) parentNav.navigate('Cart');
+            else navigation.navigate('Cart');
+          }}
+        >
+          <Card style={styles.nextDelivery}>
+            <View style={styles.nextDeliveryRow}>
+              <View style={styles.nextDeliveryIcon}>
+                <Ionicons name="refresh-outline" size={22} color={colors.primary} />
+              </View>
+              <View style={styles.accountCopy}>
+                <Text style={styles.nextDeliveryTitle}>Order again</Text>
+                <Text style={styles.nextDeliveryMeta}>
+                  {(lastNormal.items || []).map((line) => `${line.quantity}x ${line.itemName}`).join(', ')}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+            </View>
+          </Card>
+        </TouchableOpacity>
+      )}
+
       {shopClosed && (
         <Card style={styles.closedCard}>
           <Text style={styles.closedTitle}>Shop is closed</Text>
@@ -311,11 +368,20 @@ export const HomeScreen = ({ navigation }: any) => {
           autoCorrect={false}
         />
       </View>
+    </>
+  );
 
+  return (
+    <View style={styles.container}>
       <FlatList
+        key={columns}
+        style={styles.list}
         data={filteredProducts}
         renderItem={renderProduct}
         keyExtractor={(item) => item.id.toString()}
+        numColumns={columns}
+        columnWrapperStyle={columns > 1 ? styles.productRow : undefined}
+        ListHeaderComponent={pageHeader}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={refetch} colors={[colors.primary]} />
@@ -342,7 +408,7 @@ export const HomeScreen = ({ navigation }: any) => {
       />
 
       <TouchableOpacity
-        style={styles.cartButton}
+        style={[styles.cartButton, compact && styles.cartButtonCompact]}
         onPress={() => {
           if (!totalItems || totalItems <= 0) {
             const msg = 'Your cart is empty. Please add items before viewing the cart.';
@@ -366,15 +432,8 @@ const styles = StyleSheet.create({
   quantityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
+    justifyContent: 'flex-end',
     marginTop: spacing.sm,
-  },
-  inCartText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.success,
-    fontWeight: typography.fontWeight.medium,
   },
   qtyControl: {
     flexDirection: 'row',
@@ -440,6 +499,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.md,
+  },
+  accountRowCompact: {
+    flexDirection: 'column',
   },
   closedCard: {
     marginHorizontal: spacing.md,
@@ -533,31 +595,42 @@ const styles = StyleSheet.create({
   searchInput: {
     marginBottom: 0,
   },
+  list: { flex: 1 },
   listContent: {
-    padding: spacing.md,
-    paddingTop: 0,
     paddingBottom: 110,
   },
+  productRow: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.md,
+  },
   productCard: {
+    marginHorizontal: spacing.md,
     marginBottom: spacing.md,
     flexDirection: 'row',
     overflow: 'hidden',
     borderLeftWidth: 4,
     borderLeftColor: colors.primary,
+    minWidth: 0,
+  },
+  productCardWide: {
+    flex: 1,
+    marginHorizontal: 0,
   },
   imageContainer: {
-    width: 120,
-    height: 120,
+    width: 112,
+    height: 112,
     borderRadius: 16,
     overflow: 'hidden',
     marginRight: spacing.md,
     backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   productImage: {
-    width: '100%',
-    height: '100%',
+    width: 92,
+    height: 92,
   },
   placeholderImage: {
     width: 120,
@@ -582,7 +655,7 @@ const styles = StyleSheet.create({
   },
   productName: {
     flexShrink: 1,
-    fontSize: typography.fontSize.lg,
+    fontSize: typography.fontSize.xl,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
     marginBottom: spacing.xs,
@@ -598,7 +671,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   price: {
-    fontSize: typography.fontSize.xl,
+    fontSize: typography.fontSize['2xl'],
     fontWeight: typography.fontWeight.bold,
     color: colors.primary,
     marginRight: spacing.sm,
@@ -616,17 +689,17 @@ const styles = StyleSheet.create({
   categoryChip: {
     alignSelf: 'flex-start',
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
     marginBottom: spacing.sm,
   },
   categoryChipText: {
-    fontSize: typography.fontSize.xs,
+    fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.bold,
     textTransform: 'capitalize',
   },
   productDescription: {
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.fontSize.base,
     color: colors.textSecondary,
     marginBottom: spacing.xs,
   },
@@ -647,6 +720,10 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: colors.error,
     marginTop: spacing.sm,
+  },
+  cartButtonCompact: {
+    right: spacing.md,
+    bottom: spacing.md,
   },
   cartButton: {
     position: 'absolute',

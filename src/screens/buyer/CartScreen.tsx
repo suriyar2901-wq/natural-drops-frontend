@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { colors, typography, spacing } from '../../theme';
-import { Card, Button, DeliverySlotFields, LocationSelectionModal } from '../../components/common';
+import { Card, Button, DeliverySlotFields } from '../../components/common';
 import { deliveryDateFor, isFutureDeliverySlot, toDeliveryYmd } from '../../components/common/DeliverySlotFields';
 import { useCart, useAuth } from '../../hooks';
 import { useCreateOrderMutation, useGetBuyerRegularOrderQuery, usePauseBuyerRegularOrderMutation, useResumeBuyerRegularOrderMutation, useSaveBuyerRegularOrderMutation } from '../../store/api/orderApi';
@@ -33,11 +33,6 @@ export const CartScreen = ({ navigation, route }: any) => {
   const [resumeRegularOrder, { isLoading: resuming }] = useResumeBuyerRegularOrderMutation();
   const dispatch = useDispatch();
   
-  // Delivery location state
-  const [deliveryAddress, setDeliveryAddress] = useState<string>('');
-  const [deliveryLatitude, setDeliveryLatitude] = useState<number | undefined>();
-  const [deliveryLongitude, setDeliveryLongitude] = useState<number | undefined>();
-  const [showLocationModal, setShowLocationModal] = useState(false);
   const [deliveryChoice, setDeliveryChoice] = useState<'Today' | 'Tomorrow' | 'Date'>('Today');
   const [customDate, setCustomDate] = useState('');
   const [deliveryTime, setDeliveryTime] = useState('10:00');
@@ -164,32 +159,20 @@ export const CartScreen = ({ navigation, route }: any) => {
       }
     }
 
-    // Show location selection modal first
-    setShowLocationModal(true);
-  };
-
-  const handleLocationSelected = (address: string, latitude?: number, longitude?: number) => {
-    console.log('📍 Delivery location selected:', { address, latitude, longitude });
-    
-    // Validate coordinates if provided
-    if (latitude !== undefined || longitude !== undefined) {
-      if (!validateCoordinates(latitude, longitude)) {
-        console.error('❌ Invalid coordinates received:', { latitude, longitude });
-        Alert.alert(
-          'Invalid Location',
-          'The location coordinates are invalid. Please select location again.'
-        );
-        return;
-      }
+    const profileAddress = [
+      user.houseDoorNo,
+      user.streetArea,
+      user.city,
+      user.district,
+      user.state,
+      user.pincode,
+      user.landmark,
+    ].map((part) => String(part || '').trim()).filter(Boolean).join(', ') || String(user.address || '').trim();
+    if (!profileAddress) {
+      Alert.alert('Delivery address', 'Add your delivery address in Profile before placing an order.');
+      return;
     }
-    
-    setDeliveryAddress(address);
-    setDeliveryLatitude(latitude);
-    setDeliveryLongitude(longitude);
-    // Close modal and proceed with order placement
-    setShowLocationModal(false);
-    // Proceed with order placement after location is selected
-    proceedWithOrder(address, latitude, longitude);
+    proceedWithOrder(profileAddress);
   };
 
   const proceedWithOrder = async (address: string, latitude?: number, longitude?: number) => {
@@ -245,9 +228,6 @@ export const CartScreen = ({ navigation, route }: any) => {
           })),
         }).unwrap();
         clearCart();
-        setDeliveryAddress('');
-        setDeliveryLatitude(undefined);
-        setDeliveryLongitude(undefined);
         navigateToShop();
         const dayLabel = WEEK_DAYS.filter((day) => weekDays.includes(day.id)).map((day) => day.label).join(', ');
         Alert.alert(
@@ -279,8 +259,8 @@ export const CartScreen = ({ navigation, route }: any) => {
         buyerId: user.id,
         buyerName: user.username || 'Unknown',
         buyerPhone: user.phone || '',
-        buyerAddress: user.address || 'Not specified',
-        deliveryAddress: address.trim(), // Use the address parameter
+        buyerAddress: address.trim(),
+        deliveryAddress: address.trim(),
         latitude: validLatitude,
         longitude: validLongitude,
         total: finalTotal,
@@ -296,10 +276,6 @@ export const CartScreen = ({ navigation, route }: any) => {
       console.log('✅ Order created successfully:', order);
       
       clearCart();
-      // Reset delivery location state
-      setDeliveryAddress('');
-      setDeliveryLatitude(undefined);
-      setDeliveryLongitude(undefined);
       
       // Redirect to Shop immediately after checkout (no "Browse Products" empty state)
       navigateToShop();
@@ -329,10 +305,6 @@ export const CartScreen = ({ navigation, route }: any) => {
   const handleClearCart = () => {
     const doClear = () => {
       clearCart();
-      // Also reset delivery location when clearing cart
-      setDeliveryAddress('');
-      setDeliveryLatitude(undefined);
-      setDeliveryLongitude(undefined);
       // Instantly navigate back to Shop (no redirecting screen)
       navigateToShop();
     };
@@ -506,6 +478,18 @@ export const CartScreen = ({ navigation, route }: any) => {
                   </Text>
                 </TouchableOpacity>
               )}
+              <Text style={styles.deliveryTitle}>Delivery address</Text>
+              <Text style={styles.deliveryAddress}>
+                {[
+                  user?.houseDoorNo,
+                  user?.streetArea,
+                  user?.city,
+                  user?.district,
+                  user?.state,
+                  user?.pincode,
+                  user?.landmark,
+                ].map((part) => String(part || '').trim()).filter(Boolean).join(', ') || user?.address || 'Add this in Profile'}
+              </Text>
               <Text style={styles.deliveryHint}>
                 {orderKind === 'regular'
                   ? 'This repeats on the days you pick. The seller is notified one day before each delivery. You can edit or pause it from Profile.'
@@ -531,12 +515,6 @@ export const CartScreen = ({ navigation, route }: any) => {
         />
       </View>
       
-      {/* Location Selection Modal - Shows when user clicks Checkout */}
-      <LocationSelectionModal
-        visible={showLocationModal}
-        onClose={() => setShowLocationModal(false)}
-        onLocationSelected={handleLocationSelected}
-      />
     </View>
   );
 };
@@ -644,6 +622,12 @@ const styles = StyleSheet.create({
   },
   deliveryCard: { marginTop: spacing.md, padding: spacing.md, width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden', alignSelf: 'stretch' },
   deliveryTitle: { fontWeight: typography.fontWeight.bold, color: colors.textPrimary, marginBottom: spacing.sm },
+  deliveryAddress: {
+    color: colors.textPrimary,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    lineHeight: 20,
+  },
   deliveryHint: { color: colors.textSecondary, marginTop: spacing.sm },
   pauseRow: { marginTop: spacing.md },
   pauseText: { color: colors.primary, fontWeight: typography.fontWeight.semibold },

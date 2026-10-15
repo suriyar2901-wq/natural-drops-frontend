@@ -1,7 +1,6 @@
 import React from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, spacing, typography } from '../../theme';
-import { Button } from './Button';
 import { formatDateTime } from '../../utils/formatters';
 import { regularNoticeLook, RegularNoticeTone } from '../../utils/regularNotice';
 
@@ -22,12 +21,11 @@ export const NotificationPreview = ({
   isRead,
   tone = 'default',
   onClose,
-  onRead,
 }: NotificationPreviewProps) => (
   <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-    <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-      <TouchableOpacity
-        activeOpacity={1}
+    <View style={styles.overlay}>
+      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
+      <View
         style={[
           styles.card,
           tone !== 'default' && {
@@ -45,14 +43,12 @@ export const NotificationPreview = ({
         <Text style={[styles.message, isRead && styles.messageRead, tone !== 'default' && { color: regularNoticeLook[tone].text, fontWeight: typography.fontWeight.semibold }]}>{message}</Text>
         {!!createdAt && <Text style={styles.time}>{formatDateTime(createdAt)}</Text>}
         <View style={styles.actions}>
-          {!isRead && onRead ? (
-            <Button title="Read" onPress={onRead} />
-          ) : (
-            <Button title="Close" variant="outline" onPress={onClose} />
-          )}
+          <TouchableOpacity style={[styles.actionButton, styles.actionOutline]} onPress={onClose} activeOpacity={0.8}>
+            <Text style={styles.actionOutlineText}>Close</Text>
+          </TouchableOpacity>
         </View>
-      </TouchableOpacity>
-    </TouchableOpacity>
+      </View>
+    </View>
   </Modal>
 );
 
@@ -64,12 +60,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.lg,
   },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
   card: {
     width: '100%',
     maxWidth: 320,
     backgroundColor: colors.white,
     borderRadius: 12,
     padding: spacing.md,
+    zIndex: 1,
   },
   pauseCard: {
     backgroundColor: '#FFF7ED',
@@ -107,6 +107,25 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
   },
   actions: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
+    alignItems: 'flex-end',
+  },
+  actionButton: {
+    minHeight: 30,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionOutline: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.white,
+  },
+  actionOutlineText: {
+    color: colors.primary,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
   },
 });

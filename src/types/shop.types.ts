@@ -124,6 +124,7 @@ export interface BuyerAccountSummary {
   ledger: LedgerEvent[];
   canEvents: CanEvent[];
   sellerQr?: string | null;
+  sellerUpi?: string | null;
   sellerBusiness?: string | null;
   companyName?: string | null;
   companyCode?: string | null;

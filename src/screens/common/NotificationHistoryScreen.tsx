@@ -83,11 +83,20 @@ export const NotificationHistoryScreen = () => {
         contentContainerStyle={styles.list}
         ListEmptyComponent={<Text style={styles.empty}>No notifications yet.</Text>}
         renderItem={({ item }) => (
-          <TouchableOpacity style={[styles.row, item.isRead ? styles.read : styles.unread]} onPress={() => setSelected(item)}>
+          <TouchableOpacity
+            style={[styles.row, item.isRead ? styles.read : styles.unread]}
+            onPress={() => {
+              setSelected({ ...item, isRead: true });
+              if (item.isRead) return;
+              markRead(item)
+                .then(() => setReadKeys((prev) => (prev.includes(item.key) ? prev : prev.concat(item.key))))
+                .catch(() => setSelected((current) => (current?.key === item.key ? { ...current, isRead: false } : current)));
+            }}
+          >
             <Text style={[styles.message, item.isRead && styles.messageRead]} numberOfLines={1}>{item.message}</Text>
             <Text style={styles.meta}>
               {item.createdAt ? formatDateTime(item.createdAt) : ''}
-              {item.isRead ? ' · Read' : ' · New'}
+              {item.isRead ? '' : ' · New'}
             </Text>
           </TouchableOpacity>
         )}

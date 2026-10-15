@@ -7,13 +7,20 @@ export const buyerAccountApi = baseApi.injectEndpoints({
       query: () => '/buyer-account/summary',
       providesTags: ['BuyerAccount'],
     }),
-    claimBuyerPayment: builder.mutation<ShopCustomer, { amount: string; method: string }>({
+    claimBuyerPayment: builder.mutation<ShopCustomer, { amount: string; method: string; orderId: number }>({
       query: (body) => ({
         url: '/buyer-account/payments',
         method: 'POST',
         body,
       }),
-      invalidatesTags: ['BuyerAccount', 'Shop'],
+      invalidatesTags: ['BuyerAccount', 'Shop', 'Order'],
+    }),
+    markCansReady: builder.mutation<void, { quantity: number }>({
+      query: (body) => ({
+        url: '/buyer-account/cans-ready',
+        method: 'POST',
+        body,
+      }),
     }),
   }),
 });
@@ -21,4 +28,5 @@ export const buyerAccountApi = baseApi.injectEndpoints({
 export const {
   useGetBuyerAccountSummaryQuery,
   useClaimBuyerPaymentMutation,
+  useMarkCansReadyMutation,
 } = buyerAccountApi;
