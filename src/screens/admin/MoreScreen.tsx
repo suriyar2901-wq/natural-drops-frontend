@@ -30,6 +30,7 @@ export const MoreScreen = ({ navigation }: any) => {
       { label: 'Products', icon: 'cube-outline', onPress: () => navigation.navigate('MenuManagement') },
       { label: 'Users', icon: 'people-outline', onPress: () => navigation.navigate('UserManagement') },
       { label: 'Profile', icon: 'person-outline', onPress: () => navigation.navigate('Profile') },
+      { label: 'Platform payment QR', icon: 'qr-code-outline', onPress: () => navigation.navigate('AdminPlatformPayment') },
       { label: 'App Settings', icon: 'settings-outline', onPress: () => navigation.navigate('AppSettings') },
     );
   }
@@ -37,6 +38,8 @@ export const MoreScreen = ({ navigation }: any) => {
   if (isSeller()) {
     actions.push(
       { label: 'Profile', icon: 'person-outline', onPress: () => navigation.navigate('Profile') },
+      { label: 'Pay subscription', icon: 'card-outline', onPress: () => openParent('SellerSubscriptionPay') },
+      { label: 'Buyer bill payments', icon: 'cash-outline', onPress: () => openParent('SellerBillClaims') },
       { label: 'Water can management', icon: 'water-outline', onPress: () => openParent('IssuedCans') },
       { label: 'Daily can collection', icon: 'calendar-outline', onPress: () => openParent('CanCollectionReport') },
       { label: 'Shop Profile / QR', icon: 'qr-code-outline', onPress: () => openParent('ShopProfile') },

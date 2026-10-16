@@ -1,116 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image, Modal, TouchableOpacity } from 'react-native';
-import { colors, typography, spacing } from '../../theme';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  Modal,
+  TouchableOpacity,
+  Animated,
+  Easing,
+  useWindowDimensions,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
 import { Button, Input, CustomerServiceModal } from '../../components/common';
 import { useAuth } from '../../hooks';
 import { validators } from '../../utils/validators';
 
-// Natural Drops logo for login screen
-// Using require() for React Native compatibility (works on both web and native)
-const logoAsset = require('../../../assets/logo.png');
-
-/**
- * Extract valid image URL from require() result for web platform
- * 
- * WHY THIS FUNCTION EXISTS:
- * React Native Web's require() for images can return different formats:
- * - A string URL (direct) - most common case
- * - An object with .default property (ES6 module)
- * - An object with .uri property (React Native asset)
- * - An object with .src property (some bundlers)
- * 
- * The <img src> attribute REQUIRES a string URL, not an object.
- * This function safely extracts the string URL from any of these formats.
- * 
- * This ensures:
- * 1. No "Object" passed to img src (which causes loading errors)
- * 2. Proper fallback handling if URL extraction fails
- * 3. Works with different bundler configurations (Webpack, Metro, etc.)
- */
-const getLogoUrl = (): string => {
-  if (Platform.OS !== 'web') {
-    // For native platforms, return as-is (React Native Image component handles it)
-    return logoAsset as any;
-  }
-
-  // Case 1: Already a string (most common on web)
-  if (typeof logoAsset === 'string') {
-    // Validate it's a valid URL format
-    if (logoAsset.startsWith('http') || logoAsset.startsWith('/') || logoAsset.startsWith('data:')) {
-      return logoAsset;
-    }
-    // Even if it doesn't start with http, return it (might be relative path)
-    return logoAsset;
-  }
-
-  // Case 2: Object with properties (ES6 module or React Native asset)
-  if (typeof logoAsset === 'object' && logoAsset !== null) {
-    // Try .default first (ES6 module default export)
-    if ((logoAsset as any).default) {
-      const defaultVal = (logoAsset as any).default;
-      if (typeof defaultVal === 'string') {
-        return defaultVal;
-      }
-      // If default is also an object, try to extract from it
-      if (typeof defaultVal === 'object' && defaultVal !== null) {
-        const nestedUrl = defaultVal.uri || defaultVal.src || defaultVal.default;
-        if (typeof nestedUrl === 'string') {
-          return nestedUrl;
-        }
-      }
-    }
-    
-    // Try .uri (React Native asset format)
-    if ((logoAsset as any).uri && typeof (logoAsset as any).uri === 'string') {
-      return (logoAsset as any).uri;
-    }
-    
-    // Try .src (some bundler formats)
-    if ((logoAsset as any).src && typeof (logoAsset as any).src === 'string') {
-      return (logoAsset as any).src;
-    }
-    
-    // Try accessing as array (some bundlers return [url])
-    if (Array.isArray(logoAsset) && logoAsset.length > 0 && typeof logoAsset[0] === 'string') {
-      return logoAsset[0];
-    }
-  }
-
-  // Fallback: Convert to string (last resort - may not work but prevents crash)
-  console.warn('⚠️ [LoginScreen] Could not extract logo URL from require() result');
-  console.warn('   Logo asset type:', typeof logoAsset);
-  console.warn('   Logo asset:', logoAsset);
-  const fallback = String(logoAsset);
-  // If the string conversion results in "[object Object]", it's not useful
-  if (fallback === '[object Object]') {
-    console.error('❌ [LoginScreen] Logo asset could not be converted to URL string');
-    return ''; // Return empty string to trigger fallback text
-  }
-  return fallback;
-};
-
 export const LoginScreen = ({ navigation }: any) => {
-  // IMMEDIATE LOG - This will definitely show when component renders
-  console.log('═══════════════════════════════════════════════════════');
-  console.log('🔵 [LoginScreen] Component function called - RENDERING');
-  console.log('═══════════════════════════════════════════════════════');
-  
-  // Get logo URL - always a string for web, asset reference for native
-  const logoSource = Platform.OS === 'web' ? getLogoUrl() : logoAsset;
-  
-  // State for image loading error (for fallback text)
-  const [logoError, setLogoError] = useState(false);
-  
-  if (Platform.OS === 'web') {
-    console.log('🖼️ [LoginScreen] Web platform - Logo source type:', typeof logoSource);
-    console.log('🖼️ [LoginScreen] Web platform - Logo source:', logoSource);
-    // Validate logo source is a string
-    if (typeof logoSource !== 'string') {
-      console.warn('⚠️ [LoginScreen] Logo source is not a string:', logoSource);
-    }
-  }
-  
   const { login, isLoading } = useAuth();
+  const { width, height } = useWindowDimensions();
+  const isWide = width >= 860;
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<{ username?: string; password?: string }>({});
@@ -119,368 +31,327 @@ export const LoginScreen = ({ navigation }: any) => {
   const [accountStatusMessage, setAccountStatusMessage] = useState('');
   const [errorPopup, setErrorPopup] = useState<{ title: string; message: string } | null>(null);
 
+  const enterOpacity = useRef(new Animated.Value(0)).current;
+  const enterY = useRef(new Animated.Value(20)).current;
+  const ripple = useRef(new Animated.Value(0)).current;
+  const dropFloat = useRef(new Animated.Value(0)).current;
+
   const showErrorPopup = (title: string, message: string) => {
     setErrorPopup({ title, message });
   };
 
-  // CSS styles for logo wrapper - injected for web
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      const styleId = 'login-logo-styles';
-      if (!document.getElementById(styleId)) {
-        const style = document.createElement('style');
-        style.id = styleId;
-        style.textContent = `
-          .login-logo-wrapper {
-            width: 100%;
-            height: 160px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-          }
+      const styleId = 'login-premium-v3';
+      document.getElementById(styleId)?.remove();
+      document.getElementById('login-hero-v2')?.remove();
+      document.getElementById('login-brand-atmosphere')?.remove();
 
-          .login-logo-wrapper img {
-            max-width: 120px;
-            max-height: 120px;
-            width: auto;
-            height: auto;
-            object-fit: contain;
-          }
-
-          @media (max-width: 768px) {
-            .login-logo-wrapper {
-              height: 120px;
-            }
-
-            .login-logo-wrapper img {
-              max-width: 100px;
-              max-height: 100px;
-            }
-          }
-        `;
-        document.head.appendChild(style);
-      }
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = `
+        .nd-login-visual {
+          position: relative;
+          overflow: hidden;
+          background:
+            radial-gradient(ellipse 90% 70% at 20% 15%, rgba(142, 166, 230, 0.45), transparent 55%),
+            radial-gradient(ellipse 70% 60% at 88% 80%, rgba(1, 38, 127, 0.55), transparent 50%),
+            linear-gradient(160deg, #0232AA 0%, #01267F 55%, #0A1F6B 100%);
+        }
+        .nd-login-visual::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background-image:
+            radial-gradient(circle at 1px 1px, rgba(255,255,255,0.12) 1px, transparent 0);
+          background-size: 28px 28px;
+          opacity: 0.35;
+          pointer-events: none;
+        }
+        .nd-login-orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(2px);
+          pointer-events: none;
+        }
+        .nd-login-orb-a {
+          width: 280px; height: 280px; top: -60px; right: -40px;
+          background: radial-gradient(circle, rgba(255,255,255,0.22), transparent 68%);
+        }
+        .nd-login-orb-b {
+          width: 200px; height: 200px; bottom: 8%; left: -50px;
+          background: radial-gradient(circle, rgba(142,166,230,0.35), transparent 70%);
+        }
+        @keyframes nd-ripple {
+          0% { transform: scale(0.65); opacity: 0.55; }
+          100% { transform: scale(1.4); opacity: 0; }
+        }
+        .nd-ripple-ring {
+          position: absolute;
+          border: 1.5px solid rgba(255,255,255,0.35);
+          border-radius: 50%;
+          animation: nd-ripple 2.2s ease-out infinite;
+        }
+        .nd-ripple-ring:nth-child(2) { animation-delay: 0.7s; }
+        .nd-ripple-ring:nth-child(3) { animation-delay: 1.4s; }
+        @media (prefers-reduced-motion: reduce) {
+          .nd-ripple-ring { animation: none; opacity: 0.25; }
+        }
+      `;
+      document.head.appendChild(style);
     }
   }, []);
 
-  // Debug: Log component render state - Use multiple console methods
   useEffect(() => {
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('🔄 [LoginScreen] useEffect triggered - Component mounted/updated');
-    console.log('   isLoading (from hook):', isLoading);
-    console.log('   localLoading (local state):', localLoading);
-    console.log('   Platform:', Platform.OS);
-    console.log('   Timestamp:', new Date().toISOString());
-    console.log('═══════════════════════════════════════════════════════');
-    
-    // Also use console.info and console.warn to ensure visibility
-    console.info('ℹ️ [LoginScreen] Component state:', { isLoading, localLoading, platform: Platform.OS });
-  }, [isLoading, localLoading]);
-  
-  // Log on every render (not just when dependencies change) - Use table for better visibility
-  if (__DEV__) {
-    console.table({
-      'Component': 'LoginScreen',
-      'Username': username ? `${username.substring(0, 3)}***` : '(empty)',
-      'Password Length': password.length,
-      'Has Errors': Object.keys(errors).length > 0,
-      'Local Loading': localLoading,
-      'Hook Loading': isLoading,
-      'Platform': Platform.OS,
-    });
-  }
-  
-  // Override stuck loading state - use local state instead
+    const reduceMotion =
+      Platform.OS === 'web' &&
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+
+    if (reduceMotion) {
+      enterOpacity.setValue(1);
+      enterY.setValue(0);
+      return;
+    }
+
+    Animated.parallel([
+      Animated.timing(enterOpacity, { toValue: 1, duration: 480, useNativeDriver: true }),
+      Animated.timing(enterY, { toValue: 0, duration: 480, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+
+    const rippleLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(ripple, { toValue: 1, duration: 1800, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(ripple, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ])
+    );
+    const floatLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(dropFloat, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(dropFloat, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    rippleLoop.start();
+    floatLoop.start();
+    return () => {
+      rippleLoop.stop();
+      floatLoop.stop();
+    };
+  }, [enterOpacity, enterY, ripple, dropFloat]);
+
   const actualLoading = localLoading;
 
   const validate = () => {
-    console.log('🔍 [LoginScreen] Starting validation...');
     const newErrors: { username?: string; password?: string } = {};
-
-    if (!validators.required(username)) {
-      console.log('   ❌ Username validation failed');
-      newErrors.username = 'Username is required';
-    } else {
-      console.log('   ✅ Username validation passed');
-    }
-
-    if (!validators.required(password)) {
-      console.log('   ❌ Password required validation failed');
-      newErrors.password = 'Password is required';
-    } else {
-      console.log('   ✅ Password validation passed');
-    }
-
-    const isValid = Object.keys(newErrors).length === 0;
-    console.log('🔍 [LoginScreen] Validation result:', isValid ? '✅ PASSED' : '❌ FAILED');
-    console.log('   Errors:', newErrors);
-    
+    if (!validators.required(username)) newErrors.username = 'Username is required';
+    if (!validators.required(password)) newErrors.password = 'Password is required';
     setErrors(newErrors);
-    return isValid;
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleLogin = async () => {
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('🎯 [LoginScreen] ===== LOGIN BUTTON PRESSED =====');
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('📝 [LoginScreen] Form data:', { 
-      username, 
-      passwordLength: password.length,
-      passwordMasked: '***' 
-    });
-    console.log('📝 [LoginScreen] Current errors:', errors);
-    console.log('📝 [LoginScreen] Timestamp:', new Date().toISOString());
-    
-    // Use multiple console methods
-    console.info('ℹ️ [LoginScreen] Login attempt started');
-    console.warn('⚠️ [LoginScreen] This is a login attempt - watch for errors');
-    
     if (!validate()) {
-      console.error('═══════════════════════════════════════════════════════');
-      console.error('❌ [LoginScreen] VALIDATION FAILED');
-      console.error('   Validation errors:', errors);
-      console.error('═══════════════════════════════════════════════════════');
       showErrorPopup('Login Failed', 'Please enter your username and password.');
       return;
     }
 
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('✅ [LoginScreen] Validation passed, initiating login request...');
-    console.log('═══════════════════════════════════════════════════════');
     setLocalLoading(true);
-    
     try {
-      console.log('═══════════════════════════════════════════════════════');
-      console.log('📡 [LoginScreen] Calling login API...');
-      console.log('   API endpoint: /api/auth/login');
-      console.log('   Username:', username);
-      console.log('   Timestamp:', new Date().toISOString());
-      console.log('═══════════════════════════════════════════════════════');
-      
       const result = await login({ username, password });
-      
-      console.log('═══════════════════════════════════════════════════════');
-      console.log('📊 [LoginScreen] Login API response received');
-      console.log('   Success:', result.success);
-      console.log('   Has user:', !!result.user);
-      console.log('   Error:', result.error || 'None');
-      console.log('   Error code:', result.errorCode || 'None');
-      console.log('   Is account status error:', result.isAccountStatusError || false);
-      console.log('   Full result:', JSON.stringify(result, null, 2));
-      console.log('═══════════════════════════════════════════════════════');
-      
+
       if (result.success && result.user) {
-        console.log('✅ [LoginScreen] Login successful');
-        console.log('👤 [LoginScreen] User account details:', {
-          id: result.user.id,
-          username: result.user.username,
-          role: result.user.role,
-          email: result.user.email || 'N/A',
-          isActive: result.user.isActive,
-          isActiveType: typeof result.user.isActive,
-          status: result.user.status || 'N/A',
-        });
-        
-        // CRITICAL: Check if user is active before allowing access
-        // Admin always has full access regardless of isActive status
-        // Only Seller and Buyer accounts are subject to isActive check
-        // Handle undefined/null as ACTIVE for backward compatibility, only false means inactive
-        const isActiveValue = result.user.isActive;
-        // Treat undefined, null, or true as active. Only explicit false means inactive.
-        const isActiveBoolean = isActiveValue !== false;
-        const isInactive = (result.user.role === 'seller' || result.user.role === 'buyer') && !isActiveBoolean;
-        
+        const isActiveBoolean = result.user.isActive !== false;
+        const isInactive =
+          (result.user.role === 'seller' || result.user.role === 'buyer') && !isActiveBoolean;
+
         if (isInactive) {
-          // User is inactive (Seller/Buyer only) - redirect to inactive screen
-          console.log('⚠️ [LoginScreen] User account is INACTIVE');
-          console.log('   Account status details:', {
-            isActiveValue,
-            isActiveBoolean,
-            role: result.user.role,
-            isInactive,
-          });
-          console.log('   Redirecting to AccountInactive screen...');
           navigation.replace('AccountInactive');
           return;
         }
-        
-        // Admin always proceeds, active Seller/Buyer proceed
-        console.log('✅ [LoginScreen] User account is ACTIVE, proceeding to app');
-        console.log('   Navigation target:', result.user.role === 'seller' || result.user.role === 'admin' ? 'AdminApp' : 'BuyerApp');
-        // Navigate based on role after successful login
+
         if (result.user.role === 'seller' || result.user.role === 'admin') {
           navigation.replace('AdminApp');
         } else {
           navigation.replace('BuyerApp');
         }
       } else {
-        console.log('❌ [LoginScreen] Login failed');
-        console.log('   Error message:', result.error);
-        console.log('   Error code:', result.errorCode || 'None');
-        console.log('   Is account status error:', result.isAccountStatusError || false);
-        
-        // Check if it's an inactive/deactivated account error - redirect to inactive screen
-        // This handles accounts that are DEACTIVE (isActive = false)
         if (result.isAccountStatusError && result.errorCode === 'INACTIVE') {
-          console.log('⚠️ [LoginScreen] Account is DEACTIVE (isActive = false)');
-          console.log('   Redirecting to AccountInactive screen...');
           navigation.replace('AccountInactive');
           return;
         }
-        
-        // Check if it's an account status error (pending/rejected/blocked)
-        // These show customer service modal with contact options
+
         if (result.isAccountStatusError) {
-          console.log('⚠️ [LoginScreen] Account status error detected');
-          console.log('   Showing customer service modal');
           setAccountStatusMessage(result.error || 'Your account access is restricted.');
           setShowCustomerServiceModal(true);
         } else {
-          const isInvalidCredentials = result.errorCode === 'INVALID_CREDENTIALS'
-            || (result.error || '').toLowerCase().includes('invalid username')
-            || (result.error || '').toLowerCase().includes('invalid password');
+          const isInvalidCredentials =
+            result.errorCode === 'INVALID_CREDENTIALS' ||
+            (result.error || '').toLowerCase().includes('invalid username') ||
+            (result.error || '').toLowerCase().includes('invalid password');
           const errorMessage = isInvalidCredentials
             ? 'Invalid username or password. Please check your details and try again.'
-            : (result.error || 'Please check your credentials');
-          const title = errorMessage.includes('connect to server') || errorMessage.includes('backend server')
-            ? 'Connection Error'
-            : 'Login Failed';
+            : result.error || 'Please check your credentials';
+          const title =
+            errorMessage.includes('connect to server') || errorMessage.includes('backend server')
+              ? 'Connection Error'
+              : 'Login Failed';
           showErrorPopup(title, errorMessage);
         }
       }
-    } catch (error: any) {
-      console.error('❌ [LoginScreen] Login exception occurred');
-      console.error('   Error type:', error?.constructor?.name || 'Unknown');
-      console.error('   Error message:', error?.message || 'No error message');
-      console.error('   Error stack:', error?.stack || 'No stack trace');
-      console.error('   Full error object:', error);
+    } catch {
       showErrorPopup('Login Error', 'An unexpected error occurred. Please try again.');
     } finally {
-      console.log('🏁 [LoginScreen] Login process completed, resetting loading state');
       setLocalLoading(false);
     }
   };
+
+  const dropTranslate = dropFloat.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -12],
+  });
+  const rippleScale = ripple.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.7, 1.45],
+  });
+  const rippleOpacity = ripple.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.5, 0],
+  });
+
+  const brandBlock = (
+    <View style={[styles.brandInner, !isWide && styles.brandInnerMobile]}>
+      <Animated.View style={{ transform: [{ translateY: dropTranslate }] }}>
+        <View style={styles.dropStage}>
+          <Animated.View
+            style={[
+              styles.rippleRing,
+              { transform: [{ scale: rippleScale }], opacity: rippleOpacity },
+            ]}
+          />
+          <View style={styles.dropCore}>
+            <Ionicons name="water" size={isWide ? 42 : 32} color={colors.primary} />
+          </View>
+        </View>
+      </Animated.View>
+
+      <Text style={[styles.brandName, !isWide && styles.brandNameMobile]} accessibilityRole="header">
+        Natural Drops
+      </Text>
+      <Text style={[styles.brandLine, !isWide && styles.brandLineMobile]}>
+        Fresh water cans, delivered to your door
+      </Text>
+    </View>
+  );
+
+  const formBlock = (
+    <Animated.View
+      style={[
+        styles.formWrap,
+        isWide && styles.formWrapWide,
+        { opacity: enterOpacity, transform: [{ translateY: enterY }] },
+      ]}
+    >
+      <Text style={styles.formTitle}>Welcome back</Text>
+      <Text style={styles.formSubtitle}>Sign in to continue</Text>
+
+      <Input
+        label="Username"
+        value={username}
+        onChangeText={setUsername}
+        placeholder="Enter your username"
+        autoCapitalize="none"
+        error={errors.username}
+      />
+
+      <Input
+        label="Password"
+        value={password}
+        onChangeText={setPassword}
+        placeholder="Enter your password"
+        secureTextEntry
+        showPasswordToggle
+        error={errors.password}
+      />
+
+      <Button
+        title="Forgot Password?"
+        onPress={() => navigation.navigate('ForgotPassword')}
+        variant="text"
+        fullWidth
+        style={styles.forgotPasswordButton}
+      />
+
+      <Button
+        title="Login"
+        onPress={handleLogin}
+        loading={actualLoading || isLoading}
+        fullWidth
+        style={styles.loginButton}
+      />
+
+      <View style={styles.registerRow}>
+        <Text style={styles.registerHint}>Don&apos;t have an account?</Text>
+        <Button
+          title="Register"
+          onPress={() => navigation.navigate('Register')}
+          variant="text"
+          style={styles.registerButton}
+        />
+      </View>
+    </Animated.View>
+  );
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          {Platform.OS === 'web' ? (
-            // @ts-ignore - React Native Web supports HTML elements
-            <div className="login-logo-wrapper">
-              {!logoError && typeof logoSource === 'string' ? (
-                // @ts-ignore - React Native Web supports HTML elements
-                <img 
-                  src={logoSource} 
-                  alt="Natural Drops Logo"
-                  style={{
-                    maxWidth: '120px',
-                    maxHeight: '120px',
-                    width: 'auto',
-                    height: 'auto',
-                    objectFit: 'contain',
-                  }}
-                  onError={(e: any) => {
-                    console.error('❌ [LoginScreen] Logo image failed to load');
-                    console.error('   Error:', e);
-                    console.error('   Logo source type:', typeof logoSource);
-                    console.error('   Logo source:', logoSource);
-                    console.error('   Logo source length:', logoSource?.length);
-                    setLogoError(true);
-                  }}
-                  onLoad={() => {
-                    console.log('✅ [LoginScreen] Logo image loaded successfully');
-                    console.log('   Logo source:', logoSource);
-                    setLogoError(false);
-                  }}
-                />
-              ) : (
-                // Fallback: Show text if image fails to load
-                <Text style={styles.logoFallbackText}>Natural Drops</Text>
-              )}
-            </div>
-          ) : (
-            <View 
-              style={styles.logoWrapper} 
-              accessibilityLabel="Natural Drops Logo"
-            >
-              <Image 
-                source={logoAsset} 
-                style={styles.logoImage} 
-                resizeMode="contain"
-                accessibilityLabel="Natural Drops Logo"
-                onError={(error: any) => {
-                  console.error('❌ [LoginScreen] Logo image failed to load (native)');
-                  console.error('   Error:', error);
-                  console.error('   Logo source:', logoAsset);
-                }}
-                onLoad={() => {
-                  console.log('✅ [LoginScreen] Logo image loaded successfully (native)');
-                  console.log('   Logo source:', logoAsset);
-                }}
-              />
-            </View>
-          )}
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Login to your account</Text>
-        </View>
-
-        <View style={styles.form}>
-          <Input
-            label="Username"
-            value={username}
-            onChangeText={setUsername}
-            placeholder="Enter your username"
-            autoCapitalize="none"
-            error={errors.username}
-          />
-
-          <Input
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Enter your password"
-            secureTextEntry
-            showPasswordToggle
-            error={errors.password}
-          />
-
-          <Button
-            title="Forgot Password?"
-            onPress={() => navigation.navigate('ForgotPassword')}
-            variant="text"
-            fullWidth
-            style={styles.forgotPasswordButton}
-          />
-
-          <Button
-            title="Login"
-            onPress={() => {
-              console.log('🔘 Button clicked! isLoading:', isLoading, 'actualLoading:', actualLoading);
-              handleLogin();
-            }}
-            loading={actualLoading}
-            fullWidth
-            style={styles.loginButton}
-          />
-          
-          <View style={styles.serverInfo}>
-            <Text style={styles.serverInfoText}>
-              Make sure the backend server is running on port 8080
-            </Text>
+      {isWide ? (
+        <View style={[styles.split, { minHeight: Math.max(height, 640) }]}>
+          <View style={[styles.visualNative, styles.visualWide]}>
+            {Platform.OS === 'web' ? (
+              // @ts-ignore atmosphere layer
+              <div className="nd-login-visual" style={{ position: 'absolute', inset: 0 }}>
+                {/* @ts-ignore */}
+                <div className="nd-login-orb nd-login-orb-a" />
+                {/* @ts-ignore */}
+                <div className="nd-login-orb nd-login-orb-b" />
+                <View style={styles.webRipples} pointerEvents="none">
+                  {/* @ts-ignore */}
+                  <div className="nd-ripple-ring" style={{ width: 120, height: 120, top: '42%', left: '50%', marginLeft: -60, marginTop: -60 }} />
+                  {/* @ts-ignore */}
+                  <div className="nd-ripple-ring" style={{ width: 120, height: 120, top: '42%', left: '50%', marginLeft: -60, marginTop: -60 }} />
+                  {/* @ts-ignore */}
+                  <div className="nd-ripple-ring" style={{ width: 120, height: 120, top: '42%', left: '50%', marginLeft: -60, marginTop: -60 }} />
+                </View>
+              </div>
+            ) : (
+              <>
+                <View style={styles.orbA} />
+                <View style={styles.orbB} />
+              </>
+            )}
+            {brandBlock}
           </View>
 
-          <Button
-            title="Don't have an account? Register"
-            onPress={() => navigation.navigate('Register')}
-            variant="text"
-            fullWidth
-          />
+          <View style={styles.formColumn}>{formBlock}</View>
         </View>
-      </ScrollView>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.mobileScroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.visualNative, styles.visualMobile]}>
+            {Platform.OS === 'web' ? (
+              // @ts-ignore
+              <div className="nd-login-visual" style={{ position: 'absolute', inset: 0, borderRadius: 28 }} />
+            ) : null}
+            {brandBlock}
+          </View>
+          {formBlock}
+        </ScrollView>
+      )}
 
       <CustomerServiceModal
         visible={showCustomerServiceModal}
@@ -503,6 +374,7 @@ export const LoginScreen = ({ navigation }: any) => {
             <TouchableOpacity
               style={styles.popupButton}
               onPress={() => setErrorPopup(null)}
+              accessibilityRole="button"
             >
               <Text style={styles.popupButtonText}>OK</Text>
             </TouchableOpacity>
@@ -516,92 +388,140 @@ export const LoginScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors.white,
   },
-  scrollContent: {
-    flexGrow: 1,
-    padding: spacing.xl,
+  split: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  visualNative: {
+    position: 'relative',
+    backgroundColor: colors.primaryDark,
+    overflow: 'hidden',
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: spacing.xl,
+  visualWide: {
+    flex: 1.05,
+    minHeight: '100%',
   },
-  logoWrapper: {
-    // Logo with text is wider, so adjust dimensions
-    width: 280,
-    height: 200,
+  visualMobile: {
+    borderRadius: borderRadius.sheet,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
     marginBottom: spacing.lg,
-    backgroundColor: 'transparent', // Transparent background to show logo clearly
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible', // Allow logo to display fully
-    alignSelf: 'center', // Center horizontally
-    // Responsive sizing for smaller screens
-    ...Platform.select({
-      web: {
-        width: '100%',
-        height: 160,
-        maxWidth: '100%',
-        minHeight: 160,
-      },
-      default: {
-        // Mobile: scale down on very small screens
-        maxWidth: 280,
-        maxHeight: 200,
-        minWidth: 180,
-        minHeight: 130,
-      },
-    }),
   },
-  logoWrapperWeb: {
-    width: '100%',
+  orbA: {
+    position: 'absolute',
+    top: -40,
+    right: -30,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  orbB: {
+    position: 'absolute',
+    bottom: 40,
+    left: -40,
+    width: 160,
     height: 160,
-    marginBottom: spacing.lg,
-    backgroundColor: 'transparent',
+    borderRadius: 80,
+    backgroundColor: 'rgba(142,166,230,0.25)',
+  },
+  webRipples: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  brandInner: {
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    zIndex: 2,
+    maxWidth: 420,
+  },
+  brandInnerMobile: {
+    paddingHorizontal: spacing.md,
+  },
+  dropStage: {
+    width: 110,
+    height: 110,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  rippleRing: {
+    position: 'absolute',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  dropCore: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.md,
+  },
+  brandName: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 48,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.white,
+    letterSpacing: -1.2,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  brandNameMobile: {
+    fontSize: typography.fontSize.display,
+    letterSpacing: -0.8,
+  },
+  brandLine: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.fontSize.lg,
+    color: 'rgba(255,255,255,0.88)',
+    textAlign: 'center',
+    lineHeight: 28,
+  },
+  brandLineMobile: {
+    fontSize: typography.fontSize.base,
+    lineHeight: 24,
+  },
+  formColumn: {
+    flex: 1,
+    backgroundColor: colors.white,
+    justifyContent: 'center',
+    paddingHorizontal: spacing['2xl'],
+  },
+  formWrap: {
+    width: '100%',
+    maxWidth: 400,
     alignSelf: 'center',
   },
-  logoImage: {
-    width: '100%',
-    height: '100%',
-    // Ensure image maintains aspect ratio and fits perfectly inside container
-    // Note: resizeMode is set as a prop on Image component, not in style
-    ...Platform.select({
-      web: {
-        maxWidth: 120,
-        maxHeight: 120,
-        width: 'auto',
-        height: 'auto',
-        objectFit: 'contain',
-      } as any,
-    }),
-  } as any, // Type assertion for web-specific styles (objectFit, display)
-  title: {
+  formWrapWide: {
+    maxWidth: 380,
+  },
+  mobileScroll: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
+    justifyContent: 'center',
+  },
+  formTitle: {
+    fontFamily: typography.fontFamily.bold,
     fontSize: typography.fontSize['3xl'],
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
     marginBottom: spacing.xs,
+    letterSpacing: -0.4,
   },
-  companyName: {
-    fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.semibold,
-    color: colors.primary,
-    marginBottom: spacing.xs,
-  },
-  subtitle: {
+  formSubtitle: {
     fontSize: typography.fontSize.base,
     color: colors.textSecondary,
-  },
-  logoFallbackText: {
-    fontSize: typography.fontSize['2xl'],
-    fontWeight: typography.fontWeight.bold,
-    color: colors.primary,
-    textAlign: 'center',
-  },
-  form: {
-    width: '100%',
+    marginBottom: spacing.xl,
   },
   forgotPasswordButton: {
     alignSelf: 'flex-end',
@@ -609,31 +529,33 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   loginButton: {
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
-  },
-  serverInfo: {
     marginTop: spacing.sm,
-    padding: spacing.sm,
-    backgroundColor: colors.gray100,
-    borderRadius: spacing.sm,
-    alignItems: 'center',
+    marginBottom: spacing.lg,
   },
-  serverInfoText: {
-    fontSize: typography.fontSize.xs,
+  registerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  registerHint: {
+    fontSize: typography.fontSize.base,
     color: colors.textSecondary,
-    textAlign: 'center',
+  },
+  registerButton: {
+    marginTop: 0,
   },
   popupOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.lg,
   },
   popupCard: {
     backgroundColor: colors.white,
-    borderRadius: spacing.md,
+    borderRadius: borderRadius.lg,
     width: '100%',
     maxWidth: 400,
     padding: spacing.lg,
@@ -654,7 +576,7 @@ const styles = StyleSheet.create({
   },
   popupButton: {
     backgroundColor: colors.primary,
-    borderRadius: spacing.md,
+    borderRadius: borderRadius.md,
     paddingVertical: spacing.md,
     alignItems: 'center',
   },
@@ -664,4 +586,3 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.semibold,
   },
 });
-

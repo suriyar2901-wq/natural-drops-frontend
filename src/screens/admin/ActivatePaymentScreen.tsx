@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Button, Card, Input, Loading, StatusPill } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
 import { useGetAdminSellerQuery, useRecordSellerPaymentMutation } from '../../store/api/platformAdminApi';
+import { useGetPlatformPaymentQuery } from '../../store/api/paymentApi';
 import { formatCurrency } from '../../utils/formatters';
 
 const nowLocal = () => {
@@ -14,6 +15,7 @@ const nowLocal = () => {
 export const ActivatePaymentScreen = ({ navigation, route }: any) => {
   const sellerId = route?.params?.sellerId;
   const { data: seller, isLoading } = useGetAdminSellerQuery(sellerId, { skip: !sellerId });
+  const { data: platform } = useGetPlatformPaymentQuery();
   const [recordPayment, { isLoading: saving }] = useRecordSellerPaymentMutation();
   const [method, setMethod] = useState<'UPI' | 'CASH'>('UPI');
   const [received, setReceived] = useState('');
@@ -78,7 +80,14 @@ export const ActivatePaymentScreen = ({ navigation, route }: any) => {
             <Text style={method === 'CASH' ? styles.methodTextActive : styles.methodText}>Cash</Text>
           </TouchableOpacity>
         </View>
-        {method === 'UPI' && <Text style={styles.hint}>UPI ID: watercan@upi</Text>}
+        {method === 'UPI' && (
+          <>
+            <Text style={styles.hint}>UPI ID: {platform?.upiId || 'Set this in More → Platform payment QR'}</Text>
+            {!!platform?.qrCodeImage && platform.qrCodeImage.startsWith('data:image') && (
+              <Image source={{ uri: platform.qrCodeImage }} style={styles.qr} resizeMode="contain" />
+            )}
+          </>
+        )}
         <Input label="Received amount *" value={received} onChangeText={setReceived} keyboardType="decimal-pad" placeholder={due} />
         <Input label="Payment date & time *" value={paidAt} onChangeText={setPaidAt} />
         <Input label="Note" value={note} onChangeText={setNote} />
@@ -106,4 +115,5 @@ const styles = StyleSheet.create({
   methodText: { color: colors.textSecondary },
   methodTextActive: { color: colors.primary, fontWeight: typography.fontWeight.semibold },
   exit: { marginTop: spacing.sm },
+  qr: { width: 160, height: 160, alignSelf: 'center', marginBottom: spacing.sm },
 });

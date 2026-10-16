@@ -6,22 +6,19 @@ import { Button } from './Button';
 import { Card } from './Card';
 import { colors, spacing, typography } from '../../theme';
 import { useAuth } from '../../hooks';
-import { useGetSellerSubscriptionQuery, useSubscribeSellerMutation } from '../../store/api/shopApi';
+import { useGetSellerSubscriptionQuery } from '../../store/api/shopApi';
 import { formatCurrency } from '../../utils/formatters';
 import { moneyValue } from '../../types/shop.types';
-import { showErrorToast, showSuccessToast } from '../../utils/toast';
 import { navigationRef } from '../../navigation/navigationRef';
 
 export const SellerSubscriptionGate = () => {
   const { isSeller, isAuthenticated, logout } = useAuth();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { data, isLoading } = useGetSellerSubscriptionQuery(undefined, {
     skip: !isAuthenticated || !isSeller(),
     refetchOnMountOrArgChange: true,
   });
-  const [subscribe, { isLoading: saving }] = useSubscribeSellerMutation();
   const [plan, setPlan] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
-  const [method, setMethod] = useState<'UPI' | 'CASH'>('UPI');
 
   if (!isAuthenticated || !isSeller()) {
     return null;
@@ -34,13 +31,8 @@ export const SellerSubscriptionGate = () => {
 
   const amount = plan === 'YEARLY' ? moneyValue(data.yearlyAmount) : moneyValue(data.monthlyAmount);
 
-  const handleSubscribe = async () => {
-    try {
-      await subscribe({ plan, method }).unwrap();
-      showSuccessToast('Subscription activated. You can continue selling.');
-    } catch (error: any) {
-      showErrorToast(error?.data?.message || 'Could not subscribe. Update your profile mobile and try again.');
-    }
+  const handleSubscribe = () => {
+    navigation.getParent()?.navigate('SellerSubscriptionPay') || navigation.navigate('SellerSubscriptionPay');
   };
 
   const handleLogout = async () => {
@@ -70,14 +62,8 @@ export const SellerSubscriptionGate = () => {
             <Choice label={`Yearly ${formatCurrency(moneyValue(data.yearlyAmount))}`} active={plan === 'YEARLY'} onPress={() => setPlan('YEARLY')} />
           </View>
 
-          <Text style={styles.label}>Payment method</Text>
-          <View style={styles.row}>
-            <Choice label="UPI" active={method === 'UPI'} onPress={() => setMethod('UPI')} />
-            <Choice label="Cash" active={method === 'CASH'} onPress={() => setMethod('CASH')} />
-          </View>
-
-          <Text style={styles.pay}>Pay {formatCurrency(amount)}</Text>
-          <Button title={saving ? 'Activating…' : 'Subscribe now'} onPress={handleSubscribe} />
+          <Text style={styles.pay}>Pay {formatCurrency(amount)} to admin with UPI / QR</Text>
+          <Button title="Pay with admin QR" onPress={handleSubscribe} />
           <Button title="Logout" variant="outline" onPress={handleLogout} style={styles.logout} />
         </Card>
       </View>

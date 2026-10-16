@@ -4,7 +4,8 @@ import QRCode from 'qrcode';
 import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Input, Loading } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
-import { useClaimBuyerPaymentMutation, useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
+import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
+import { useClaimOrderPaymentMutation, useGetMyOrderClaimsQuery } from '../../store/api/paymentApi';
 import { useGetBuyerOrdersQuery } from '../../store/api/orderApi';
 import { useAuth } from '../../hooks';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
@@ -32,14 +33,19 @@ export const BuyerPaymentsScreen = () => {
   const { user } = useAuth();
   const { data, isLoading, refetch } = useGetBuyerAccountSummaryQuery();
   const { data: orders = [], isLoading: ordersLoading } = useGetBuyerOrdersQuery(user?.id || 0, { skip: !user?.id });
-  const [claimPayment, { isLoading: saving }] = useClaimBuyerPaymentMutation();
+  const [claimPayment, { isLoading: saving }] = useClaimOrderPaymentMutation();
+  const { data: claims = [], refetch: refetchClaims } = useGetMyOrderClaimsQuery();
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('UPI');
+  const [upiReference, setUpiReference] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [billTab, setBillTab] = useState<'unpaid' | 'paid'>('unpaid');
   const [generatedQr, setGeneratedQr] = useState('');
   const uploadedQr = data?.sellerQr && data.sellerQr.startsWith('data:image') ? data.sellerQr : '';
   const upiId = (data?.sellerUpi || '').trim();
+  const pendingByOrder = new Map(
+    claims.filter((claim) => claim.status === 'PENDING' && claim.orderId != null).map((claim) => [claim.orderId!, claim])
+  );
 
   useEffect(() => {
     if (uploadedQr || !upiId) {
@@ -47,7 +53,10 @@ export const BuyerPaymentsScreen = () => {
       return undefined;
     }
     let active = true;
-    const payload = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(data?.sellerBusiness || data?.companyName || 'Shop')}&cu=INR`;
+    const parsed = Number(amount);
+    const payAmount = parsed > 0 ? parsed.toFixed(2) : '';
+    const note = selectedOrderId ? `Order ${selectedOrderId}` : 'Natural Drops bill';
+    const payload = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(data?.sellerBusiness || data?.companyName || 'Shop')}${payAmount ? `&am=${payAmount}` : ''}&cu=INR&tn=${encodeURIComponent(note)}`;
     QRCode.toDataURL(payload, {
       width: 280,
       margin: 1,
@@ -60,7 +69,7 @@ export const BuyerPaymentsScreen = () => {
     return () => {
       active = false;
     };
-  }, [uploadedQr, upiId, data?.sellerBusiness, data?.companyName]);
+  }, [uploadedQr, upiId, data?.sellerBusiness, data?.companyName, selectedOrderId, amount]);
 
   if (isLoading || ordersLoading) {
     return <Loading fullScreen message="Loading payments..." />;
@@ -78,6 +87,7 @@ export const BuyerPaymentsScreen = () => {
   const due = orderBills.length > 0 ? orderDue : moneyValue(data?.due);
   const selected = unpaidBills.find((order) => order.id === selectedOrderId) || null;
   const selectedBalance = selected ? orderSplit(selected).balance : 0;
+  const waitingSelected = selected ? pendingByOrder.get(selected.id) : undefined;
   const typed = amount.trim();
   const suggestions = unpaidBills.filter((order) => {
     if (!typed) return true;
@@ -99,6 +109,10 @@ export const BuyerPaymentsScreen = () => {
       showErrorToast('Select the unpaid bill you are paying');
       return;
     }
+    if (waitingSelected) {
+      showErrorToast('This bill is already waiting for the seller to confirm');
+      return;
+    }
     if (!parsed || parsed <= 0) {
       showErrorToast('Enter a valid amount');
       return;
@@ -108,13 +122,20 @@ export const BuyerPaymentsScreen = () => {
       return;
     }
     try {
-      await claimPayment({ amount: parsed.toFixed(2), method, orderId: selected.id }).unwrap();
-      showSuccessToast(`Payment recorded for order #${selected.id}`);
+      await claimPayment({
+        amount: parsed.toFixed(2),
+        method,
+        orderId: selected.id,
+        upiReference: upiReference.trim() || undefined,
+      }).unwrap();
+      showSuccessToast(`Payment sent. Seller will confirm order #${selected.id}`);
       setAmount('');
+      setUpiReference('');
       setSelectedOrderId(null);
       refetch();
+      refetchClaims();
     } catch (error: any) {
-      showErrorToast(error?.data?.message || 'Could not record payment');
+      showErrorToast(error?.data?.message || 'Could not submit payment');
     }
   };
 
@@ -134,7 +155,7 @@ export const BuyerPaymentsScreen = () => {
         ) : (
           <Text style={styles.meta}>Ask the seller to add a UPI ID or payment QR in Shop Profile.</Text>
         )}
-        <Text style={styles.meta}>Scan this code in any UPI app, then record the payment here.</Text>
+        <Text style={styles.meta}>Scan this code in any UPI app, then tap I paid. The bill stays waiting until the seller confirms.</Text>
         <Input
           label="Pay amount"
           value={amount}
@@ -148,17 +169,21 @@ export const BuyerPaymentsScreen = () => {
         />
         <Text style={styles.payLabel}>Unpaid bill</Text>
         {selected ? (
-          <Text style={styles.selectedBill}>Paying order #{selected.id} · Balance {formatCurrency(selectedBalance)}</Text>
+          <Text style={styles.selectedBill}>
+            Paying order #{selected.id} · Balance {formatCurrency(selectedBalance)}
+            {waitingSelected ? ' · Waiting for seller' : ''}
+          </Text>
         ) : (
           <Text style={styles.meta}>Select the unpaid bill this payment is for.</Text>
         )}
         {suggestions.length > 0 ? suggestions.map((order) => {
           const split = orderSplit(order);
           const active = order.id === selectedOrderId;
+          const waiting = pendingByOrder.has(order.id);
           return (
             <TouchableOpacity key={order.id} activeOpacity={0.8} onPress={() => chooseBill(order)}>
               <View style={[styles.suggest, active && styles.suggestActive]}>
-                <Text style={[styles.name, active && styles.suggestTextOn]}>Order #{order.id}</Text>
+                <Text style={[styles.name, active && styles.suggestTextOn]}>Order #{order.id}{waiting ? ' · Waiting' : ''}</Text>
                 <Text style={[styles.meta, active && styles.suggestTextOn]}>Balance {formatCurrency(split.balance)}</Text>
               </View>
             </TouchableOpacity>
@@ -173,7 +198,18 @@ export const BuyerPaymentsScreen = () => {
             </TouchableOpacity>
           ))}
         </View>
-        <Button title={saving ? 'Saving…' : 'Record Payment'} onPress={save} />
+        <Input
+          label="UPI reference (optional)"
+          value={upiReference}
+          onChangeText={setUpiReference}
+          placeholder="Transaction / UTR number"
+          autoCapitalize="characters"
+        />
+        <Button
+          title={saving ? 'Submitting…' : waitingSelected ? 'Waiting for seller' : 'I paid this bill'}
+          onPress={save}
+          disabled={saving || !!waitingSelected}
+        />
       </Card>
 
       <View style={styles.categories}>
@@ -210,7 +246,15 @@ export const BuyerPaymentsScreen = () => {
             <Card style={[styles.rowCard, active && styles.rowCardActive]}>
               <View style={styles.rowBetween}>
                 <Text style={styles.name}>Order #{order.id}</Text>
-                <Text style={styles.name}>{billTab === 'paid' ? 'Paid' : split.paid > 0 ? 'Partial' : 'Unpaid'}</Text>
+                <Text style={styles.name}>
+                  {billTab === 'paid'
+                    ? 'Paid'
+                    : pendingByOrder.has(order.id)
+                      ? 'Waiting'
+                      : split.paid > 0
+                        ? 'Partial'
+                        : 'Unpaid'}
+                </Text>
               </View>
               <Text style={styles.meta}>Bill {formatCurrency(split.total)} · Paid {formatCurrency(split.paid)}</Text>
               {billTab === 'unpaid' && <Text style={styles.balance}>Balance {formatCurrency(split.balance)}</Text>}

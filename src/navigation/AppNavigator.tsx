@@ -103,6 +103,7 @@ import { OrderManagementScreen } from '../screens/admin/OrderManagementScreen';
 import { MenuManagementScreen } from '../screens/admin/MenuManagementScreen';
 import { UserManagementScreen } from '../screens/admin/UserManagementScreen';
 import { AppSettingsScreen } from '../screens/admin/AppSettingsScreen';
+import { AdminPlatformPaymentScreen } from '../screens/admin/AdminPlatformPaymentScreen';
 import { SellerListScreen } from '../screens/admin/SellerListScreen';
 import { AddSellerScreen } from '../screens/admin/AddSellerScreen';
 import { SellerDetailScreen } from '../screens/admin/SellerDetailScreen';
@@ -110,6 +111,8 @@ import { EditSellerScreen } from '../screens/admin/EditSellerScreen';
 import { ActivatePaymentScreen } from '../screens/admin/ActivatePaymentScreen';
 import { SubscriptionListScreen } from '../screens/admin/SubscriptionListScreen';
 import { PaymentListScreen } from '../screens/admin/PaymentListScreen';
+import { SellerSubscriptionPayScreen } from '../screens/shop/SellerSubscriptionPayScreen';
+import { SellerBillClaimsScreen } from '../screens/shop/SellerBillClaimsScreen';
 
 import { borderRadius, colors, spacing, typography } from '../theme';
 import { SellerSubscriptionGate } from '../components/common/SellerSubscriptionGate';
@@ -510,6 +513,7 @@ const AdminTabs = ({ navigation }: any) => {
           <Tab.Screen name="UserManagement" component={UserManagementScreen} options={hiddenPageOptions('Users')} />
           <Tab.Screen name="Profile" component={ProfileScreen} options={hiddenPageOptions('Profile')} />
           <Tab.Screen name="AppSettings" component={AppSettingsScreen} options={hiddenPageOptions('App Settings')} />
+          <Tab.Screen name="AdminPlatformPayment" component={AdminPlatformPaymentScreen} options={hiddenPageOptions('Platform payment')} />
           <Tab.Screen name="AddSeller" component={AddSellerScreen} options={hiddenPageOptions('Add Seller')} />
           <Tab.Screen name="SellerDetail" component={SellerDetailScreen} options={hiddenPageOptions('Seller Details')} />
           <Tab.Screen name="EditSeller" component={EditSellerScreen} options={hiddenPageOptions('Edit Seller')} />
@@ -571,7 +575,7 @@ export const AppNavigator = () => {
         <Stack.Screen 
           name="Login" 
           component={LoginScreen} 
-          options={{ title: 'Login' }}
+          options={{ title: 'Natural Drops', headerShown: false }}
         />
         <Stack.Screen 
           name="Register" 
@@ -705,6 +709,16 @@ export const AppNavigator = () => {
           name="ShopProfile"
           component={ShopProfileScreen}
           options={{ title: 'Shop Profile' }}
+        />
+        <Stack.Screen
+          name="SellerSubscriptionPay"
+          component={SellerSubscriptionPayScreen}
+          options={{ title: 'Pay subscription' }}
+        />
+        <Stack.Screen
+          name="SellerBillClaims"
+          component={SellerBillClaimsScreen}
+          options={{ title: 'Buyer bill payments' }}
         />
         <Stack.Screen
           name="SellerMap"

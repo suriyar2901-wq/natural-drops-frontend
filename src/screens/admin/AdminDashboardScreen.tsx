@@ -6,7 +6,7 @@ import { Card, Loading, DatePicker, StatusPill, DashboardRevenueChart, EarningsB
 import { useAuth } from '../../hooks';
 import { useGetDashboardStatsQuery } from '../../store/api/dashboardApi';
 import { useGetPlatformDashboardQuery } from '../../store/api/platformAdminApi';
-import { useGetCanLedgerQuery, useGetSellerSubscriptionQuery, useGetShopBuyersQuery, useGetShopCompanyQuery, useGetShopCustomersQuery, useGetShopInboxQuery, useMarkShopInboxReadMutation, useSubscribeSellerMutation } from '../../store/api/shopApi';
+import { useGetCanLedgerQuery, useGetSellerSubscriptionQuery, useGetShopBuyersQuery, useGetShopCompanyQuery, useGetShopCustomersQuery, useGetShopInboxQuery, useMarkShopInboxReadMutation } from '../../store/api/shopApi';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
 import { regularNoticeLook, regularNoticeTone } from '../../utils/regularNotice';
 import { 
@@ -29,7 +29,6 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
   const { data: shopInbox = [] } = useGetShopInboxQuery(undefined, { skip: !isSeller(), pollingInterval: isSeller() ? 15000 : 0 });
   const [markInboxRead] = useMarkShopInboxReadMutation();
   const [dismissedInboxIds, setDismissedInboxIds] = useState<number[]>([]);
-  const [renewSeller, { isLoading: renewing }] = useSubscribeSellerMutation();
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
   const [dateFilterParams, setDateFilterParams] = useState<DashboardQueryParams | undefined>(undefined);
@@ -300,16 +299,9 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
           <Text style={styles.reminderCopy}>{sellerSub.reminderMessage}</Text>
           <TouchableOpacity
             style={styles.reminderButton}
-            onPress={async () => {
-              try {
-                await renewSeller({ plan: sellerSub.plan || 'MONTHLY', method: 'UPI' }).unwrap();
-                showSuccessToast('Subscription renewed. Reminder cleared.');
-              } catch (error: any) {
-                showErrorToast(error?.data?.message || 'Could not renew subscription');
-              }
-            }}
+            onPress={() => navigation.getParent()?.navigate('SellerSubscriptionPay') || navigation.navigate('SellerSubscriptionPay')}
           >
-            <Text style={styles.reminderButtonText}>{renewing ? 'Renewing…' : 'Renew now'}</Text>
+            <Text style={styles.reminderButtonText}>Pay subscription</Text>
           </TouchableOpacity>
         </Card>
       )}
