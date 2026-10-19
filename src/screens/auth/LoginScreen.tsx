@@ -35,6 +35,7 @@ export const LoginScreen = ({ navigation }: any) => {
   const enterY = useRef(new Animated.Value(20)).current;
   const ripple = useRef(new Animated.Value(0)).current;
   const dropFloat = useRef(new Animated.Value(0)).current;
+  const waveDrift = useRef(new Animated.Value(0)).current;
 
   const showErrorPopup = (title: string, message: string) => {
     setErrorPopup({ title, message });
@@ -132,13 +133,21 @@ export const LoginScreen = ({ navigation }: any) => {
         Animated.timing(dropFloat, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ])
     );
+    const waveLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(waveDrift, { toValue: 1, duration: 3200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(waveDrift, { toValue: 0, duration: 3200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
     rippleLoop.start();
     floatLoop.start();
+    waveLoop.start();
     return () => {
       rippleLoop.stop();
       floatLoop.stop();
+      waveLoop.stop();
     };
-  }, [enterOpacity, enterY, ripple, dropFloat]);
+  }, [enterOpacity, enterY, ripple, dropFloat, waveDrift]);
 
   const actualLoading = localLoading;
 
@@ -218,6 +227,46 @@ export const LoginScreen = ({ navigation }: any) => {
     inputRange: [0, 1],
     outputRange: [0.65, 0],
   });
+  const waveShift = waveDrift.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-18, 18],
+  });
+  const waveShiftAlt = waveDrift.interpolate({
+    inputRange: [0, 1],
+    outputRange: [14, -14],
+  });
+
+  /** Native-friendly atmosphere + wave (works on mobile app and mobile web). */
+  const renderAtmosphere = (rounded?: boolean) => (
+    <View
+      style={[styles.atmosphere, rounded && styles.atmosphereRounded]}
+      pointerEvents="none"
+    >
+      <View style={styles.atmosGlowTop} />
+      <View style={styles.atmosGlowBottom} />
+      <View style={styles.orbA} />
+      <View style={styles.orbB} />
+      <View style={styles.dotField}>
+        {Array.from({ length: 36 }).map((_, index) => (
+          <View
+            key={`dot-${index}`}
+            style={[
+              styles.dot,
+              {
+                left: `${(index % 6) * 18 + 8}%`,
+                top: `${Math.floor(index / 6) * 16 + 10}%`,
+              },
+            ]}
+          />
+        ))}
+      </View>
+      <View style={styles.waveWrap}>
+        <Animated.View style={[styles.waveBlob, styles.waveBlobBack, { transform: [{ translateX: waveShiftAlt }] }]} />
+        <Animated.View style={[styles.waveBlob, styles.waveBlobMid, { transform: [{ translateX: waveShift }] }]} />
+        <Animated.View style={[styles.waveBlob, styles.waveBlobFront, { transform: [{ translateX: waveShiftAlt }] }]} />
+      </View>
+    </View>
+  );
 
   const brandBlock = (
     <View style={[styles.brandInner, !isWide && styles.brandInnerMobile]}>
@@ -342,12 +391,8 @@ export const LoginScreen = ({ navigation }: any) => {
                   <div className="nd-ripple-ring" style={{ width: 260, height: 260, top: '38%', left: '50%', marginLeft: -130, marginTop: -130 }} />
                 </View>
               </div>
-            ) : (
-              <>
-                <View style={styles.orbA} />
-                <View style={styles.orbB} />
-              </>
-            )}
+            ) : null}
+            {renderAtmosphere()}
             {brandBlock}
           </View>
 
@@ -361,9 +406,10 @@ export const LoginScreen = ({ navigation }: any) => {
         >
           <View style={[styles.visualNative, styles.visualMobile, { width: width - spacing.lg * 2 }]}>
             {Platform.OS === 'web' ? (
-              // @ts-ignore
+              // @ts-ignore keep web gradient fill under RN wave layers
               <div className="nd-login-visual" style={{ position: 'absolute', inset: 0, borderRadius: 24 }} />
             ) : null}
+            {renderAtmosphere(true)}
             {brandBlock}
           </View>
           {formBlock}
@@ -430,6 +476,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     marginBottom: spacing.lg,
   },
+  atmosphere: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  atmosphereRounded: {
+    borderRadius: borderRadius.lg,
+  },
+  atmosGlowTop: {
+    position: 'absolute',
+    top: -40,
+    left: -20,
+    width: '70%',
+    height: '55%',
+    borderRadius: 200,
+    backgroundColor: 'rgba(142, 166, 230, 0.35)',
+  },
+  atmosGlowBottom: {
+    position: 'absolute',
+    right: -30,
+    bottom: -20,
+    width: '65%',
+    height: '50%',
+    borderRadius: 200,
+    backgroundColor: 'rgba(1, 38, 127, 0.45)',
+  },
   orbA: {
     position: 'absolute',
     top: -40,
@@ -441,12 +512,55 @@ const styles = StyleSheet.create({
   },
   orbB: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 48,
     left: -40,
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: 'rgba(142,166,230,0.25)',
+    backgroundColor: 'rgba(142,166,230,0.28)',
+  },
+  dotField: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  dot: {
+    position: 'absolute',
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  waveWrap: {
+    position: 'absolute',
+    left: -40,
+    right: -40,
+    bottom: -28,
+    height: 120,
+    overflow: 'hidden',
+  },
+  waveBlob: {
+    position: 'absolute',
+    borderRadius: 999,
+  },
+  waveBlobBack: {
+    left: -30,
+    bottom: 8,
+    width: '120%',
+    height: 90,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  waveBlobMid: {
+    left: -50,
+    bottom: -6,
+    width: '130%',
+    height: 84,
+    backgroundColor: 'rgba(142,166,230,0.28)',
+  },
+  waveBlobFront: {
+    left: -20,
+    bottom: -22,
+    width: '115%',
+    height: 78,
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   webRipples: {
     ...StyleSheet.absoluteFillObject,
