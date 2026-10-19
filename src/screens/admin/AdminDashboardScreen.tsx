@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, typography, spacing } from '../../theme';
-import { Card, Loading, DatePicker, StatusPill, DashboardRevenueChart, EarningsBarChart, HeaderBrand, ShareAppButton } from '../../components/common';
+import { colors, typography, spacing, borderRadius } from '../../theme';
+import { Card, Loading, DatePicker, StatusPill, DashboardRevenueChart, EarningsBarChart, ShareAppButton } from '../../components/common';
 import { useAuth } from '../../hooks';
 import { useGetDashboardStatsQuery } from '../../store/api/dashboardApi';
 import { useGetPlatformDashboardQuery } from '../../store/api/platformAdminApi';
@@ -33,6 +33,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
   const [toDate, setToDate] = useState<string>('');
   const [dateFilterParams, setDateFilterParams] = useState<DashboardQueryParams | undefined>(undefined);
   const [adminRange, setAdminRange] = useState<'none' | 'last_month' | 'last_3' | 'custom'>('none');
+  const [showDateFilter, setShowDateFilter] = useState(false);
   
   // Use dashboard API with date range filter
   const { 
@@ -212,54 +213,49 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
   }
 
   return (
+    <>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <View>
-        {isSeller() ? (
-          <>
-            <View style={styles.shopBrand}>
-              <HeaderBrand
-                name={shopCompany?.companyName}
-                photo={shopCompany?.profilePhoto || user?.profilePhoto}
-                light
-              />
+      {isSeller() ? (
+        <Text style={styles.sellerWelcome}>
+          Welcome, {(user?.fullName || user?.username || 'Seller').split(' ')[0]}!
+        </Text>
+      ) : (
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <View>
+              <Text style={styles.greeting}>Welcome, {user?.fullName}!</Text>
+              <Text style={styles.role}>Admin Dashboard</Text>
             </View>
-            <Text style={styles.greeting}>Welcome, {user?.fullName || user?.username}!</Text>
-            <Text style={styles.role}>Seller Dashboard</Text>
-          </>
-        ) : (
-          <>
-            <Text style={styles.greeting}>Welcome, {user?.fullName}!</Text>
-            <Text style={styles.role}>Admin Dashboard</Text>
-          </>
-        )}
+            {unreadCount > 0 && (
+              <TouchableOpacity
+                style={styles.notificationBadge}
+                onPress={() => navigation.navigate('OrderManagement')}
+              >
+                <Text style={styles.notificationBadgeText}>{unreadCount}</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          {unreadCount > 0 && (
-            <TouchableOpacity
-              style={styles.notificationBadge}
-              onPress={() => navigation.navigate('OrderManagement')}
-            >
-              <Text style={styles.notificationBadgeText}>{unreadCount}</Text>
-            </TouchableOpacity>
-          )}
         </View>
-      </View>
+      )}
 
       {isSeller() && shopCompany?.companyCode && (
         <Card style={styles.companyCard}>
-          <Text style={styles.reminderTitle}>Your company code</Text>
+          <Text style={styles.companyLabel}>Your company code</Text>
           <Text style={styles.companyCode}>{shopCompany.companyCode}</Text>
-          <Text style={styles.reminderCopy}>
-            Buyers who register with this code see only your products. Buyers: {shopCompany.buyerCount}
+          <Text style={styles.companyHint}>
+            Buyers who register with this code see only your products.
           </Text>
-          <ShareAppButton companyCode={shopCompany.companyCode} companyName={shopCompany.companyName} />
           <TouchableOpacity
-            style={styles.reminderButton}
-            onPress={() => navigation.getParent()?.navigate('ShopBuyers') || navigation.navigate('ShopBuyers')}
+            style={styles.viewCustomersBtn}
+            onPress={() => navigation.navigate('ShopCustomers')}
           >
-            <Text style={styles.reminderButtonText}>View buyers</Text>
+            <Text style={styles.viewCustomersBtnText}>View Customers</Text>
           </TouchableOpacity>
+          <ShareAppButton
+            companyCode={shopCompany.companyCode}
+            companyName={shopCompany.companyName}
+            tone="outline"
+          />
         </Card>
       )}
 
@@ -306,121 +302,116 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
         </Card>
       )}
 
-      {/* Date Range Filter Section */}
-      {!isStrictAdmin() && <Card style={styles.filterCard}>
-        <View style={styles.filterHeader}>
-          <Text style={styles.filterTitle}>Filter by Date Range</Text>
-          {(fromDate || toDate || dateFilterParams) && (
-            <TouchableOpacity
-              style={styles.clearFilterButton}
-              onPress={handleResetFilter}
+      {!isStrictAdmin() && (
+        <View style={styles.dateFilterBar}>
+          <TouchableOpacity
+            style={[styles.dateFilterIconBtn, !!dateFilterParams && styles.dateFilterIconBtnActive]}
+            onPress={() => setShowDateFilter(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Date filter"
+          >
+            <Ionicons
+              name="calendar-outline"
+              size={18}
+              color={dateFilterParams ? colors.white : colors.primary}
+            />
+            <Text
+              style={[
+                styles.dateFilterName,
+                !!dateFilterParams && styles.dateFilterNameActive,
+              ]}
             >
-              <Text style={styles.clearFilterButtonText}>Clear filter</Text>
+              Date filter
+            </Text>
+            {!!dateFilterParams && <View style={styles.dateFilterDot} />}
+          </TouchableOpacity>
+          {!!dateFilterParams && (
+            <Text style={styles.dateFilterChip} numberOfLines={1}>
+              {dateRangeLabel}
+            </Text>
+          )}
+          {!!dateFilterParams && (
+            <TouchableOpacity
+              style={styles.dateFilterClearIcon}
+              onPress={handleResetFilter}
+              accessibilityLabel="Clear date filter"
+            >
+              <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
+          {dashboardFetching && (
+            <Text style={styles.dateFilterUpdating}>Updating…</Text>
+          )}
         </View>
-        
-        {dashboardFetching && (
-          <View style={styles.loadingIndicator}>
-            <Text style={styles.loadingText}>Updating dashboard...</Text>
-          </View>
-        )}
-        
-        {dashboardError && (
-          <View style={styles.errorIndicator}>
-            <Text style={styles.errorText}>Error loading dashboard data. Please try again.</Text>
-          </View>
-        )}
-        
-        <View style={styles.datePickerContainer}>
-          <View style={styles.datePickerWrapper}>
-            <DatePicker
-              label="From Date"
-              value={fromDate}
-              onChange={(date) => {
-                setFromDate(date);
-                // If new fromDate is after toDate, clear toDate
-                if (toDate && date > toDate) {
-                  setToDate('');
-                }
-              }}
-              maxDate={toDate || getTodayDateString()}
-              placeholder="Select start date"
-            />
-          </View>
-          <View style={styles.datePickerWrapper}>
-            <DatePicker
-              label="To Date"
-              value={toDate}
-              onChange={(date) => {
-                setToDate(date);
-                // If new toDate is before fromDate, clear fromDate
-                if (fromDate && date < fromDate) {
-                  setFromDate('');
-                }
-              }}
-              maxDate={getTodayDateString()}
-              placeholder="Select end date"
-            />
-          </View>
+      )}
+
+      {dashboardError && !isStrictAdmin() && (
+        <View style={styles.errorIndicator}>
+          <Text style={styles.errorText}>Error loading dashboard data. Please try again.</Text>
         </View>
-        
-        {/* Show validation message if dates are invalid */}
-        {fromDate && toDate && new Date(fromDate) > new Date(toDate) && (
-          <View style={styles.validationMessage}>
-            <Text style={styles.validationText}>
-              From date must be before or equal to To date
+      )}
+
+      {isSeller() ? (
+        <View style={styles.sellerPods}>
+          <View style={styles.sellerPodRow}>
+            <View style={[styles.sellerPod, styles.podGreen]}>
+              <Text style={styles.sellerPodLabel}>New Orders</Text>
+              <Text style={[styles.sellerPodValue, styles.podGreenText]}>
+                {String(ordersInRange).padStart(2, '0')}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.sellerPod, styles.podOrange]}
+              onPress={() => navigation.navigate('OrderManagement', { initialStatus: OrderStatus.PENDING })}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.sellerPodLabel}>Pending Orders</Text>
+              <Text style={[styles.sellerPodValue, styles.podOrangeText]}>
+                {String(pendingOrders).padStart(2, '0')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            style={[styles.sellerPod, styles.podBlue, styles.sellerPodFull]}
+            onPress={() => navigation.navigate('MenuManagement')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.sellerPodLabel}>Products</Text>
+            <Text style={[styles.sellerPodValue, styles.podBlueText]}>
+              {String(productsCount).padStart(2, '0')}
             </Text>
+          </TouchableOpacity>
+          <View style={styles.sellerSummaryRow}>
+            <Card style={styles.sellerSummaryCard}>
+              <Text style={styles.sellerSummaryValue}>{totalOrders}</Text>
+              <Text style={styles.sellerSummaryLabel}>Total Orders</Text>
+            </Card>
+            <Card style={styles.sellerSummaryCard}>
+              <Text style={styles.sellerSummaryValue}>{formatCurrency(totalRevenue)}</Text>
+              <Text style={styles.sellerSummaryLabel}>Total Revenue</Text>
+            </Card>
           </View>
-        )}
-        
-        {dateRangeLabel && (
-          <View style={styles.dateRangeLabelContainer}>
-            <Text style={styles.dateRangeLabel}>Showing: {dateRangeLabel}</Text>
-          </View>
-        )}
-      </Card>}
-
-      {!isStrictAdmin() && <View style={styles.statsGrid}>
-        <Card style={styles.statCard}>
-          <Text style={styles.statValue}>{ordersInRange}</Text>
-          <Text style={styles.statLabel}>
-            {dateFilterParams ? 'Orders in Range' : 'New Orders'}
-          </Text>
-        </Card>
-
-        <TouchableOpacity
-          onPress={() => navigation.navigate('OrderManagement', { initialStatus: OrderStatus.PENDING })}
-          activeOpacity={0.8}
-          style={styles.statCardTouchable}
-        >
-          <Card style={[styles.statCard, styles.statCardInnerFullWidth]}>
+        </View>
+      ) : !isStrictAdmin() ? (
+        <View style={styles.statsGrid}>
+          <Card style={styles.statCard}>
+            <Text style={styles.statValue}>{ordersInRange}</Text>
+            <Text style={styles.statLabel}>{dateFilterParams ? 'Orders in Range' : 'New Orders'}</Text>
+          </Card>
+          <Card style={styles.statCard}>
             <Text style={styles.statValue}>{pendingOrders}</Text>
             <Text style={styles.statLabel}>Pending Orders</Text>
           </Card>
-        </TouchableOpacity>
-
-        <Card style={styles.statCard}>
-          <Text style={styles.statValue}>{totalOrders}</Text>
-          <Text style={styles.statLabel}>Total Orders</Text>
-        </Card>
-
-        <Card style={styles.statCard}>
-          <Text style={styles.statValue}>{formatCurrency(totalRevenue)}</Text>
-          <Text style={styles.statLabel}>Total Revenue</Text>
-        </Card>
-
-        <TouchableOpacity
-          onPress={() => navigation.navigate('MenuManagement')}
-          activeOpacity={0.8}
-          style={styles.statCardTouchable}
-        >
-          <Card style={[styles.statCard, styles.statCardInnerFullWidth]}>
-            <Text style={styles.statValue}>{productsCount}</Text>
-            <Text style={styles.statLabel}>Products</Text>
+          <Card style={styles.statCard}>
+            <Text style={styles.statValue}>{totalOrders}</Text>
+            <Text style={styles.statLabel}>Total Orders</Text>
           </Card>
-        </TouchableOpacity>
-      </View>}
+          <Card style={styles.statCard}>
+            <Text style={styles.statValue}>{formatCurrency(totalRevenue)}</Text>
+            <Text style={styles.statLabel}>Total Revenue</Text>
+          </Card>
+        </View>
+      ) : null}
 
       {isSeller() && (
         <Card style={styles.chartCard}>
@@ -430,7 +421,36 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
               ? `Paid, partial, and yet to collect · ${dateRangeLabel}`
               : 'Paid, partial, and yet to collect · Last 6 months'}
           </Text>
-          <EarningsBarChart points={dashboardStats?.earningsGraph || []} />
+          <View style={styles.earningsTotals}>
+            <View style={[styles.earningsChip, styles.earningsPaid]}>
+              <View style={[styles.earningsBar, { backgroundColor: colors.success }]} />
+              <View>
+                <Text style={styles.earningsChipLabel}>Paid</Text>
+                <Text style={[styles.earningsChipValue, { color: colors.success }]}>
+                  {formatCurrency(Number(dashboardStats?.paidEarnings) || 0)}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.earningsChip, styles.earningsPartial]}>
+              <View style={[styles.earningsBar, { backgroundColor: colors.warning }]} />
+              <View>
+                <Text style={styles.earningsChipLabel}>Partial</Text>
+                <Text style={[styles.earningsChipValue, { color: colors.warning }]}>
+                  {formatCurrency(Number(dashboardStats?.partialCollected) || 0)}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.earningsChip, styles.earningsDue]}>
+              <View style={[styles.earningsBar, { backgroundColor: colors.primary }]} />
+              <View>
+                <Text style={styles.earningsChipLabel}>Yet to collect</Text>
+                <Text style={[styles.earningsChipValue, { color: colors.primary }]}>
+                  {formatCurrency(Number(dashboardStats?.balanceDue) || 0)}
+                </Text>
+              </View>
+            </View>
+          </View>
+          <EarningsBarChart points={dashboardStats?.earningsGraph || []} hideSummary />
         </Card>
       )}
 
@@ -440,14 +460,20 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
             { label: 'Add Order', count: '', screen: 'PhoneOrder' },
             { label: 'My Buyers', count: String(shopBuyers.length), screen: 'ShopBuyers' },
             { label: 'Customers', count: String(shopCustomers.length), screen: 'ShopCustomers' },
-            { label: 'Water can management', count: String(canLedger.filter((row) => row.given > 0 || row.toReturn > 0).length), screen: 'IssuedCans' },
+            {
+              label: 'Water can management',
+              count: String(canLedger.filter((row) => row.given > 0 || row.toReturn > 0).length),
+              screen: 'IssuedCans',
+            },
           ].map((item) => (
             <TouchableOpacity
               key={item.screen}
               style={styles.hubCard}
-              onPress={() => item.screen === 'ShopCustomers'
-                ? navigation.navigate('ShopCustomers')
-                : navigation.getParent()?.navigate(item.screen) || navigation.navigate(item.screen)}
+              onPress={() =>
+                item.screen === 'ShopCustomers'
+                  ? navigation.navigate('ShopCustomers')
+                  : navigation.getParent()?.navigate(item.screen) || navigation.navigate(item.screen)
+              }
             >
               <View style={styles.hubTop}>
                 {item.screen === 'PhoneOrder' ? (
@@ -474,7 +500,6 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
               {([
                 { id: 'last_month' as const, label: 'Last month' },
                 { id: 'last_3' as const, label: 'Last 3 months' },
-                { id: 'custom' as const, label: 'From / To' },
               ]).map((chip) => (
                 <TouchableOpacity
                   key={chip.id}
@@ -484,21 +509,33 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
                   <Text style={[styles.rangeChipText, adminRange === chip.id && styles.rangeChipTextActive]}>{chip.label}</Text>
                 </TouchableOpacity>
               ))}
+              <TouchableOpacity
+                style={[styles.dateFilterIconBtn, adminRange === 'custom' && styles.dateFilterIconBtnActive]}
+                onPress={() => {
+                  setAdminRange('custom');
+                  setShowDateFilter(true);
+                }}
+                accessibilityLabel="Date filter"
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={16}
+                  color={adminRange === 'custom' ? colors.white : colors.primary}
+                />
+                <Text
+                  style={[
+                    styles.dateFilterName,
+                    adminRange === 'custom' && styles.dateFilterNameActive,
+                  ]}
+                >
+                  Date filter
+                </Text>
+              </TouchableOpacity>
             </View>
             <TouchableOpacity style={styles.addSellerButton} onPress={() => navigation.navigate('AddSeller')}>
               <Text style={styles.addSellerButtonText}>+ Add Seller</Text>
             </TouchableOpacity>
           </View>
-          {adminRange === 'custom' && (
-            <View style={styles.customRangeRow}>
-              <View style={styles.datePickerWrapper}>
-                <DatePicker label="From Date" value={fromDate} onChange={setFromDate} maxDate={toDate || getTodayDateString()} placeholder="Start date" />
-              </View>
-              <View style={styles.datePickerWrapper}>
-                <DatePicker label="To Date" value={toDate} onChange={setToDate} maxDate={getTodayDateString()} placeholder="End date" />
-              </View>
-            </View>
-          )}
           <View style={styles.splitRow}>
             <Card style={[styles.chartCard, styles.splitChart]}>
               <Text style={styles.filterTitle}>Revenue histogram</Text>
@@ -727,6 +764,68 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
       )}
 
     </ScrollView>
+
+    <Modal
+      visible={showDateFilter}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowDateFilter(false)}
+    >
+      <View style={styles.dateModalOverlay}>
+        <View style={styles.dateModalCard}>
+          <View style={styles.dateModalHeader}>
+            <Text style={styles.dateModalTitle}>Date filter</Text>
+            <TouchableOpacity onPress={() => setShowDateFilter(false)} accessibilityLabel="Close">
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <DatePicker
+            label="From"
+            value={fromDate}
+            onChange={(date) => {
+              setFromDate(date);
+              if (toDate && date > toDate) setToDate('');
+            }}
+            maxDate={toDate || getTodayDateString()}
+            placeholder="Start date"
+          />
+          <DatePicker
+            label="To"
+            value={toDate}
+            onChange={(date) => {
+              setToDate(date);
+              if (fromDate && date < fromDate) setFromDate('');
+            }}
+            maxDate={getTodayDateString()}
+            placeholder="End date"
+          />
+
+          {fromDate && toDate && new Date(fromDate) > new Date(toDate) && (
+            <Text style={styles.validationText}>From date must be before or equal to To date</Text>
+          )}
+
+          <View style={styles.dateModalActions}>
+            <TouchableOpacity
+              style={styles.dateModalSecondary}
+              onPress={() => {
+                handleResetFilter();
+                setShowDateFilter(false);
+              }}
+            >
+              <Text style={styles.dateModalSecondaryText}>Clear</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.dateModalPrimary}
+              onPress={() => setShowDateFilter(false)}
+            >
+              <Text style={styles.dateModalPrimaryText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 };
 
@@ -744,18 +843,135 @@ const styles = StyleSheet.create({
     borderRadius: spacing.md,
     marginBottom: spacing.lg,
   },
-  companyCard: {
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-    backgroundColor: '#E8F1FC',
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  companyCode: {
+  sellerWelcome: {
     fontSize: typography.fontSize['2xl'],
     fontWeight: typography.fontWeight.bold,
     color: colors.primary,
+    marginBottom: spacing.md,
+  },
+  companyCard: {
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    backgroundColor: colors.blue50,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: borderRadius.lg,
+  },
+  companyLabel: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.textPrimary,
+  },
+  companyCode: {
+    fontSize: typography.fontSize.display,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
     marginVertical: spacing.xs,
+    letterSpacing: -0.5,
+  },
+  companyHint: {
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+    fontSize: typography.fontSize.sm,
+  },
+  viewCustomersBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.md,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  viewCustomersBtnText: {
+    color: colors.white,
+    fontWeight: typography.fontWeight.bold,
+    fontSize: typography.fontSize.base,
+  },
+  earningsTotals: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  earningsChip: {
+    flexGrow: 1,
+    flexBasis: 140,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: borderRadius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  earningsPaid: { backgroundColor: colors.successTint },
+  earningsPartial: { backgroundColor: colors.warningTint },
+  earningsDue: { backgroundColor: colors.blue50 },
+  earningsBar: { width: 8, height: 28, borderRadius: 4 },
+  earningsChipLabel: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  earningsChipValue: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
+    marginTop: 2,
+  },
+  sellerPods: {
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  sellerPodRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  sellerPod: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    minHeight: 64,
+  },
+  sellerPodFull: {
+    width: '100%',
+  },
+  sellerPodLabel: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.textPrimary,
+  },
+  sellerPodValue: {
+    fontSize: typography.fontSize['2xl'],
+    fontWeight: typography.fontWeight.bold,
+  },
+  podGreen: { backgroundColor: '#E8F8EE' },
+  podGreenText: { color: '#166534' },
+  podOrange: { backgroundColor: '#FFF1E0' },
+  podOrangeText: { color: '#C2410C' },
+  podBlue: { backgroundColor: colors.blue100 },
+  podBlueText: { color: colors.primary },
+  sellerSummaryRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  sellerSummaryCard: {
+    flex: 1,
+    padding: spacing.md,
+    alignItems: 'flex-start',
+  },
+  sellerSummaryValue: {
+    fontSize: typography.fontSize['2xl'],
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
+  },
+  sellerSummaryLabel: {
+    marginTop: 4,
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.sm,
   },
   reminderCard: {
     padding: spacing.md,
@@ -1055,80 +1271,119 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     color: colors.white,
   },
-  customRangeRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  filterCard: {
-    marginBottom: spacing.lg,
-    padding: spacing.lg,
-  },
-  filterHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
   filterTitle: {
     fontSize: typography.fontSize.xl,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
   },
-  clearFilterButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: spacing.sm,
-    backgroundColor: colors.gray200,
+  dateFilterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    alignSelf: 'flex-end',
   },
-  clearFilterButtonText: {
+  dateFilterIconBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 36,
+    paddingHorizontal: 10,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.white,
+    position: 'relative',
+  },
+  dateFilterIconBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  dateFilterName: {
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.semibold,
-    color: colors.textPrimary,
+    color: colors.primary,
   },
-  datePickerContainer: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.md,
+  dateFilterNameActive: {
+    color: colors.white,
   },
-  datePickerWrapper: {
-    flex: 1,
+  dateFilterDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.warning,
   },
-  dateRangeLabelContainer: {
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.gray200,
-  },
-  dateRangeLabel: {
-    fontSize: typography.fontSize.base,
+  dateFilterChip: {
+    maxWidth: 180,
+    fontSize: typography.fontSize.sm,
     color: colors.primary,
     fontWeight: typography.fontWeight.semibold,
-    textAlign: 'center',
   },
-  validationMessage: {
-    marginTop: spacing.sm,
-    padding: spacing.sm,
-    backgroundColor: colors.error + '20',
-    borderRadius: spacing.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.error,
+  dateFilterClearIcon: {
+    padding: 2,
+  },
+  dateFilterUpdating: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+  },
+  dateModalOverlay: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  dateModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  dateModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  dateModalTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  dateModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  dateModalSecondary: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.gray100,
+  },
+  dateModalSecondaryText: {
+    color: colors.textPrimary,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  dateModalPrimary: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.primary,
+  },
+  dateModalPrimaryText: {
+    color: colors.white,
+    fontWeight: typography.fontWeight.semibold,
   },
   validationText: {
     fontSize: typography.fontSize.sm,
     color: colors.error,
-    fontWeight: typography.fontWeight.medium,
-  },
-  loadingIndicator: {
-    padding: spacing.sm,
-    backgroundColor: colors.primary + '20',
-    borderRadius: spacing.sm,
-    marginBottom: spacing.md,
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.primary,
     fontWeight: typography.fontWeight.medium,
   },
   errorIndicator: {

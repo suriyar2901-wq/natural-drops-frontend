@@ -5,6 +5,8 @@ import { MonthlyRevenuePoint } from '../../types';
 
 interface Props {
   points?: MonthlyRevenuePoint[];
+  /** When true, skip top Paid/Partial/Due chips (parent already shows them). */
+  hideSummary?: boolean;
 }
 
 const PAID = colors.success;
@@ -19,7 +21,7 @@ type Row = MonthlyRevenuePoint & {
   total: number;
 };
 
-export const EarningsBarChart = ({ points = [] }: Props) => {
+export const EarningsBarChart = ({ points = [], hideSummary = false }: Props) => {
   const rows = useMemo<Row[]>(() => points.map((point) => {
     const paid = Number(point.orderRevenue) || 0;
     const partial = Number(point.subscriptionRevenue) || 0;
@@ -45,11 +47,13 @@ export const EarningsBarChart = ({ points = [] }: Props) => {
 
   return (
     <View>
-      <View style={styles.summary}>
-        <SummaryChip color={PAID} tint={colors.successTint} label="Paid" value={totals.paid} />
-        <SummaryChip color={PARTIAL} tint={colors.warningTint} label="Partial" value={totals.partial} />
-        <SummaryChip color={DUE} tint={colors.blue50} label="Yet to collect" value={totals.due} />
-      </View>
+      {!hideSummary && (
+        <View style={styles.summary}>
+          <SummaryChip color={PAID} tint={colors.successTint} label="Paid" value={totals.paid} />
+          <SummaryChip color={PARTIAL} tint={colors.warningTint} label="Partial" value={totals.partial} />
+          <SummaryChip color={DUE} tint={colors.blue50} label="Yet to collect" value={totals.due} />
+        </View>
+      )}
       {!hasMoney ? (
         <Text style={styles.empty}>No earnings in this date range.</Text>
       ) : (

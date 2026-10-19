@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
-import { colors, typography, spacing } from '../../theme';
-import { Card, DateRangeModal, EmptyState, Loading, OrderTimer } from '../../components/common';
+import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
+import { DateRangeModal, EmptyState, Loading, OrderTimer } from '../../components/common';
 import { useAuth } from '../../hooks';
 import { useGetBuyerOrdersQuery, useGetBuyerRegularOrderQuery, useBuyerUpdatePendingOrderMutation, useBuyerCancelPendingOrderMutation } from '../../store/api/orderApi';
 import { replaceCart } from '../../store/slices/cartSlice';
@@ -12,15 +12,16 @@ import {
   useGetUnreadBuyerNotificationCountQuery,
   useMarkBuyerNotificationAsReadMutation 
 } from '../../store/api/notificationApi';
+import { useGetSupportContactsQuery } from '../../store/api/settingsApi';
 import { MenuItem, Order, OrderStatus } from '../../types';
-import { formatCurrency, formatDateTime, formatOrderStatus } from '../../utils/formatters';
+import { formatCurrency, formatDateTime, formatDeliverySlot, formatOrderStatus } from '../../utils/formatters';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
 import { API_BASE_URL } from '../../utils/constants';
 import { storageService } from '../../services/storage.service';
 import { ORDER_STATUS_COLORS } from '../../utils/constants';
 import { useNotifications } from '../../hooks/useNotifications';
 import { NotificationPreview } from '../../components/common/NotificationPreview';
-import { DeliverySlotBadge } from '../../components/common/DeliverySlotBadge';
+import { openContact, contactLinks } from '../../utils/openContact';
 import { Ionicons } from '@expo/vector-icons';
 
 const isRegularOrder = (order: Order) => (order.billingNotes || '').toLowerCase().includes('regular');
@@ -41,14 +42,17 @@ export const OrdersScreen = ({ navigation }: any) => {
   const [exporting, setExporting] = useState(false);
   const [qtyDraft, setQtyDraft] = useState<Record<string, number>>({});
   const [savingOrderId, setSavingOrderId] = useState<number | null>(null);
+  const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
   const [updatePending] = useBuyerUpdatePendingOrderMutation();
   const [cancelPending] = useBuyerCancelPendingOrderMutation();
+  const { data: supportContacts } = useGetSupportContactsQuery();
   const { data: regularPlan } = useGetBuyerRegularOrderQuery(undefined, { skip: !user });
   const { data: orders, isLoading, refetch, error } = useGetBuyerOrdersQuery(user?.id || 0, {
     skip: !user,
     // Polling disabled - only refetch on screen focus or manual refresh
     pollingInterval: 0,
   });
+  const supportCall = contactLinks(supportContacts?.phone || supportContacts?.whatsapp).call;
   const { data: notifications, isLoading: notificationsLoading, refetch: refetchNotifications } = useGetUnreadBuyerNotificationsQuery(
     user?.id || 0,
     { 
@@ -378,110 +382,151 @@ export const OrdersScreen = ({ navigation }: any) => {
     ]);
   };
 
+  const getDeliveryLabel = (order: Order) => {
+    const slot = formatDeliverySlot(order);
+    if (slot) return slot;
+    return formatDateTime(order.orderDate || (order as any).createdAt || '');
+  };
+
+  const getOrderAmount = (order: Order) =>
+    formatCurrency(order.finalBillAmount || order.total || (order as any).totalAmount);
+
   const renderOrder = ({ item }: { item: Order }) => {
     const paid = item.paymentStatus === 'PAID';
     const partial = item.paymentStatus === 'PARTIALLY_PAID';
     const unpaid = item.paymentStatus === 'UNPAID';
-    return (
-      <Card style={styles.orderCard}>
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={() => navigation.navigate('OrderDetail', { order: item })}
-        >
-          <View style={styles.orderHeader}>
-            <View style={styles.orderIcon}>
-              <Ionicons name="receipt-outline" size={20} color={colors.primary} />
-            </View>
-            <View style={styles.orderTitleBlock}>
-              <Text style={styles.orderId}>Order #{item.id}</Text>
-              <Text style={styles.orderDate}>{formatDateTime(item.orderDate || item.createdAt)}</Text>
-            </View>
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                style={styles.billDownload}
-                onPress={() => downloadBill(item)}
-                disabled={exporting}
-              >
-                <Ionicons name="download-outline" size={18} color={colors.primary} />
-              </TouchableOpacity>
-              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-                <Text style={styles.statusText}>{formatOrderStatus(item.status)}</Text>
-              </View>
-            </View>
-          </View>
-          <OrderTimer order={item} position="header-right" />
+    const isPending = item.status === OrderStatus.PENDING || item.status === 'pending';
+    const isConfirmed =
+      item.status === OrderStatus.CONFIRMED
+      || item.status === OrderStatus.PROCESSING
+      || item.status === 'confirmed'
+      || item.status === 'processing';
+    const isDelivered = item.status === OrderStatus.DELIVERED || item.status === 'delivered';
+    const isCanceled = item.status === OrderStatus.CANCELED || item.status === 'canceled';
+    const expanded = expandedOrderId === item.id;
+    const statusColor = getStatusColor(item.status);
+    const orderNote = item.billingNotes?.trim();
+    const deliveryAddress = item.deliveryAddress || item.buyerAddress || 'Not specified';
+    const statusTint = isPending
+      ? '#FFF1E0'
+      : isConfirmed
+        ? colors.blue100
+        : isDelivered
+          ? colors.successTint
+          : colors.gray100;
 
-          <View style={styles.orderItems}>
-            {item.items && item.items.length > 0 ? (
-              item.items.map((orderItem, index) => {
-                const quantity = lineQty(item.id, index, orderItem.quantity);
-                if (item.status !== 'pending') {
-                  return (
-                    <View key={index} style={styles.itemRow}>
-                      <View style={styles.qtyChip}>
-                        <Text style={styles.qtyChipText}>{orderItem.quantity}</Text>
+    const toggleExpanded = () => {
+      setExpandedOrderId((current) => (current === item.id ? null : item.id));
+    };
+
+    return (
+      <View style={styles.orderCard}>
+        <View style={styles.orderCardCollapsed}>
+          <TouchableOpacity activeOpacity={0.85} onPress={toggleExpanded} style={styles.orderCardTapArea}>
+            <View style={styles.orderDocIcon}>
+              <Ionicons name="document-text-outline" size={22} color="#854A0E" />
+            </View>
+            <View style={styles.orderCardHeaderLeft}>
+              <View style={styles.orderTitleRow}>
+                <Text style={styles.orderIdCompact}>#Order {String(item.id).padStart(2, '0')}</Text>
+                <View style={[styles.statusPill, { backgroundColor: statusTint }]}>
+                  <Text style={[styles.statusPillText, { color: isPending ? '#854A0E' : statusColor }]}>
+                    {formatOrderStatus(item.status)}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.deliveryTimeText} numberOfLines={2}>
+                {getDeliveryLabel(item)} • {getOrderAmount(item)}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.callButton}
+            onPress={() => {
+              if (supportCall) openContact(supportCall);
+              else showErrorToast('Support phone not available.');
+            }}
+          >
+            <Ionicons name="call" size={15} color={colors.primary} />
+            <Text style={styles.callButtonText}>Call</Text>
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.7} onPress={toggleExpanded} hitSlop={8}>
+            <Ionicons
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+        </View>
+
+        <OrderTimer order={item} position="header-right" />
+
+        {expanded && (
+          <View style={styles.orderExpanded}>
+            <View style={styles.addressBlock}>
+              <View style={styles.addressBlockHeader}>
+                <Ionicons name="location-outline" size={18} color={colors.primary} />
+                <Text style={styles.addressBlockTitle}>DELIVERY ADDRESS</Text>
+              </View>
+              <Text style={styles.addressBlockText}>{deliveryAddress}</Text>
+            </View>
+
+            <View style={styles.itemsBlock}>
+              {item.items && item.items.length > 0 ? (
+                item.items.map((orderItem, index) => {
+                  const quantity = lineQty(item.id, index, orderItem.quantity);
+                  if (!isPending) {
+                    return (
+                      <View key={index} style={styles.itemRowCompact}>
+                        <View style={styles.itemLeftCol}>
+                          <Text style={styles.itemNameCompact} numberOfLines={1}>{orderItem.itemName}</Text>
+                          <Text style={styles.itemQtyCompact}>
+                            {orderItem.quantity} × {formatCurrency(orderItem.rate || 0)}
+                          </Text>
+                        </View>
+                        <Text style={styles.itemPriceCompact}>{formatCurrency(orderItem.subtotal)}</Text>
                       </View>
-                      <Text style={styles.itemName}>{orderItem.itemName}</Text>
-                      <Text style={styles.itemPrice}>{formatCurrency(orderItem.subtotal)}</Text>
+                    );
+                  }
+                  return (
+                    <View key={index} style={styles.qtyEditRow}>
+                      <Text style={styles.itemNameCompact} numberOfLines={1}>{orderItem.itemName}</Text>
+                      <View style={styles.qtyControls}>
+                        <TouchableOpacity
+                          style={styles.qtyButton}
+                          onPress={() => setQtyDraft((current) => ({
+                            ...current,
+                            [`${item.id}-${index}`]: Math.max(1, quantity - 1),
+                          }))}
+                        >
+                          <Text style={styles.qtyButtonText}>-</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.qtyValue}>{quantity}</Text>
+                        <TouchableOpacity
+                          style={styles.qtyButton}
+                          onPress={() => setQtyDraft((current) => ({
+                            ...current,
+                            [`${item.id}-${index}`]: quantity + 1,
+                          }))}
+                        >
+                          <Text style={styles.qtyButtonText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   );
-                }
-                return (
-                  <View key={index} style={styles.qtyRow}>
-                    <Text style={styles.itemName}>{orderItem.itemName}</Text>
-                    <View style={styles.qtyControls}>
-                      <TouchableOpacity
-                        style={styles.qtyButton}
-                        onPress={() => setQtyDraft((current) => ({
-                          ...current,
-                          [`${item.id}-${index}`]: Math.max(1, quantity - 1),
-                        }))}
-                      >
-                        <Text style={styles.qtyButtonText}>-</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.qtyValue}>{quantity}</Text>
-                      <TouchableOpacity
-                        style={styles.qtyButton}
-                        onPress={() => setQtyDraft((current) => ({
-                          ...current,
-                          [`${item.id}-${index}`]: quantity + 1,
-                        }))}
-                      >
-                        <Text style={styles.qtyButtonText}>+</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })
-            ) : (
-              <Text style={styles.itemName}>No items</Text>
-            )}
-          </View>
-
-          {(item.deliveryAddress || item.buyerAddress) && (
-            <View style={styles.addressContainer}>
-              <Ionicons name="location-outline" size={16} color={colors.primary} />
-              <View style={styles.addressCopy}>
-                <Text style={styles.addressLabel}>Delivery address</Text>
-                <Text style={styles.addressText}>
-                  {item.deliveryAddress || item.buyerAddress || 'Not specified'}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          <View style={styles.orderFooter}>
-            <View>
-              <Text style={styles.totalLabel}>
-                {item.finalBillAmount ? 'Final bill' : 'Total'}
-              </Text>
-              <Text style={styles.totalAmount}>
-                {formatCurrency(item.finalBillAmount || item.total || item.totalAmount)}
-              </Text>
-              {item.finalBillAmount && item.finalBillAmount !== item.total && (
-                <Text style={styles.originalAmount}>Original {formatCurrency(item.total)}</Text>
+                })
+              ) : (
+                <Text style={styles.itemNameCompact}>No items</Text>
               )}
             </View>
+
+            <View style={styles.collectRow}>
+              <Text style={styles.collectLabel}>
+                {item.finalBillAmount ? 'Final bill' : 'Total'}
+              </Text>
+              <Text style={styles.collectAmount}>{getOrderAmount(item)}</Text>
+            </View>
+
             {item.paymentStatus && (
               <View style={[
                 styles.paymentStatusBadge,
@@ -499,44 +544,93 @@ export const OrdersScreen = ({ navigation }: any) => {
                 </Text>
               </View>
             )}
-          </View>
-          <DeliverySlotBadge order={item} />
-          {(unpaid || partial) && (
-            <Text style={styles.paymentPendingText}>Payment is still due for this order.</Text>
-          )}
-          {item.status === 'delivered' && (
-            <Text style={styles.deliveryStatusText}>
-              Delivered{item.deliveredBy ? ` by ${item.deliveredBy}` : ''}
-            </Text>
-          )}
-        </TouchableOpacity>
-        <View style={styles.actionRow}>
-          {item.status === 'pending' && (
-            <>
+            {(unpaid || partial) && (
+              <Text style={styles.paymentPendingText}>Payment is still due for this order.</Text>
+            )}
+
+            {!!orderNote && (
+              <View style={styles.noteBanner}>
+                <Ionicons name="document-text-outline" size={16} color="#854A0E" />
+                <Text style={styles.noteBannerText}>Note: {orderNote}</Text>
+              </View>
+            )}
+
+            <View style={styles.secondaryActionsRow}>
               <TouchableOpacity
-                style={styles.reorderButton}
-                onPress={() => savePending(item)}
-                disabled={savingOrderId === item.id}
+                style={styles.iconActionBtn}
+                onPress={() => downloadBill(item)}
+                disabled={exporting}
               >
-                <Text style={styles.reorderText}>{savingOrderId === item.id ? 'Saving…' : 'Save quantity'}</Text>
+                <Ionicons name="download-outline" size={18} color={colors.primary} />
+                <Text style={styles.iconActionText}>Bill</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.cancelButton} onPress={() => cancelPendingOrder(item)}>
-                <Text style={styles.cancelText}>Cancel order</Text>
+              <TouchableOpacity
+                style={styles.iconActionBtn}
+                onPress={() => navigation.navigate('OrderDetail', { order: item })}
+              >
+                <Ionicons name="open-outline" size={18} color={colors.primary} />
+                <Text style={styles.iconActionText}>Details</Text>
               </TouchableOpacity>
-            </>
-          )}
-          {isRegularOrder(item) && (
-            <TouchableOpacity style={styles.editButton} onPress={() => editRegularOrder(item)}>
-              <Text style={styles.editText}>Edit regular order</Text>
-            </TouchableOpacity>
-          )}
-          {!isRegularOrder(item) && item.status !== 'canceled' && (
-            <TouchableOpacity style={styles.reorderButton} onPress={() => copyOrderToCart(item)}>
-              <Text style={styles.reorderText}>Order again</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </Card>
+              {isRegularOrder(item) && (
+                <TouchableOpacity style={styles.iconActionBtn} onPress={() => editRegularOrder(item)}>
+                  <Ionicons name="create-outline" size={18} color={colors.primary} />
+                  <Text style={styles.iconActionText}>Edit regular</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
+
+        {!isCanceled && (
+          <View style={styles.orderCardActions}>
+            {isPending ? (
+              <>
+                <TouchableOpacity style={styles.cancelTextButton} onPress={() => cancelPendingOrder(item)}>
+                  <Text style={styles.cancelTextButtonLabel}>Cancel order</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.confirmPrimaryButton}
+                  onPress={() => savePending(item)}
+                  disabled={savingOrderId === item.id}
+                >
+                  {savingOrderId === item.id ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark" size={18} color={colors.white} />
+                      <Text style={styles.confirmPrimaryButtonText}>Save quantity</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : isConfirmed ? (
+              <>
+                <View style={styles.confirmedChip}>
+                  <Text style={styles.confirmedChipText}>Confirmed</Text>
+                </View>
+                {!isRegularOrder(item) && (
+                  <TouchableOpacity style={styles.confirmPrimaryButton} onPress={() => copyOrderToCart(item)}>
+                    <Ionicons name="refresh" size={18} color={colors.white} />
+                    <Text style={styles.confirmPrimaryButtonText}>Order again</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : (
+              !isRegularOrder(item) ? (
+                <TouchableOpacity style={styles.confirmPrimaryButton} onPress={() => copyOrderToCart(item)}>
+                  <Ionicons name="refresh" size={18} color={colors.white} />
+                  <Text style={styles.confirmPrimaryButtonText}>Order again</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.confirmPrimaryButton} onPress={() => editRegularOrder(item)}>
+                  <Ionicons name="create-outline" size={18} color={colors.white} />
+                  <Text style={styles.confirmPrimaryButtonText}>Edit regular</Text>
+                </TouchableOpacity>
+              )
+            )}
+          </View>
+        )}
+      </View>
     );
   };
 
@@ -976,20 +1070,149 @@ const styles = StyleSheet.create({
   lastOrderCopy: { flex: 1, minWidth: 0 },
   lastOrderTitle: { fontWeight: typography.fontWeight.bold, color: colors.textPrimary },
   lastOrderItems: { color: colors.textSecondary, fontSize: typography.fontSize.sm },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, marginTop: 4 },
-  itemRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
-  qtyChip: {
-    minWidth: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: colors.secondary,
+  orderCard: {
+    marginBottom: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    ...shadows.sm,
+  },
+  orderCardCollapsed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
+  },
+  orderCardTapArea: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  orderDocIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FEF3C7',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
   },
-  qtyChipText: { color: colors.primary, fontWeight: typography.fontWeight.bold },
-  itemName: { flex: 1, color: colors.textPrimary, fontSize: typography.fontSize.sm },
-  itemPrice: { color: colors.textPrimary, fontWeight: typography.fontWeight.semibold },
+  orderCardHeaderLeft: {
+    flex: 1,
+    minWidth: 0,
+  },
+  orderTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  orderIdCompact: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  statusPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: borderRadius.sm,
+  },
+  statusPillText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  deliveryTimeText: {
+    marginTop: 4,
+    fontSize: typography.fontSize.sm,
+    color: colors.primary,
+    fontWeight: typography.fontWeight.medium,
+  },
+  callButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.blue100,
+  },
+  callButtonText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary,
+  },
+  orderExpanded: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    padding: spacing.md,
+    paddingTop: spacing.sm,
+    backgroundColor: colors.white,
+  },
+  addressBlock: {
+    backgroundColor: colors.gray50,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  addressBlockHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: spacing.sm,
+  },
+  addressBlockTitle: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textSecondary,
+    letterSpacing: 0.4,
+  },
+  addressBlockText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  itemsBlock: {
+    marginBottom: spacing.sm,
+  },
+  itemRowCompact: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  itemLeftCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  itemQtyCompact: {
+    marginTop: 2,
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+  },
+  itemNameCompact: {
+    flex: 1,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.textPrimary,
+  },
+  itemPriceCompact: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.textPrimary,
+  },
+  qtyEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
   qtyControls: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   qtyButton: {
     width: 32,
@@ -1002,158 +1225,112 @@ const styles = StyleSheet.create({
   },
   qtyButtonText: { color: colors.primary, fontWeight: typography.fontWeight.bold, fontSize: typography.fontSize.lg },
   qtyValue: { minWidth: 20, textAlign: 'center', color: colors.textPrimary, fontWeight: typography.fontWeight.bold },
-  actionRow: {
+  collectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  collectLabel: {
+    fontSize: typography.fontSize.base,
+    color: colors.primary,
+    fontWeight: typography.fontWeight.bold,
+  },
+  collectAmount: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
+  },
+  noteBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.warningTint,
+    borderRadius: borderRadius.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  noteBannerText: {
+    flex: 1,
+    fontSize: typography.fontSize.sm,
+    color: '#854A0E',
+    lineHeight: 20,
+  },
+  secondaryActionsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  cancelButton: {
-    borderWidth: 1,
-    borderColor: colors.error,
-    borderRadius: 999,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-  },
-  cancelText: { color: colors.error, fontWeight: typography.fontWeight.semibold },
-  editButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: 999,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-  },
-  editText: {
-    color: colors.primary,
-    fontWeight: typography.fontWeight.semibold,
-  },
-  reorderButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.primary,
-    borderRadius: 999,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-  },
-  reorderText: {
-    color: colors.white,
-    fontWeight: typography.fontWeight.semibold,
-  },
-  orderCard: {
-    marginBottom: spacing.md,
-    position: 'relative',
-  },
-  orderHeader: {
+  iconActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  orderIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: colors.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  orderTitleBlock: { flex: 1, minWidth: 0 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  billDownload: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.white,
+  },
+  iconActionText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary,
+  },
+  orderCardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  cancelTextButton: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  cancelTextButtonLabel: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.error,
+  },
+  confirmPrimaryButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.success,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.lg,
+  },
+  confirmPrimaryButtonText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.white,
+  },
+  confirmedChip: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.successTint,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  orderId: {
-    fontSize: typography.fontSize.lg,
+  confirmedChipText: {
+    fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.bold,
-    color: colors.textPrimary,
-  },
-  statusBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  statusText: {
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.semibold,
-    color: colors.white,
-  },
-  orderDate: {
-    fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.md,
-  },
-  orderItems: {
-    marginBottom: spacing.md,
-  },
-  itemText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  addressContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-    padding: spacing.sm,
-    borderRadius: 12,
-    backgroundColor: colors.background,
-  },
-  addressCopy: { flex: 1, minWidth: 0 },
-  addressLabel: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semibold,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  addressText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.textPrimary,
-    lineHeight: 20,
-  },
-  coordinatesText: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    fontStyle: 'italic',
-  },
-  orderFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-  },
-  totalContainer: {
-    flex: 1,
-  },
-  totalLabel: {
-    fontSize: typography.fontSize.base,
-    color: colors.textSecondary,
-  },
-  totalAmount: {
-    fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.primary,
-  },
-  originalAmount: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    textDecorationLine: 'line-through',
+    color: colors.success,
   },
   paymentStatusBadge: {
-    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: 12,
@@ -1178,18 +1355,7 @@ const styles = StyleSheet.create({
   paymentPendingText: {
     fontSize: typography.fontSize.sm,
     color: colors.warning,
-    marginTop: spacing.sm,
-  },
-  deliveryStatusText: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.success,
-    marginTop: spacing.sm,
-  },
-  deliveredByText: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
   },
   emptyContainer: {
     padding: spacing.xl,

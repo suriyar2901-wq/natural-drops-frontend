@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { colors, typography, spacing, borderRadius } from '../../theme';
 
 export type DateRangeValue = { startDate: Date | null; endDate: Date | null };
@@ -33,6 +33,8 @@ const normalizeRange = (range: DateRangeValue): DateRangeValue => {
 };
 
 export const DateRangePicker: React.FC<Props> = ({ value, onChange }) => {
+  const { width } = useWindowDimensions();
+  const showTwoMonths = width >= 720;
   const normalized = useMemo(() => normalizeRange(value), [value]);
   const [baseMonth, setBaseMonth] = useState<Date>(startOfMonth(normalized.startDate ?? new Date()));
 
@@ -136,9 +138,9 @@ export const DateRangePicker: React.FC<Props> = ({ value, onChange }) => {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.monthRow}>
+      <View style={[styles.monthRow, !showTwoMonths && styles.monthRowSingle]}>
         {renderMonth(baseMonth)}
-        {renderMonth(addMonths(baseMonth, 1))}
+        {showTwoMonths && renderMonth(addMonths(baseMonth, 1))}
       </View>
     </View>
   );
@@ -173,13 +175,16 @@ const styles = StyleSheet.create({
   monthRow: {
     flexDirection: 'row',
     gap: spacing.md,
-    // fallback for RN web
     justifyContent: 'space-between',
     flexWrap: 'wrap',
   },
+  monthRowSingle: {
+    flexDirection: 'column',
+  },
   month: {
     flex: 1,
-    minWidth: 280,
+    minWidth: 0,
+    width: '100%',
     padding: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,

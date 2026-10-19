@@ -100,10 +100,15 @@ class PaymentService {
     ];
   }
 
-  // Open UPI app
-  async openUPIApp(appPackage: string, upiId: string, amount: number, name: string) {
-    // TODO: Implement deep linking to UPI apps
-    console.log('Opening UPI app:', { appPackage, upiId, amount, name });
+  // Open UPI app (GPay / system UPI chooser)
+  async openUPIApp(_appPackage: string, upiId: string, amount: number, name: string) {
+    const { openUpiPayment } = await import('../utils/upiPayment');
+    return openUpiPayment({
+      upiId,
+      payeeName: name,
+      amount,
+      note: 'Natural Drops payment',
+    });
   }
 }
 

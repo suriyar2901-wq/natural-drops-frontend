@@ -83,19 +83,20 @@ export const LoginScreen = ({ navigation }: any) => {
           background: radial-gradient(circle, rgba(142,166,230,0.35), transparent 70%);
         }
         @keyframes nd-ripple {
-          0% { transform: scale(0.65); opacity: 0.55; }
-          100% { transform: scale(1.4); opacity: 0; }
+          0% { transform: scale(0.55); opacity: 0.7; }
+          100% { transform: scale(2.15); opacity: 0; }
         }
         .nd-ripple-ring {
           position: absolute;
-          border: 1.5px solid rgba(255,255,255,0.35);
+          border: 2px solid rgba(255,255,255,0.55);
           border-radius: 50%;
+          box-shadow: 0 0 18px rgba(255,255,255,0.35), inset 0 0 12px rgba(255,255,255,0.15);
           animation: nd-ripple 2.2s ease-out infinite;
         }
-        .nd-ripple-ring:nth-child(2) { animation-delay: 0.7s; }
-        .nd-ripple-ring:nth-child(3) { animation-delay: 1.4s; }
+        .nd-ripple-ring:nth-child(2) { animation-delay: 0.7s; border-color: rgba(255,255,255,0.4); }
+        .nd-ripple-ring:nth-child(3) { animation-delay: 1.4s; border-color: rgba(255,255,255,0.28); }
         @media (prefers-reduced-motion: reduce) {
-          .nd-ripple-ring { animation: none; opacity: 0.25; }
+          .nd-ripple-ring { animation: none; opacity: 0.3; }
         }
       `;
       document.head.appendChild(style);
@@ -211,25 +212,41 @@ export const LoginScreen = ({ navigation }: any) => {
   });
   const rippleScale = ripple.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.7, 1.45],
+    outputRange: [0.55, 2.1],
   });
   const rippleOpacity = ripple.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.5, 0],
+    outputRange: [0.65, 0],
   });
 
   const brandBlock = (
     <View style={[styles.brandInner, !isWide && styles.brandInnerMobile]}>
       <Animated.View style={{ transform: [{ translateY: dropTranslate }] }}>
-        <View style={styles.dropStage}>
+        <View style={[styles.dropStage, !isWide && styles.dropStageMobile]}>
           <Animated.View
             style={[
               styles.rippleRing,
+              styles.rippleRingSoft,
+              !isWide && styles.rippleRingMobile,
               { transform: [{ scale: rippleScale }], opacity: rippleOpacity },
             ]}
           />
-          <View style={styles.dropCore}>
-            <Ionicons name="water" size={isWide ? 42 : 32} color={colors.primary} />
+          <Animated.View
+            style={[
+              styles.rippleRing,
+              styles.rippleRingMid,
+              !isWide && styles.rippleRingMidMobile,
+              {
+                transform: [{ scale: rippleScale }],
+                opacity: rippleOpacity.interpolate({
+                  inputRange: [0, 0.65],
+                  outputRange: [0, 0.45],
+                }),
+              },
+            ]}
+          />
+          <View style={[styles.dropCore, !isWide && styles.dropCoreMobile]}>
+            <Ionicons name="water" size={isWide ? 42 : 28} color={colors.primary} />
           </View>
         </View>
       </Animated.View>
@@ -318,11 +335,11 @@ export const LoginScreen = ({ navigation }: any) => {
                 <div className="nd-login-orb nd-login-orb-b" />
                 <View style={styles.webRipples} pointerEvents="none">
                   {/* @ts-ignore */}
-                  <div className="nd-ripple-ring" style={{ width: 120, height: 120, top: '42%', left: '50%', marginLeft: -60, marginTop: -60 }} />
+                  <div className="nd-ripple-ring" style={{ width: 260, height: 260, top: '38%', left: '50%', marginLeft: -130, marginTop: -130 }} />
                   {/* @ts-ignore */}
-                  <div className="nd-ripple-ring" style={{ width: 120, height: 120, top: '42%', left: '50%', marginLeft: -60, marginTop: -60 }} />
+                  <div className="nd-ripple-ring" style={{ width: 260, height: 260, top: '38%', left: '50%', marginLeft: -130, marginTop: -130 }} />
                   {/* @ts-ignore */}
-                  <div className="nd-ripple-ring" style={{ width: 120, height: 120, top: '42%', left: '50%', marginLeft: -60, marginTop: -60 }} />
+                  <div className="nd-ripple-ring" style={{ width: 260, height: 260, top: '38%', left: '50%', marginLeft: -130, marginTop: -130 }} />
                 </View>
               </div>
             ) : (
@@ -342,10 +359,10 @@ export const LoginScreen = ({ navigation }: any) => {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.visualNative, styles.visualMobile]}>
+          <View style={[styles.visualNative, styles.visualMobile, { width: width - spacing.lg * 2 }]}>
             {Platform.OS === 'web' ? (
               // @ts-ignore
-              <div className="nd-login-visual" style={{ position: 'absolute', inset: 0, borderRadius: 28 }} />
+              <div className="nd-login-visual" style={{ position: 'absolute', inset: 0, borderRadius: 24 }} />
             ) : null}
             {brandBlock}
           </View>
@@ -406,9 +423,11 @@ const styles = StyleSheet.create({
     minHeight: '100%',
   },
   visualMobile: {
-    borderRadius: borderRadius.sheet,
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.lg,
+    alignSelf: 'center',
+    aspectRatio: 1,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
     marginBottom: spacing.lg,
   },
   orbA: {
@@ -437,24 +456,52 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     zIndex: 2,
     maxWidth: 420,
+    overflow: 'visible',
   },
   brandInnerMobile: {
     paddingHorizontal: spacing.md,
   },
   dropStage: {
-    width: 110,
-    height: 110,
+    width: 220,
+    height: 220,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
+    overflow: 'visible',
+  },
+  dropStageMobile: {
+    width: 112,
+    height: 112,
+    marginBottom: spacing.sm,
   },
   rippleRing: {
     position: 'absolute',
-    width: 110,
-    height: 110,
-    borderRadius: 55,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
+  rippleRingMobile: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+  },
+  rippleRingSoft: {
+    borderColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  rippleRingMid: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  rippleRingMidMobile: {
+    width: 108,
+    height: 108,
+    borderRadius: 54,
   },
   dropCore: {
     width: 76,
@@ -464,6 +511,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.md,
+  },
+  dropCoreMobile: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
   brandName: {
     fontFamily: typography.fontFamily.bold,
@@ -475,8 +527,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   brandNameMobile: {
-    fontSize: typography.fontSize.display,
-    letterSpacing: -0.8,
+    fontSize: typography.fontSize['2xl'],
+    letterSpacing: -0.6,
+    marginBottom: spacing.xs,
   },
   brandLine: {
     fontFamily: typography.fontFamily.regular,
@@ -486,8 +539,9 @@ const styles = StyleSheet.create({
     lineHeight: 28,
   },
   brandLineMobile: {
-    fontSize: typography.fontSize.base,
-    lineHeight: 24,
+    fontSize: typography.fontSize.sm,
+    lineHeight: 20,
+    paddingHorizontal: spacing.sm,
   },
   formColumn: {
     flex: 1,

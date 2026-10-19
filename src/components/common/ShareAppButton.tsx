@@ -10,7 +10,7 @@ import { showSuccessToast } from '../../utils/toast';
 type Props = {
   companyCode?: string | null;
   companyName?: string | null;
-  tone?: 'light' | 'solid';
+  tone?: 'light' | 'solid' | 'outline';
 };
 
 export const ShareAppButton = ({ companyCode, companyName, tone = 'solid' }: Props) => {
@@ -20,6 +20,8 @@ export const ShareAppButton = ({ companyCode, companyName, tone = 'solid' }: Pro
   const link = code ? appShareLink(code) : '';
   const message = code ? appShareMessage(companyName, code, link) : '';
   const light = tone === 'light';
+  const outline = tone === 'outline';
+  const iconColor = outline ? colors.primary : colors.white;
 
   useEffect(() => {
     if (!showQr || !link) {
@@ -100,20 +102,26 @@ export const ShareAppButton = ({ companyCode, companyName, tone = 'solid' }: Pro
     <>
       <View style={styles.row}>
         <TouchableOpacity
-          style={[styles.button, light ? styles.lightButton : styles.solidButton]}
+          style={[
+            styles.button,
+            light ? styles.lightButton : outline ? styles.outlineButton : styles.solidButton,
+          ]}
           onPress={shareLink}
           accessibilityLabel="Share application link"
         >
-          <Ionicons name="share-social-outline" size={18} color={light ? colors.white : colors.white} />
-          <Text style={styles.buttonText}>Share app</Text>
+          <Ionicons name="share-social-outline" size={18} color={iconColor} />
+          <Text style={[styles.buttonText, outline && styles.outlineButtonText]}>Share app</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.button, light ? styles.lightButton : styles.solidButton]}
+          style={[
+            styles.button,
+            light ? styles.lightButton : outline ? styles.outlineButton : styles.solidButton,
+          ]}
           onPress={() => setShowQr(true)}
           accessibilityLabel="Show application QR code"
         >
-          <Ionicons name="qr-code-outline" size={18} color={colors.white} />
-          <Text style={styles.buttonText}>QR code</Text>
+          <Ionicons name="qr-code-outline" size={18} color={iconColor} />
+          <Text style={[styles.buttonText, outline && styles.outlineButtonText]}>QR code</Text>
         </TouchableOpacity>
       </View>
 
@@ -171,10 +179,18 @@ const styles = StyleSheet.create({
   solidButton: {
     backgroundColor: colors.primary,
   },
+  outlineButton: {
+    backgroundColor: colors.white,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+  },
   lightButton: {
     backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.45)',
+  },
+  outlineButtonText: {
+    color: colors.primary,
   },
   buttonText: {
     color: colors.white,

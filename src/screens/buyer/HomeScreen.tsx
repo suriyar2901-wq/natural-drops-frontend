@@ -67,18 +67,19 @@ export const HomeScreen = ({ navigation }: any) => {
     }, [refetch])
   );
 
-  // Filter products based on search query (case-insensitive)
+  // In-stock only for buyers; then optional search filter
   const filteredProducts = useMemo(() => {
     if (!products || !Array.isArray(products)) {
       return [];
     }
-    
+
+    const inStock = products.filter((product: MenuItem) => (product.stockQuantity ?? 0) > 0);
     if (!searchQuery.trim()) {
-      return products;
+      return inStock;
     }
-    
+
     const query = searchQuery.toLowerCase().trim();
-    return products.filter((product: MenuItem) => {
+    return inStock.filter((product: MenuItem) => {
       const productName = product.name?.toLowerCase() || '';
       return productName.includes(query);
     });

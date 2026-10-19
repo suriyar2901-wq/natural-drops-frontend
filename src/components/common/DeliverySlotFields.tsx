@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../../theme';
 import { formatClockAmPm } from '../../utils/formatters';
@@ -149,34 +149,10 @@ export const DeliverySlotFields = ({
         ))}
       </View>
       {choice === 'Date' && (
-        <View style={styles.dateField}>
+        <TouchableOpacity style={styles.dateField} onPress={() => setCalendarOpen(true)} activeOpacity={0.85}>
           <Text style={styles.dateValue}>{displayDate}</Text>
           <Ionicons name="calendar-outline" size={20} color={colors.textSecondary} />
-          {Platform.OS === 'web' ? (
-            React.createElement('input', {
-              type: 'date',
-              min: today,
-              value: customDate,
-              onChange: (event: any) => {
-                const value = event.target.value;
-                if (value && value < today) return;
-                onCustomDateChange(value);
-              },
-              style: {
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                width: '100%',
-                height: '100%',
-                opacity: 0,
-                cursor: 'pointer',
-                boxSizing: 'border-box',
-              },
-            })
-          ) : (
-            <TouchableOpacity style={styles.dateHit} onPress={() => setCalendarOpen(true)} />
-          )}
-        </View>
+        </TouchableOpacity>
       )}
       </View>
       )}
@@ -261,7 +237,15 @@ export const DeliverySlotFields = ({
       )}
       <Text style={styles.hint}>
         {scheduledDate && isFutureDeliverySlot(scheduledDate, time)
-          ? `Delivery on ${scheduledDate.split('-').reverse().join('/')} at ${formatClockAmPm(time)}.`
+          ? (() => {
+              const label =
+                scheduledDate === today
+                  ? 'Today'
+                  : scheduledDate === toDeliveryYmd(1)
+                    ? 'Tomorrow'
+                    : scheduledDate.split('-').reverse().join('/');
+              return `Delivery: ${label}, ${formatClockAmPm(time)}.`;
+            })()
           : 'Pick a future date and a future time.'}
       </Text>
       <Modal visible={calendarOpen} transparent animationType="fade" onRequestClose={() => setCalendarOpen(false)}>
@@ -337,8 +321,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   dateValue: { color: colors.textPrimary, fontSize: typography.fontSize.base },
-  dateIcon: { fontSize: 18, marginLeft: spacing.sm },
-  dateHit: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 },
   hint: { color: colors.textSecondary, marginTop: spacing.sm },
   clockBox: { marginTop: spacing.sm, flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap', width: '100%', minWidth: 0, gap: spacing.xs },
   clockField: { width: 72, minWidth: 0 },

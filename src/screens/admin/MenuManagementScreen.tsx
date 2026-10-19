@@ -1,13 +1,15 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, TextInput, Modal, ScrollView, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, TextInput, Modal, ScrollView, Image, Platform, Switch } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { colors, typography, spacing } from '../../theme';
-import { Card, EmptyState, Loading, Button, ProductPhotoPlaceholder } from '../../components/common';
+import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
+import { EmptyState, Loading, Button } from '../../components/common';
 import { 
   useGetMenuItemsQuery, 
   useDeleteMenuItemMutation, 
   useCreateMenuItemMutation,
   useUpdateMenuItemMutation,
+  useUpdateStockMutation,
   useAddProductImageMutation,
   useDeleteProductImageMutation,
 } from '../../store/api/menuApi';
@@ -22,6 +24,7 @@ export const MenuManagementScreen = () => {
   const [deleteMenuItem] = useDeleteMenuItemMutation();
   const [createMenuItem] = useCreateMenuItemMutation();
   const [updateMenuItem] = useUpdateMenuItemMutation();
+  const [updateStock] = useUpdateStockMutation();
   const [addProductImage] = useAddProductImageMutation();
   const [deleteProductImage] = useDeleteProductImageMutation();
   const { user } = useAuth();
@@ -35,6 +38,8 @@ export const MenuManagementScreen = () => {
   console.log('📦 MenuManagement - first product:', products?.[0]);
   
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<'ALL' | 'water' | 'beverage'>('ALL');
+  const [togglingStockId, setTogglingStockId] = useState<number | null>(null);
   const [sellerFilter, setSellerFilter] = useState('ALL');
   const sellerOptions = useMemo(() => {
     const source = products;
@@ -287,6 +292,37 @@ export const MenuManagementScreen = () => {
     Alert.alert(title, message);
   };
 
+  const handleToggleStock = async (item: MenuItem, nextInStock: boolean) => {
+    setTogglingStockId(item.id);
+    try {
+      const nextQuantity = nextInStock
+        ? Math.max(item.stockQuantity || 0, 100)
+        : 0;
+      await updateStock({
+        id: item.id,
+        data: {
+          quantity: nextQuantity,
+          changedBy: user?.username || user?.role || 'seller',
+          notes: nextInStock ? 'Marked in stock' : 'Marked out of stock',
+        },
+      }).unwrap();
+      await refetch();
+    } catch (error: any) {
+      const errorMessage = error?.data?.message || error?.message || 'Failed to update stock';
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setTogglingStockId(null);
+    }
+  };
+
+  const showProductActions = (item: MenuItem) => {
+    Alert.alert(item.name, 'Choose an action', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Edit', onPress: () => handleEditProduct(item) },
+      { text: 'Delete', style: 'destructive', onPress: () => handleDelete(item.id, item.name) },
+    ]);
+  };
+
   const pickImagesFromGallery = async () => {
     try {
       setImagePickerLoading(true);
@@ -373,93 +409,120 @@ export const MenuManagementScreen = () => {
     // Double-check to ensure we never try to load placeholder.com URLs
     const isValidImageUrl = !!imageUri && !isPlaceholderUrl && (isBase64 || isExternalUrl);
     const isBeverage = String(item.category || '').toLowerCase() === 'beverage';
+    const inStock = (item.stockQuantity ?? 0) > 0;
+    const categoryLabel = isBeverage ? 'Beverage' : 'Water';
+    const iconBg = isBeverage ? colors.warningTint : colors.secondary;
     
     return (
-      <Card style={[styles.productCard, { borderLeftColor: isBeverage ? '#F59E0B' : colors.primary }]}>
-        <View style={styles.productRow}>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            style={styles.productMain}
-            onPress={() => {
-              const role = user?.role;
-              const routeName = role === 'admin' ? 'AdminProductDetail' : 'SellerProductDetail';
-              navigate(routeName, { productId: item.id });
-            }}
-          >
+      <View style={styles.productRowCard}>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          style={styles.productRowMain}
+          onPress={() => {
+            const role = user?.role;
+            const routeName = role === 'admin' ? 'AdminProductDetail' : 'SellerProductDetail';
+            navigate(routeName, { productId: item.id });
+          }}
+          onLongPress={() => showProductActions(item)}
+        >
+          <View style={[styles.productIconBox, { backgroundColor: iconBg }]}>
             {isValidImageUrl ? (
-              <View style={[styles.productImageContainer, { backgroundColor: isBeverage ? '#FFF7ED' : '#EFF6FF' }]}>
-                <Image
-                  key={`img-${item.id}-${item.updatedAt || item.createdAt || Date.now()}-${imageUri?.substring(0, 50)}`}
-                  source={{
-                    uri: imageUri,
-                    cache: 'reload',
-                  }}
-                  style={styles.productImage}
-                  resizeMode="contain"
-                />
-              </View>
+              <Image
+                key={`img-${item.id}-${item.updatedAt || item.createdAt || Date.now()}-${imageUri?.substring(0, 50)}`}
+                source={{ uri: imageUri, cache: 'reload' }}
+                style={styles.productIconImage}
+                resizeMode="cover"
+              />
             ) : (
-              <View style={[styles.productImageContainer, { backgroundColor: isBeverage ? '#FFF7ED' : '#EFF6FF' }]}>
-                <ProductPhotoPlaceholder size={72} />
-              </View>
+              <Ionicons
+                name={isBeverage ? 'cafe-outline' : 'water-outline'}
+                size={24}
+                color={colors.primary}
+              />
             )}
-
-            <View style={styles.productInfo}>
-              <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-              {isAdminAccount && !!item.sellerName && (
-                <Text style={styles.sellerName} numberOfLines={1}>{item.sellerName}</Text>
-              )}
-              <View style={[styles.categoryChip, { backgroundColor: isBeverage ? '#FEF3C7' : '#DBEAFE' }]}>
-                <Text style={[styles.categoryChipText, { color: isBeverage ? '#92400E' : '#1D4ED8' }]}>
-                  {item.category || 'Product'}
-                </Text>
-              </View>
-              {!!item.description?.trim() && (
-                <Text style={styles.productDescription} numberOfLines={1}>
-                  {item.description.trim()}
-                </Text>
-              )}
-              <Text style={styles.price}>{formatCurrency(item.rate)}</Text>
-            </View>
-          </TouchableOpacity>
-
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={() => handleEditProduct(item)}
-            >
-              <Text style={styles.editButtonText}>Edit</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={() => handleDelete(item.id, item.name)}
-            >
-              <Text style={styles.deleteButtonText}>Delete</Text>
-            </TouchableOpacity>
           </View>
+
+          <View style={styles.productInfo}>
+            <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+            {isAdminAccount && !!item.sellerName && (
+              <Text style={styles.sellerName} numberOfLines={1}>{item.sellerName}</Text>
+            )}
+            <Text style={styles.productMetaLine} numberOfLines={1}>
+              {categoryLabel} • {formatCurrency(item.rate)}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.stockToggleWrap}>
+          <Text style={styles.stockToggleLabel}>In stock</Text>
+          <Switch
+            value={inStock}
+            onValueChange={(value) => handleToggleStock(item, value)}
+            disabled={togglingStockId === item.id}
+            trackColor={{ false: colors.gray300, true: colors.primaryLight }}
+            thumbColor={colors.white}
+            ios_backgroundColor={colors.gray300}
+          />
         </View>
-      </Card>
+      </View>
     );
   };
+
+  const displayProducts = useMemo(() => (
+    isAdminAccount && sellerFilter !== 'ALL'
+      ? (products || []).filter((item) => (item.sellerName || '').trim() === sellerFilter)
+      : (products || [])
+  ), [isAdminAccount, sellerFilter, products]);
+
+  const categoryCounts = useMemo(() => {
+    const water = displayProducts.filter((item) => String(item.category || '').toLowerCase() === 'water').length;
+    const beverage = displayProducts.filter((item) => String(item.category || '').toLowerCase() === 'beverage').length;
+    return { all: displayProducts.length, water, beverage };
+  }, [displayProducts]);
+
+  const filteredProducts = useMemo(() => {
+    if (categoryFilter === 'ALL') return displayProducts;
+    return displayProducts.filter((item) => String(item.category || '').toLowerCase() === categoryFilter);
+  }, [displayProducts, categoryFilter]);
 
   if (isLoading) {
     return <Loading fullScreen message="Loading products..." />;
   }
 
-  const displayProducts = isAdminAccount && sellerFilter !== 'ALL'
-    ? (products || []).filter((item) => (item.sellerName || '').trim() === sellerFilter)
-    : products;
-
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={handleAddProduct}
-        >
-          <Text style={styles.addButtonText}>+ Add Product</Text>
-        </TouchableOpacity>
+      <View style={styles.screenHeader}>
+        <Text style={styles.screenTitle}>Products</Text>
       </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.categoryTabsScroll}
+        contentContainerStyle={styles.categoryTabsRow}
+      >
+        {([
+          { id: 'ALL' as const, label: 'All', count: categoryCounts.all },
+          { id: 'water' as const, label: 'Water', count: categoryCounts.water },
+          { id: 'beverage' as const, label: 'Beverage', count: categoryCounts.beverage },
+        ]).map((tab) => {
+          const selected = categoryFilter === tab.id;
+          return (
+            <TouchableOpacity
+              key={tab.id}
+              style={[styles.categoryTab, selected && styles.categoryTabActive]}
+              onPress={() => setCategoryFilter(tab.id)}
+            >
+              <Text style={[styles.categoryTabText, selected && styles.categoryTabTextActive]}>{tab.label}</Text>
+              <View style={[styles.categoryTabCount, selected && styles.categoryTabCountActive]}>
+                <Text style={[styles.categoryTabCountText, selected && styles.categoryTabCountTextActive]}>
+                  {tab.count}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
       {isAdminAccount && sellerOptions.length > 0 && (
         <ScrollView
@@ -483,7 +546,7 @@ export const MenuManagementScreen = () => {
       )}
       
       <FlatList
-        data={displayProducts}
+        data={filteredProducts}
         renderItem={renderProduct}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContent}
@@ -496,6 +559,11 @@ export const MenuManagementScreen = () => {
           />
         }
       />
+
+      <TouchableOpacity style={styles.fab} onPress={handleAddProduct} activeOpacity={0.9}>
+        <Ionicons name="add" size={20} color={colors.white} />
+        <Text style={styles.fabText}>Add product</Text>
+      </TouchableOpacity>
 
       {/* Product Add/Edit Modal */}
       <Modal
@@ -671,11 +739,73 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    padding: spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  screenHeader: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  screenTitle: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  categoryTabsScroll: {
+    maxHeight: 56,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  categoryTabsRow: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
     alignItems: 'center',
+  },
+  categoryTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.gray100,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  categoryTabActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  categoryTabText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.textSecondary,
+  },
+  categoryTabTextActive: {
+    color: colors.white,
+  },
+  categoryTabCount: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryTabCountActive: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  categoryTabCountText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
+  },
+  categoryTabCountTextActive: {
+    color: colors.white,
   },
   sellerFilterRow: {
     maxHeight: 48,
@@ -726,49 +856,40 @@ const styles = StyleSheet.create({
   filterButtonTextActive: {
     color: colors.white,
   },
-  addButton: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: 8,
-    backgroundColor: colors.success,
-  },
-  addButtonText: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.white,
-  },
   listContent: {
     padding: spacing.md,
+    paddingBottom: 96,
   },
-  productCard: {
-    marginBottom: spacing.md,
-    borderLeftWidth: 4,
-    paddingVertical: spacing.sm,
-  },
-  productRow: {
+  productRowCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    ...shadows.sm,
   },
-  productMain: {
+  productRowMain: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
     minWidth: 0,
+    paddingRight: spacing.sm,
   },
-  productImageContainer: {
-    width: 84,
-    height: 84,
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginRight: spacing.md,
+  productIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: borderRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    overflow: 'hidden',
   },
-  productImage: {
-    width: 68,
-    height: 68,
+  productIconImage: {
+    width: '100%',
+    height: '100%',
   },
   productPlaceholder: {
     width: 84,
@@ -802,10 +923,44 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   productName: {
-    fontSize: typography.fontSize.lg,
+    fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  productMetaLine: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    textTransform: 'capitalize',
+  },
+  stockToggleWrap: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    minWidth: 72,
+  },
+  stockToggleLabel: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
     marginBottom: 4,
+    fontWeight: typography.fontWeight.medium,
+  },
+  fab: {
+    position: 'absolute',
+    right: spacing.md,
+    bottom: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.full,
+    ...shadows.md,
+  },
+  fabText: {
+    color: colors.white,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
   },
   categoryChip: {
     alignSelf: 'flex-start',

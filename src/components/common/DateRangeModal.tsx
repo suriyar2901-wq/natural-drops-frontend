@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { Modal, ScrollView, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { colors, typography, spacing, borderRadius } from '../../theme';
 import { DateRangePicker, DateRangeValue } from './DateRangePicker';
+import { formatYmdDisplay } from '../../utils/formatters';
 
 export type DateRangeModalValue = DateRangeValue;
 
@@ -28,7 +29,7 @@ export const DateRangeModal: React.FC<Props> = ({ visible, initialValue, onApply
 
   const preview = useMemo(() => {
     if (!draft.startDate || !draft.endDate) return 'Select a start and end date';
-    return `${toLocalYmd(draft.startDate)} → ${toLocalYmd(draft.endDate)}`;
+    return `${formatYmdDisplay(toLocalYmd(draft.startDate))} – ${formatYmdDisplay(toLocalYmd(draft.endDate))}`;
   }, [draft.startDate, draft.endDate]);
 
   const canApply = !!draft.startDate && !!draft.endDate;
@@ -47,9 +48,9 @@ export const DateRangeModal: React.FC<Props> = ({ visible, initialValue, onApply
             </TouchableOpacity>
           </View>
 
-          <View style={styles.pickerContainer}>
+          <ScrollView style={styles.pickerScroll} contentContainerStyle={styles.pickerContainer} showsVerticalScrollIndicator={false}>
             <DateRangePicker value={draft} onChange={setDraft} />
-          </View>
+          </ScrollView>
 
           <View style={styles.previewPill}>
             <Text style={styles.previewText}>📅 {preview}</Text>
@@ -84,9 +85,14 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 720,
+    maxHeight: '92%',
     backgroundColor: colors.white,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
+  },
+  pickerScroll: {
+    maxHeight: 420,
+    width: '100%',
   },
   headerRow: {
     flexDirection: 'row',

@@ -475,9 +475,9 @@ const AdminTabs = ({ navigation }: any) => {
         name="ShopCustomers"
         component={ShopCustomersScreen}
         options={{
-          title: 'Customer ledger',
-          tabBarLabel: 'Customer ledger',
-          tabBarIcon: tabIcon('book-outline', 'book'),
+          title: 'Customers',
+          tabBarLabel: 'Customers',
+          tabBarIcon: tabIcon('people-outline', 'people'),
           headerTitle: brandOnlyTitle,
           headerLeft: () => <View style={styles.headerBrandWrap}>{sellerBrand}</View>,
         }}
