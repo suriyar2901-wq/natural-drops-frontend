@@ -33,7 +33,9 @@ export const OrderManagementScreen = () => {
   const navigation = useNavigation<any>();
   const [listTab, setListTab] = useState<'ALL' | 'ACTIVE' | 'COMPLETE'>('ACTIVE');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'ALL' | 'REGULAR'>('ALL');
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+  const [exportingOrderId, setExportingOrderId] = useState<number | null>(null);
   const [sellerFilter, setSellerFilter] = useState<string>('ALL');
   const [fromDate, setFromDate] = useState<string>(''); // yyyy-MM-dd
   const [toDate, setToDate] = useState<string>(''); // yyyy-MM-dd
@@ -287,6 +289,7 @@ export const OrderManagementScreen = () => {
   const handleExportSingle = async (order: Order) => {
     try {
       setExporting(true);
+      setExportingOrderId(order.id);
       const date = toLocalYmd(new Date());
       const filename = `order_${order.id}_${date}.pdf`;
       const path = `/orders/${order.id}/export/pdf?sellerName=${encodeURIComponent(sellerName)}`;
@@ -297,6 +300,27 @@ export const OrderManagementScreen = () => {
       showErrorAlert(e?.message || 'Failed to export order');
     } finally {
       setExporting(false);
+      setExportingOrderId(null);
+    }
+  };
+
+  const statusFilterLabel =
+    statusFilter === 'ALL'
+      ? 'All status'
+      : statusFilter === 'REGULAR'
+        ? 'Regular order'
+        : statusFilter === OrderStatus.CANCELED
+          ? 'Cancelled'
+          : formatOrderStatus(statusFilter);
+
+  const applyStatusFilter = (id: OrderStatus | 'ALL' | 'REGULAR') => {
+    setStatusFilter(id);
+    setStatusMenuOpen(false);
+    if (id === OrderStatus.DELIVERED) setListTab('COMPLETE');
+    else if (id === OrderStatus.PENDING || id === OrderStatus.CONFIRMED || id === OrderStatus.PROCESSING) {
+      setListTab('ACTIVE');
+    } else if (id === OrderStatus.CANCELED || id === 'REGULAR') {
+      setListTab('ALL');
     }
   };
 
@@ -329,6 +353,24 @@ export const OrderManagementScreen = () => {
       ? OrderStatus.CONFIRMED
       : status;
     return ORDER_STATUS_COLORS[key as keyof typeof ORDER_STATUS_COLORS] || colors.gray500;
+  };
+
+  /** Soft status surfaces — UI/UX Pro: tint + accent border (not color-only) */
+  const getOrderCardSurface = (status: string) => {
+    const s = normalizeStatus(status);
+    if (s === normalizeStatus(OrderStatus.PENDING)) {
+      return { backgroundColor: '#FFF7ED', borderColor: '#FDBA74', accent: '#EA580C', iconBg: '#FFEDD5' };
+    }
+    if (s === normalizeStatus(OrderStatus.CONFIRMED) || s === normalizeStatus(OrderStatus.PROCESSING)) {
+      return { backgroundColor: '#EFF6FF', borderColor: '#93C5FD', accent: colors.primary, iconBg: colors.blue100 };
+    }
+    if (s === normalizeStatus(OrderStatus.DELIVERED)) {
+      return { backgroundColor: colors.successTint, borderColor: '#86EFAC', accent: colors.success, iconBg: '#DCFCE7' };
+    }
+    if (s === normalizeStatus(OrderStatus.CANCELED)) {
+      return { backgroundColor: colors.errorTint, borderColor: '#FECACA', accent: colors.error, iconBg: '#FEE2E2' };
+    }
+    return { backgroundColor: colors.white, borderColor: colors.border, accent: colors.gray400, iconBg: colors.gray100 };
   };
 
   const handleConfirmOrder = async (orderId: number) => {
@@ -575,23 +617,35 @@ export const OrderManagementScreen = () => {
     };
 
     const statusTint =
-      isPending ? '#FFF1E0'
+      isPending ? '#FFEDD5'
         : isConfirmedOrProcessing ? colors.blue100
-          : normalizedStatus === normalizeStatus(OrderStatus.DELIVERED) ? colors.successTint
-            : colors.gray100;
+          : normalizedStatus === normalizeStatus(OrderStatus.DELIVERED) ? '#DCFCE7'
+            : normalizedStatus === normalizeStatus(OrderStatus.CANCELED) ? '#FEE2E2'
+              : colors.gray100;
+    const cardSurface = getOrderCardSurface(item.status);
 
     return (
-      <View style={styles.orderCard}>
+      <View
+        style={[
+          styles.orderCard,
+          {
+            backgroundColor: cardSurface.backgroundColor,
+            borderColor: cardSurface.borderColor,
+            borderLeftWidth: 4,
+            borderLeftColor: cardSurface.accent,
+          },
+        ]}
+      >
         <View style={styles.orderCardCollapsed}>
           <TouchableOpacity activeOpacity={0.85} onPress={toggleExpanded} style={styles.orderCardTapArea}>
-            <View style={styles.orderDocIcon}>
-              <Ionicons name="document-text-outline" size={22} color="#854A0E" />
+            <View style={[styles.orderDocIcon, { backgroundColor: cardSurface.iconBg }]}>
+              <Ionicons name="document-text-outline" size={22} color={cardSurface.accent} />
             </View>
             <View style={styles.orderCardHeaderLeft}>
               <View style={styles.orderTitleRow}>
                 <Text style={styles.orderIdCompact}>#Order {String(item.id).padStart(2, '0')}</Text>
                 <View style={[styles.statusPill, { backgroundColor: statusTint }]}>
-                  <Text style={[styles.statusPillText, { color: isPending ? '#854A0E' : statusColor }]}>
+                  <Text style={[styles.statusPillText, { color: isPending ? '#9A3412' : statusColor }]}>
                     {formatOrderStatus(item.status)}
                   </Text>
                 </View>
@@ -599,28 +653,54 @@ export const OrderManagementScreen = () => {
               {isStrictAdmin() && !!item.sellerBusinessName && (
                 <Text style={styles.sellerNameCompact} numberOfLines={1}>{item.sellerBusinessName}</Text>
               )}
-              <Text style={styles.deliveryTimeText} numberOfLines={2}>
-                {getDeliveryLabel(item)} • {getCollectAmount(item)}
+              <Text style={styles.deliveryTimeText} numberOfLines={1}>
+                {getDeliveryLabel(item)}
+              </Text>
+              <Text style={styles.orderAmountHighlight} numberOfLines={1}>
+                {getCollectAmount(item)}
               </Text>
             </View>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.callButton}
-            onPress={() => {
-              if (callLink) openContact(callLink);
-              else showErrorAlert('Phone number not available.');
-            }}
-          >
-            <Ionicons name="call" size={15} color={colors.primary} />
-            <Text style={styles.callButtonText}>Call</Text>
-          </TouchableOpacity>
-          <TouchableOpacity activeOpacity={0.7} onPress={toggleExpanded} hitSlop={8}>
-            <Ionicons
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={colors.textSecondary}
-            />
-          </TouchableOpacity>
+          <View style={styles.orderRowActions}>
+            {isExportEligible(item) && (
+              <TouchableOpacity
+                style={[styles.exportBillButton, isMobile && styles.exportBillButtonIconOnly]}
+                onPress={() => handleExportSingle(item)}
+                disabled={exporting}
+                accessibilityLabel={`Export bill for order ${item.id}`}
+              >
+                {exportingOrderId === item.id ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : isMobile ? (
+                  <Ionicons name="download-outline" size={18} color={colors.primary} />
+                ) : (
+                  <>
+                    <View style={styles.exportBillIconWrap}>
+                      <Ionicons name="download-outline" size={14} color={colors.primary} />
+                    </View>
+                    <Text style={styles.exportBillButtonText}>Export</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.callButton}
+              onPress={() => {
+                if (callLink) openContact(callLink);
+                else showErrorAlert('Phone number not available.');
+              }}
+            >
+              <Ionicons name="call" size={15} color={colors.primary} />
+              <Text style={styles.callButtonText}>Call</Text>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7} onPress={toggleExpanded} hitSlop={8}>
+              <Ionicons
+                name={expanded ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {expanded && (
@@ -686,7 +766,7 @@ export const OrderManagementScreen = () => {
                   onPress={() => handleExportSingle(item)}
                   disabled={exporting}
                 >
-                  <Ionicons name="download-outline" size={18} color={colors.primary} />
+                  <Ionicons name="download-outline" size={16} color={colors.primary} />
                   <Text style={styles.iconActionText}>Export</Text>
                 </TouchableOpacity>
               )}
@@ -750,7 +830,7 @@ export const OrderManagementScreen = () => {
         )}
 
         {(isPending || isConfirmedOrProcessing) && (
-          <View style={styles.orderCardActions}>
+          <View style={[styles.orderCardActions, styles.orderCardActionsOnTint]}>
             <TouchableOpacity
               style={styles.cancelTextButton}
               onPress={() => {
@@ -832,6 +912,7 @@ export const OrderManagementScreen = () => {
                   onPress={() => {
                     setListTab(tab.id);
                     setStatusFilter('ALL');
+                    setStatusMenuOpen(false);
                   }}
                 >
                   <Text style={[styles.listTabText, selected && styles.listTabTextActive]}>
@@ -846,6 +927,51 @@ export const OrderManagementScreen = () => {
               );
             })}
           </ScrollView>
+
+          <View style={styles.statusMenuWrap}>
+            <TouchableOpacity
+              style={[styles.statusMenuButton, statusFilter !== 'ALL' && styles.statusMenuButtonActive]}
+              onPress={() => setStatusMenuOpen((open) => !open)}
+            >
+              <Text
+                style={[styles.statusMenuText, statusFilter !== 'ALL' && styles.statusMenuTextActive]}
+                numberOfLines={1}
+              >
+                {statusFilterLabel}
+              </Text>
+              <Text style={[styles.statusMenuCaret, statusFilter !== 'ALL' && styles.statusMenuTextActive]}>
+                {statusMenuOpen ? '▴' : '▾'}
+              </Text>
+            </TouchableOpacity>
+            {statusMenuOpen && (
+              <View style={styles.statusMenu}>
+                {([
+                  { id: 'ALL' as const, label: 'All status' },
+                  { id: OrderStatus.PENDING, label: 'Pending' },
+                  { id: OrderStatus.CONFIRMED, label: 'Confirmed' },
+                  { id: OrderStatus.DELIVERED, label: 'Delivered' },
+                  { id: OrderStatus.CANCELED, label: 'Cancelled' },
+                  { id: 'REGULAR' as const, label: 'Regular order' },
+                ]).map((option) => (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={[styles.statusMenuItem, statusFilter === option.id && styles.statusMenuItemActive]}
+                    onPress={() => applyStatusFilter(option.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.statusMenuItemText,
+                        statusFilter === option.id && styles.statusMenuItemTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
           <TouchableOpacity
             style={[
               styles.exportOrdersButton,
@@ -854,25 +980,30 @@ export const OrderManagementScreen = () => {
             ]}
             onPress={handleExportFiltered}
             disabled={exporting}
+            activeOpacity={0.85}
+            accessibilityLabel="Export orders"
           >
-            <Ionicons name="download-outline" size={16} color={colors.white} />
-            <Text style={styles.exportOrdersButtonText}>
-              {exporting ? 'Exporting…' : 'Export'}
-            </Text>
+            {isMobile ? (
+              <Ionicons name="download-outline" size={16} color={colors.white} />
+            ) : (
+              <>
+                <View style={styles.exportOrdersIconWrap}>
+                  <Ionicons name="download-outline" size={13} color={colors.primary} />
+                </View>
+                <Text style={styles.exportOrdersButtonText}>
+                  {exporting ? '…' : 'Export'}
+                </Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
-        {statusFilter !== 'ALL' && (
-          <View style={styles.subFilterRow}>
-            <Text style={styles.subFilterLabel}>
-              Filter: {statusFilter === 'REGULAR' ? 'Regular order' : formatOrderStatus(statusFilter)}
-            </Text>
-            <TouchableOpacity onPress={() => setStatusFilter('ALL')}>
-              <Text style={styles.subFilterClear}>Clear</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        <View style={styles.dateRangeRow}>
-          <TouchableOpacity style={styles.dateRangeButton} onPress={() => setDateModalVisible(true)}>
+
+        <View style={[styles.dateRangeRow, isMobile && styles.dateRangeRowMobile]}>
+          <TouchableOpacity
+            style={[styles.dateRangeButton, isMobile && styles.dateRangeButtonMobile]}
+            onPress={() => setDateModalVisible(true)}
+          >
+            <Ionicons name="calendar-outline" size={14} color={colors.primary} />
             <Text style={styles.dateRangeButtonText}>Select Date Range</Text>
           </TouchableOpacity>
 
@@ -994,6 +1125,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     zIndex: 20,
+    overflow: 'visible',
   },
   categoryRow: {
     flex: 1,
@@ -1004,34 +1136,45 @@ const styles = StyleSheet.create({
   },
   statusMenuWrap: {
     position: 'relative',
-    zIndex: 30,
+    zIndex: 50,
+    flexShrink: 0,
   },
   statusMenuButton: {
-    minHeight: 36,
-    minWidth: 140,
-    paddingHorizontal: spacing.md,
-    borderRadius: spacing.md,
+    height: 34,
+    minWidth: 100,
+    maxWidth: 130,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.full,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
+    borderColor: colors.primary,
+    backgroundColor: '#F0F9FF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.sm,
+    gap: 4,
+  },
+  statusMenuButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   statusMenuText: {
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.fontSize.xs,
     color: colors.textPrimary,
     fontWeight: typography.fontWeight.semibold,
+    maxWidth: 96,
+  },
+  statusMenuTextActive: {
+    color: colors.white,
   },
   statusMenuCaret: {
     color: colors.textSecondary,
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.fontSize.xs,
   },
   statusMenu: {
     position: 'absolute',
-    top: 40,
-    left: 0,
+    top: 36,
+    right: 0,
+    left: undefined,
     minWidth: 160,
     backgroundColor: colors.white,
     borderWidth: 1,
@@ -1063,42 +1206,57 @@ const styles = StyleSheet.create({
   filterTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     gap: spacing.sm,
+    minHeight: 34,
   },
   filterTopRowMobile: {
-    // On mobile, ensure proper spacing and prevent overflow
     flexWrap: 'nowrap',
-    minHeight: 44, // Touch-friendly height
+    minHeight: 34,
   },
   exportOrdersButton: {
     backgroundColor: colors.primary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    height: 34,
+    paddingLeft: 5,
+    paddingRight: 10,
     borderRadius: borderRadius.full,
-    marginLeft: spacing.sm,
+    marginLeft: 'auto',
     flexShrink: 0,
-    minWidth: 88,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
+    borderWidth: 1,
+    borderColor: colors.primaryDark,
+  },
+  exportOrdersIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tabsScroll: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 1,
     minWidth: 0,
+    maxWidth: '48%',
   },
   tabsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.xs,
     paddingRight: spacing.xs,
+    height: 34,
   },
   listTab: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: 4,
+    height: 34,
+    paddingHorizontal: 10,
     borderRadius: borderRadius.full,
     backgroundColor: colors.gray100,
     borderWidth: 1,
@@ -1117,10 +1275,10 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   listTabCount: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    paddingHorizontal: 6,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
     backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1153,33 +1311,46 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   exportOrdersButtonMobile: {
-    // Smaller button on mobile to save space
-    paddingHorizontal: spacing.sm,
-    marginLeft: spacing.xs,
-    minWidth: 70,
+    width: 34,
+    height: 34,
+    paddingLeft: 0,
+    paddingRight: 0,
+    marginLeft: 'auto',
   },
   exportOrdersButtonDisabled: {
     backgroundColor: colors.gray400,
+    borderColor: colors.gray400,
   },
   exportOrdersButtonText: {
-    fontSize: typography.fontSize.sm,
+    fontSize: 11,
     color: colors.white,
-    fontWeight: typography.fontWeight.semibold,
+    fontWeight: typography.fontWeight.bold,
+    letterSpacing: 0.2,
   },
   dateRangeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     marginTop: spacing.sm,
     gap: spacing.sm,
   },
+  dateRangeRowMobile: {
+    marginTop: spacing.sm,
+  },
   dateRangeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 34,
     backgroundColor: colors.gray100,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: spacing.md,
+    borderRadius: borderRadius.full,
+  },
+  dateRangeButtonMobile: {
+    flex: 1,
+    justifyContent: 'center',
   },
   dateRangeButtonText: {
     fontSize: typography.fontSize.sm,
@@ -1255,6 +1426,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...shadows.sm,
   },
+  orderCardActionsOnTint: {
+    backgroundColor: 'rgba(255,255,255,0.55)',
+  },
   orderCardCollapsed: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1304,6 +1478,12 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: typography.fontWeight.medium,
   },
+  orderAmountHighlight: {
+    marginTop: 2,
+    fontSize: typography.fontSize.base,
+    color: colors.error,
+    fontWeight: typography.fontWeight.bold,
+  },
   statusPill: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 3,
@@ -1318,6 +1498,49 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.semibold,
     color: colors.textPrimary,
     marginBottom: 2,
+  },
+  orderRowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flexShrink: 0,
+  },
+  exportBillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingLeft: 4,
+    paddingRight: 10,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: colors.primaryDark,
+  },
+  exportBillButtonIconOnly: {
+    paddingLeft: 0,
+    paddingRight: 0,
+    paddingVertical: 0,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.blue100,
+    borderColor: colors.blue300,
+  },
+  exportBillIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exportBillButtonText: {
+    fontSize: 11,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.white,
+    letterSpacing: 0.2,
   },
   callButton: {
     flexDirection: 'row',

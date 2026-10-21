@@ -330,7 +330,7 @@ const BuyerTabs = ({ navigation }: any) => {
       headerTitleAlign: 'left',
       headerTitleContainerStyle: styles.headerTitleSlot,
       headerLeftContainerStyle: styles.headerLeftSlot,
-      headerStyle: { backgroundColor: colors.primary },
+      headerStyle: { backgroundColor: colors.primary, height: 56, overflow: 'hidden' },
       headerTintColor: colors.white,
       headerRight: () => <HeaderRight navigation={navigation} />,
     }}
@@ -412,7 +412,7 @@ const AdminTabs = ({ navigation }: any) => {
       headerTitleAlign: 'left',
       headerTitleContainerStyle: styles.headerTitleSlot,
       headerLeftContainerStyle: styles.headerLeftSlot,
-      headerStyle: { backgroundColor: colors.primary },
+      headerStyle: { backgroundColor: colors.primary, height: 56, overflow: 'hidden' },
       headerTintColor: colors.white,
       headerRight: () => <HeaderRight navigation={navigation} />,
     }}
@@ -805,19 +805,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerLeftSlot: {
-    marginLeft: spacing.md,
-    flexShrink: 0,
+    marginLeft: spacing.sm,
+    flexShrink: 1,
+    maxWidth: '55%',
     justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    height: 48,
   },
   headerTitleSlot: {
     flexShrink: 1,
     minWidth: 0,
     justifyContent: 'center',
     alignItems: 'flex-start',
+    overflow: 'hidden',
+    height: 48,
   },
   headerBrandWrap: {
     maxWidth: '100%',
     flexShrink: 1,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    height: 40,
   },
   headerTitleText: {
     color: colors.white,

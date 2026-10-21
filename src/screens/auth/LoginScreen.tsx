@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
@@ -12,11 +13,12 @@ import {
   Easing,
   useWindowDimensions,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
+import { colors, typography, spacing, borderRadius } from '../../theme';
 import { Button, Input, CustomerServiceModal } from '../../components/common';
 import { useAuth } from '../../hooks';
 import { validators } from '../../utils/validators';
+
+const thanniCanLogo = require('../../../assets/brand/thanni-can-logo.png');
 
 export const LoginScreen = ({ navigation }: any) => {
   const { login, isLoading } = useAuth();
@@ -36,6 +38,9 @@ export const LoginScreen = ({ navigation }: any) => {
   const ripple = useRef(new Animated.Value(0)).current;
   const dropFloat = useRef(new Animated.Value(0)).current;
   const waveDrift = useRef(new Animated.Value(0)).current;
+  const splashA = useRef(new Animated.Value(0)).current;
+  const splashB = useRef(new Animated.Value(0)).current;
+  const splashC = useRef(new Animated.Value(0)).current;
 
   const showErrorPopup = (title: string, message: string) => {
     setErrorPopup({ title, message });
@@ -135,19 +140,36 @@ export const LoginScreen = ({ navigation }: any) => {
     );
     const waveLoop = Animated.loop(
       Animated.sequence([
-        Animated.timing(waveDrift, { toValue: 1, duration: 3200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(waveDrift, { toValue: 0, duration: 3200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(waveDrift, { toValue: 1, duration: 2800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(waveDrift, { toValue: 0, duration: 2800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ])
     );
+    const makeSplash = (value: Animated.Value, duration: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(value, { toValue: 1, duration, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+          Animated.timing(value, { toValue: 0, duration: 0, useNativeDriver: true }),
+          Animated.delay(280),
+        ])
+      );
+    const splashLoopA = makeSplash(splashA, 1600);
+    const splashLoopB = makeSplash(splashB, 2100);
+    const splashLoopC = makeSplash(splashC, 1900);
     rippleLoop.start();
     floatLoop.start();
     waveLoop.start();
+    splashLoopA.start();
+    splashLoopB.start();
+    splashLoopC.start();
     return () => {
       rippleLoop.stop();
       floatLoop.stop();
       waveLoop.stop();
+      splashLoopA.stop();
+      splashLoopB.stop();
+      splashLoopC.stop();
     };
-  }, [enterOpacity, enterY, ripple, dropFloat, waveDrift]);
+  }, [enterOpacity, enterY, ripple, dropFloat, waveDrift, splashA, splashB, splashC]);
 
   const actualLoading = localLoading;
 
@@ -229,11 +251,30 @@ export const LoginScreen = ({ navigation }: any) => {
   });
   const waveShift = waveDrift.interpolate({
     inputRange: [0, 1],
-    outputRange: [-18, 18],
+    outputRange: [-22, 22],
   });
   const waveShiftAlt = waveDrift.interpolate({
     inputRange: [0, 1],
-    outputRange: [14, -14],
+    outputRange: [18, -18],
+  });
+  const waveLift = waveDrift.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -8],
+  });
+
+  const splashMotion = (value: Animated.Value, rise: number, drift: number) => ({
+    opacity: value.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 0.95, 0] }),
+    transform: [
+      {
+        translateY: value.interpolate({ inputRange: [0, 1], outputRange: [8, -rise] }),
+      },
+      {
+        translateX: value.interpolate({ inputRange: [0, 1], outputRange: [0, drift] }),
+      },
+      {
+        scale: value.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0.55, 1.05, 0.7] }),
+      },
+    ],
   });
 
   /** Native-friendly atmosphere + wave (works on mobile app and mobile web). */
@@ -260,10 +301,31 @@ export const LoginScreen = ({ navigation }: any) => {
           />
         ))}
       </View>
+      <Animated.View style={[styles.floatDrop, styles.floatDropA, splashMotion(splashA, 46, -18)]} />
+      <Animated.View style={[styles.floatDrop, styles.floatDropB, splashMotion(splashB, 58, 22)]} />
+      <Animated.View style={[styles.floatDrop, styles.floatDropC, splashMotion(splashC, 40, 12)]} />
       <View style={styles.waveWrap}>
-        <Animated.View style={[styles.waveBlob, styles.waveBlobBack, { transform: [{ translateX: waveShiftAlt }] }]} />
-        <Animated.View style={[styles.waveBlob, styles.waveBlobMid, { transform: [{ translateX: waveShift }] }]} />
-        <Animated.View style={[styles.waveBlob, styles.waveBlobFront, { transform: [{ translateX: waveShiftAlt }] }]} />
+        <Animated.View
+          style={[
+            styles.waveBlob,
+            styles.waveBlobBack,
+            { transform: [{ translateX: waveShiftAlt }, { translateY: waveLift }] },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.waveBlob,
+            styles.waveBlobMid,
+            { transform: [{ translateX: waveShift }, { translateY: waveLift }] },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.waveBlob,
+            styles.waveBlobFront,
+            { transform: [{ translateX: waveShiftAlt }] },
+          ]}
+        />
       </View>
     </View>
   );
@@ -271,7 +333,7 @@ export const LoginScreen = ({ navigation }: any) => {
   const brandBlock = (
     <View style={[styles.brandInner, !isWide && styles.brandInnerMobile]}>
       <Animated.View style={{ transform: [{ translateY: dropTranslate }] }}>
-        <View style={[styles.dropStage, !isWide && styles.dropStageMobile]}>
+        <View style={[styles.logoStage, !isWide && styles.logoStageMobile]}>
           <Animated.View
             style={[
               styles.rippleRing,
@@ -294,31 +356,55 @@ export const LoginScreen = ({ navigation }: any) => {
               },
             ]}
           />
-          <View style={[styles.dropCore, !isWide && styles.dropCoreMobile]}>
-            <Ionicons name="water" size={isWide ? 42 : 28} color={colors.primary} />
+          {/* Soft light plate so black “Thanni Can” type in the PNG stays readable */}
+          <View style={[styles.logoGlow, !isWide && styles.logoGlowMobile]} />
+          <View style={[styles.logoFrame, !isWide && styles.logoFrameMobile]}>
+            <Image
+              source={thanniCanLogo}
+              style={[styles.logoImage, !isWide && styles.logoImageMobile]}
+              resizeMode="contain"
+              accessibilityLabel="Thanni Can logo"
+              accessibilityRole="header"
+            />
           </View>
         </View>
       </Animated.View>
 
-      <Text style={[styles.brandName, !isWide && styles.brandNameMobile]} accessibilityRole="header">
-        Natural Drops
-      </Text>
-      <Text style={[styles.brandLine, !isWide && styles.brandLineMobile]}>
-        Fresh water cans, delivered to your door
-      </Text>
+      <View style={[styles.taglineBlock, !isWide && styles.taglineBlockMobile]}>
+        <View style={styles.taglineRail}>
+          <Animated.View style={[styles.taglineRailDash, { transform: [{ translateX: waveShift }] }]} />
+        </View>
+        <View style={styles.taglineCopy}>
+          <Text style={[styles.taglineKicker, !isWide && styles.taglineKickerMobile]}>
+            DAILY DELIVERY
+          </Text>
+          <Text style={[styles.taglineLead, !isWide && styles.taglineLeadMobile]}>
+            Fresh water cans
+          </Text>
+          <Text style={[styles.taglineSub, !isWide && styles.taglineSubMobile]}>
+            delivered to your door
+          </Text>
+        </View>
+        <View style={styles.taglineRail}>
+          <Animated.View style={[styles.taglineRailDash, { transform: [{ translateX: waveShiftAlt }] }]} />
+        </View>
+      </View>
     </View>
   );
 
   const formBlock = (
     <Animated.View
       style={[
-        styles.formWrap,
-        isWide && styles.formWrapWide,
+        styles.formCard,
+        isWide && styles.formCardWide,
         { opacity: enterOpacity, transform: [{ translateY: enterY }] },
       ]}
     >
-      <Text style={styles.formTitle}>Welcome back</Text>
-      <Text style={styles.formSubtitle}>Sign in to continue</Text>
+      <View style={styles.formHeader}>
+        <Text style={styles.formEyebrow}>ACCOUNT</Text>
+        <Text style={styles.formTitle}>Welcome back</Text>
+        <Text style={styles.formSubtitle}>Sign in to order and track your water cans</Text>
+      </View>
 
       <Input
         label="Username"
@@ -339,13 +425,13 @@ export const LoginScreen = ({ navigation }: any) => {
         error={errors.password}
       />
 
-      <Button
-        title="Forgot Password?"
+      <TouchableOpacity
         onPress={() => navigation.navigate('ForgotPassword')}
-        variant="text"
-        fullWidth
-        style={styles.forgotPasswordButton}
-      />
+        style={styles.forgotLink}
+        accessibilityRole="button"
+      >
+        <Text style={styles.forgotLinkText}>Forgot password?</Text>
+      </TouchableOpacity>
 
       <Button
         title="Login"
@@ -355,14 +441,17 @@ export const LoginScreen = ({ navigation }: any) => {
         style={styles.loginButton}
       />
 
+      <View style={styles.formDivider}>
+        <View style={styles.formDividerLine} />
+        <Text style={styles.formDividerText}>or</Text>
+        <View style={styles.formDividerLine} />
+      </View>
+
       <View style={styles.registerRow}>
-        <Text style={styles.registerHint}>Don&apos;t have an account?</Text>
-        <Button
-          title="Register"
-          onPress={() => navigation.navigate('Register')}
-          variant="text"
-          style={styles.registerButton}
-        />
+        <Text style={styles.registerHint}>New here?</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('Register')} accessibilityRole="button">
+          <Text style={styles.registerLink}>Create account</Text>
+        </TouchableOpacity>
       </View>
     </Animated.View>
   );
@@ -404,15 +493,17 @@ export const LoginScreen = ({ navigation }: any) => {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.visualNative, styles.visualMobile, { width: width - spacing.lg * 2 }]}>
-            {Platform.OS === 'web' ? (
-              // @ts-ignore keep web gradient fill under RN wave layers
-              <div className="nd-login-visual" style={{ position: 'absolute', inset: 0, borderRadius: 24 }} />
-            ) : null}
-            {renderAtmosphere(true)}
-            {brandBlock}
+          <View style={styles.mobileHeroShell}>
+            <View style={[styles.visualNative, styles.visualMobile]}>
+              {Platform.OS === 'web' ? (
+                // @ts-ignore keep web gradient fill under RN wave layers
+                <div className="nd-login-visual" style={{ position: 'absolute', inset: 0, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }} />
+              ) : null}
+              {renderAtmosphere(true)}
+              {brandBlock}
+            </View>
           </View>
-          {formBlock}
+          <View style={styles.mobileFormShell}>{formBlock}</View>
         </ScrollView>
       )}
 
@@ -451,7 +542,7 @@ export const LoginScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.white,
+    backgroundColor: colors.canvas,
   },
   split: {
     flex: 1,
@@ -465,23 +556,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   visualWide: {
-    flex: 1.05,
+    flex: 1.08,
     minHeight: '100%',
   },
+  mobileHeroShell: {
+    width: '100%',
+    marginBottom: -28,
+    zIndex: 1,
+  },
   visualMobile: {
-    alignSelf: 'center',
-    aspectRatio: 1,
-    borderRadius: borderRadius.lg,
-    paddingVertical: spacing.md,
+    width: '100%',
+    minHeight: 420,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing['2xl'],
     paddingHorizontal: spacing.md,
-    marginBottom: spacing.lg,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+  },
+  mobileFormShell: {
+    zIndex: 2,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   atmosphere: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
   },
   atmosphereRounded: {
-    borderRadius: borderRadius.lg,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
   },
   atmosGlowTop: {
     position: 'absolute',
@@ -562,6 +665,18 @@ const styles = StyleSheet.create({
     height: 78,
     backgroundColor: 'rgba(255,255,255,0.16)',
   },
+  floatDrop: {
+    position: 'absolute',
+    width: 10,
+    height: 14,
+    borderRadius: 8,
+    backgroundColor: 'rgba(190, 220, 255, 0.95)',
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
+  },
+  floatDropA: { top: '28%', left: '18%' },
+  floatDropB: { top: '22%', right: '16%' },
+  floatDropC: { top: '42%', right: '10%' },
   webRipples: {
     ...StyleSheet.absoluteFillObject,
   },
@@ -575,108 +690,205 @@ const styles = StyleSheet.create({
   brandInnerMobile: {
     paddingHorizontal: spacing.md,
   },
-  dropStage: {
-    width: 220,
-    height: 220,
+  logoStage: {
+    width: 360,
+    height: 340,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.xs,
     overflow: 'visible',
   },
-  dropStageMobile: {
-    width: 112,
-    height: 112,
-    marginBottom: spacing.sm,
+  logoStageMobile: {
+    width: 268,
+    height: 252,
+    marginBottom: 2,
   },
   rippleRing: {
     position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.55)',
+    borderColor: 'rgba(255,255,255,0.35)',
   },
   rippleRingMobile: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 228,
+    height: 228,
+    borderRadius: 114,
   },
   rippleRingSoft: {
-    borderColor: 'rgba(255,255,255,0.5)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.38)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
   },
   rippleRingMid: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
+    width: 340,
+    height: 340,
+    borderRadius: 170,
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   rippleRingMidMobile: {
-    width: 108,
-    height: 108,
-    borderRadius: 54,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
   },
-  dropCore: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: colors.white,
+  logoGlow: {
+    position: 'absolute',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: 'rgba(210, 228, 255, 0.55)',
+  },
+  logoGlowMobile: {
+    width: 230,
+    height: 230,
+    borderRadius: 115,
+  },
+  logoFrame: {
+    width: 292,
+    height: 292,
+    borderRadius: 36,
+    backgroundColor: '#E8F1FF',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.65)',
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadows.md,
+    overflow: 'hidden',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
   },
-  dropCoreMobile: {
-    width: 56,
-    height: 56,
+  logoFrameMobile: {
+    width: 220,
+    height: 220,
     borderRadius: 28,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
   },
-  brandName: {
+  logoImage: {
+    width: 268,
+    height: 268,
+  },
+  logoImageMobile: {
+    width: 204,
+    height: 204,
+  },
+  taglineBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    maxWidth: 360,
+    paddingHorizontal: spacing.sm,
+  },
+  taglineBlockMobile: {
+    gap: spacing.sm,
+    maxWidth: 300,
+  },
+  taglineRail: {
+    flex: 1,
+    height: 2,
+    overflow: 'hidden',
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  taglineRailDash: {
+    width: '70%',
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: 'rgba(158, 205, 255, 0.95)',
+  },
+  taglineCopy: {
+    alignItems: 'center',
+    minWidth: 168,
+  },
+  taglineKicker: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 10,
+    fontWeight: typography.fontWeight.semibold,
+    color: '#9EC5FF',
+    letterSpacing: 2.4,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  taglineKickerMobile: {
+    fontSize: 9,
+    letterSpacing: 2,
+    marginBottom: 3,
+  },
+  taglineLead: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: 48,
+    fontSize: typography.fontSize.xl,
     fontWeight: typography.fontWeight.bold,
     color: colors.white,
-    letterSpacing: -1.2,
     textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  brandNameMobile: {
-    fontSize: typography.fontSize['2xl'],
-    letterSpacing: -0.6,
-    marginBottom: spacing.xs,
-  },
-  brandLine: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.lg,
-    color: 'rgba(255,255,255,0.88)',
-    textAlign: 'center',
+    letterSpacing: -0.3,
     lineHeight: 28,
   },
-  brandLineMobile: {
+  taglineLeadMobile: {
+    fontSize: typography.fontSize.lg,
+    lineHeight: 24,
+  },
+  taglineSub: {
+    marginTop: 2,
+    fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.sm,
+    color: 'rgba(210, 228, 255, 0.92)',
+    textAlign: 'center',
+    letterSpacing: 0.3,
     lineHeight: 20,
-    paddingHorizontal: spacing.sm,
+  },
+  taglineSubMobile: {
+    fontSize: typography.fontSize.xs,
+    lineHeight: 18,
   },
   formColumn: {
     flex: 1,
-    backgroundColor: colors.white,
+    backgroundColor: colors.canvas,
     justifyContent: 'center',
     paddingHorizontal: spacing['2xl'],
   },
-  formWrap: {
+  formCard: {
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 420,
     alignSelf: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 28,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(2, 50, 170, 0.08)',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 18px 40px rgba(2, 50, 170, 0.10)',
+      } as any,
+      default: {
+        elevation: 6,
+        shadowColor: '#0232AA',
+        shadowOpacity: 0.12,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 10 },
+      },
+    }),
   },
-  formWrapWide: {
-    maxWidth: 380,
+  formCardWide: {
+    maxWidth: 400,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xl,
   },
   mobileScroll: {
     flexGrow: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
-    justifyContent: 'center',
+  },
+  formHeader: {
+    marginBottom: spacing.lg,
+  },
+  formEyebrow: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 11,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary,
+    letterSpacing: 2.2,
+    marginBottom: spacing.xs,
   },
   formTitle: {
     fontFamily: typography.fontFamily.bold,
@@ -684,35 +896,63 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
     marginBottom: spacing.xs,
-    letterSpacing: -0.4,
+    letterSpacing: -0.6,
   },
   formSubtitle: {
-    fontSize: typography.fontSize.base,
+    fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
-    marginBottom: spacing.xl,
+    lineHeight: 20,
   },
-  forgotPasswordButton: {
+  forgotLink: {
     alignSelf: 'flex-end',
     marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
+    paddingVertical: 4,
+  },
+  forgotLinkText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary,
   },
   loginButton: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.lg,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    borderRadius: borderRadius.full,
+    minHeight: 52,
+  },
+  formDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  formDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  formDividerText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeight.medium,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   registerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     flexWrap: 'wrap',
-    gap: 4,
+    gap: 6,
   },
   registerHint: {
     fontSize: typography.fontSize.base,
     color: colors.textSecondary,
   },
-  registerButton: {
-    marginTop: 0,
+  registerLink: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
   },
   popupOverlay: {
     flex: 1,

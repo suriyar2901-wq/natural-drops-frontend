@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, TextInput, Modal, ScrollView, Image, Platform, Switch } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, TextInput, Modal, ScrollView, Image, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
@@ -454,7 +454,9 @@ export const MenuManagementScreen = () => {
         </TouchableOpacity>
 
         <View style={styles.stockToggleWrap}>
-          <Text style={styles.stockToggleLabel}>In stock</Text>
+          <Text style={[styles.stockToggleLabel, !inStock && styles.stockToggleLabelOff]}>
+            {inStock ? 'In stock' : 'Out of stock'}
+          </Text>
           <Switch
             value={inStock}
             onValueChange={(value) => handleToggleStock(item, value)}
@@ -560,12 +562,14 @@ export const MenuManagementScreen = () => {
         }
       />
 
-      <TouchableOpacity style={styles.fab} onPress={handleAddProduct} activeOpacity={0.9}>
-        <Ionicons name="add" size={20} color={colors.white} />
+      <TouchableOpacity style={styles.fab} onPress={handleAddProduct} activeOpacity={0.88}>
+        <View style={styles.fabIcon}>
+          <Ionicons name="add" size={18} color={colors.primary} />
+        </View>
         <Text style={styles.fabText}>Add product</Text>
       </TouchableOpacity>
 
-      {/* Product Add/Edit Modal */}
+      {/* Product Add/Edit Modal — pro sheet */}
       <Modal
         visible={showProductModal}
         transparent
@@ -573,73 +577,108 @@ export const MenuManagementScreen = () => {
         onRequestClose={() => setShowProductModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.scrollModalContent}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>
-                {editMode ? 'Edit Product' : 'Add New Product'}
-              </Text>
-              
-              <Text style={styles.inputLabel}>Product Name *</Text>
+          <View style={styles.modalSheet}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetHeaderLeft}>
+                <View style={styles.dropMark}>
+                  <View style={styles.dropMarkInner} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalTitle}>
+                    {editMode ? 'Edit product' : 'Add product'}
+                  </Text>
+                  <Text style={styles.modalSubtitle}>
+                    {editMode ? 'Update name, price, and photos' : 'Name, category, price, and photos'}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.sheetClose}
+                onPress={() => setShowProductModal(false)}
+                accessibilityLabel="Close"
+              >
+                <Ionicons name="close" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              contentContainerStyle={styles.scrollModalContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={styles.sectionLabel}>Basics</Text>
+              <Text style={styles.inputLabel}>Product name *</Text>
               <TextInput
                 style={styles.input}
                 value={productForm.name}
                 onChangeText={(text) => setProductForm({ ...productForm, name: text })}
                 placeholder="e.g., 500ml Water"
+                placeholderTextColor={colors.gray400}
               />
 
-              <Text style={styles.inputLabel}>Product Description</Text>
+              <Text style={styles.inputLabel}>Description</Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
                 value={productForm.description}
                 onChangeText={(text) => setProductForm({ ...productForm, description: text })}
-                placeholder="Enter product description…"
+                placeholder="Short product description…"
+                placeholderTextColor={colors.gray400}
                 multiline
                 numberOfLines={4}
                 maxLength={500}
                 textAlignVertical="top"
               />
               <Text style={styles.charCount}>{(productForm.description || '').length}/500</Text>
-              
+
               <Text style={styles.inputLabel}>Category *</Text>
               <View style={styles.categoryButtons}>
                 <TouchableOpacity
                   style={[
                     styles.categoryButton,
-                    productForm.category === 'water' && styles.categoryButtonActive
+                    productForm.category === 'water' && styles.categoryButtonActive,
                   ]}
                   onPress={() => setProductForm({ ...productForm, category: 'water' })}
                 >
-                  <Text style={[
-                    styles.categoryButtonText,
-                    productForm.category === 'water' && styles.categoryButtonTextActive
-                  ]}>Water</Text>
+                  <Text
+                    style={[
+                      styles.categoryButtonText,
+                      productForm.category === 'water' && styles.categoryButtonTextActive,
+                    ]}
+                  >
+                    Water
+                  </Text>
                 </TouchableOpacity>
-                
                 <TouchableOpacity
                   style={[
                     styles.categoryButton,
-                    productForm.category === 'beverage' && styles.categoryButtonActive
+                    productForm.category === 'beverage' && styles.categoryButtonActive,
                   ]}
                   onPress={() => setProductForm({ ...productForm, category: 'beverage' })}
                 >
-                  <Text style={[
-                    styles.categoryButtonText,
-                    productForm.category === 'beverage' && styles.categoryButtonTextActive
-                  ]}>Beverage</Text>
+                  <Text
+                    style={[
+                      styles.categoryButtonText,
+                      productForm.category === 'beverage' && styles.categoryButtonTextActive,
+                    ]}
+                  >
+                    Beverage
+                  </Text>
                 </TouchableOpacity>
               </View>
-              
+
+              <Text style={styles.sectionLabel}>Pricing</Text>
               <Text style={styles.inputLabel}>Price (₹) *</Text>
               <TextInput
                 style={styles.input}
                 value={productForm.rate}
                 onChangeText={(text) => setProductForm({ ...productForm, rate: text })}
                 keyboardType="decimal-pad"
-                placeholder="e.g., 10.00"
+                placeholder="e.g., 30.00"
+                placeholderTextColor={colors.gray400}
               />
-              
-              <Text style={styles.inputLabel}>Product Photos</Text>
 
+              <Text style={styles.sectionLabel}>Photos</Text>
               {(existingImages.filter((img) => !imagesToDelete.includes(img.id)).length > 0 || newImages.length > 0) ? (
                 <View style={styles.mediaGrid}>
                   {existingImages
@@ -671,7 +710,11 @@ export const MenuManagementScreen = () => {
                       key={`new-img-${idx}`}
                       style={[
                         styles.mediaThumbWrap,
-                        idx === 0 && existingImages.filter((img) => !imagesToDelete.includes(img.id)).every((img) => !img.isPrimary) && styles.mediaThumbPrimary,
+                        idx === 0 &&
+                          existingImages
+                            .filter((img) => !imagesToDelete.includes(img.id))
+                            .every((img) => !img.isPrimary) &&
+                          styles.mediaThumbPrimary,
                       ]}
                     >
                       <Image source={{ uri }} style={styles.mediaThumb} resizeMode="cover" />
@@ -687,24 +730,28 @@ export const MenuManagementScreen = () => {
                       >
                         <Text style={styles.mediaRemoveText}>✕</Text>
                       </TouchableOpacity>
-                      {idx === 0 && existingImages.filter((img) => !imagesToDelete.includes(img.id)).every((img) => !img.isPrimary) && (
-                        <View style={styles.primaryBadge}>
-                          <Text style={styles.primaryBadgeText}>Primary</Text>
-                        </View>
-                      )}
+                      {idx === 0 &&
+                        existingImages
+                          .filter((img) => !imagesToDelete.includes(img.id))
+                          .every((img) => !img.isPrimary) && (
+                          <View style={styles.primaryBadge}>
+                            <Text style={styles.primaryBadgeText}>Primary</Text>
+                          </View>
+                        )}
                     </View>
                   ))}
                 </View>
               ) : (
                 <View style={styles.noImagePlaceholder}>
-                  <Text style={styles.noImageText}>No photos selected</Text>
-                  <Text style={styles.noImageSubtext}>Add one or more product photos</Text>
+                  <Ionicons name="image-outline" size={28} color={colors.blue300} />
+                  <Text style={styles.noImageText}>No photos yet</Text>
+                  <Text style={styles.noImageSubtext}>Add at least one product photo</Text>
                 </View>
               )}
 
               <View style={styles.imageButtonsRow}>
                 <Button
-                  title="+ Add More Photos"
+                  title="+ Add photos"
                   onPress={pickImagesFromGallery}
                   variant="outline"
                   style={styles.imageButton}
@@ -712,22 +759,22 @@ export const MenuManagementScreen = () => {
                   fullWidth
                 />
               </View>
+            </ScrollView>
 
-              <View style={styles.modalActions}>
-                <Button
-                  title="Cancel"
-                  onPress={() => setShowProductModal(false)}
-                  variant="outline"
-                  style={styles.modalButton}
-                />
-                <Button
-                  title={editMode ? 'Update' : 'Create'}
-                  onPress={saveProduct}
-                  style={styles.modalButton}
-                />
-              </View>
+            <View style={styles.modalActions}>
+              <Button
+                title="Cancel"
+                onPress={() => setShowProductModal(false)}
+                variant="outline"
+                style={styles.modalButton}
+              />
+              <Button
+                title={editMode ? 'Update' : 'Create'}
+                onPress={saveProduct}
+                style={styles.modalButton}
+              />
             </View>
-          </ScrollView>
+          </View>
         </View>
       </Modal>
     </View>
@@ -940,9 +987,12 @@ const styles = StyleSheet.create({
   },
   stockToggleLabel: {
     fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
+    color: colors.success,
     marginBottom: 4,
-    fontWeight: typography.fontWeight.medium,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  stockToggleLabelOff: {
+    color: colors.error,
   },
   fab: {
     position: 'absolute',
@@ -950,17 +1000,29 @@ const styles = StyleSheet.create({
     bottom: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
     backgroundColor: colors.primary,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingLeft: 10,
+    paddingRight: spacing.lg,
+    paddingVertical: 10,
     borderRadius: borderRadius.full,
-    ...shadows.md,
+    borderWidth: 1,
+    borderColor: colors.primaryDark,
+    ...shadows.lg,
+  },
+  fabIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fabText: {
     color: colors.white,
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.bold,
+    letterSpacing: 0.2,
   },
   categoryChip: {
     alignSelf: 'flex-start',
@@ -1084,36 +1146,99 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(17, 17, 17, 0.45)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: spacing.md,
+  },
+  modalSheet: {
+    width: '100%',
+    maxWidth: 440,
+    maxHeight: '90%',
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.sheet,
+    paddingTop: spacing.sm,
+    overflow: 'hidden',
+    ...shadows.xl,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.gray200,
+    marginBottom: spacing.sm,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  sheetHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: spacing.sm,
+    paddingRight: spacing.sm,
+  },
+  dropMark: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F0F9FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dropMarkInner: {
+    width: 14,
+    height: 14,
+    backgroundColor: colors.primary,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 7,
+    borderBottomRightRadius: 7,
+    borderBottomLeftRadius: 7,
+    transform: [{ rotate: '45deg' }],
+  },
+  sheetClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.gray100,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scrollModalContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
   },
-  modalContent: {
-    width: '85%',
-    maxWidth: 400,
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: spacing.xl,
-    alignSelf: 'center',
+  sectionLabel: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
   },
   modalTitle: {
     fontSize: typography.fontSize.xl,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
-    marginBottom: spacing.xs,
+    letterSpacing: -0.3,
   },
   modalSubtitle: {
-    fontSize: typography.fontSize.base,
+    fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
-    marginBottom: spacing.lg,
+    marginTop: 2,
   },
   inputLabel: {
     fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.medium,
     color: colors.textSecondary,
     marginBottom: spacing.xs,
     marginTop: spacing.sm,
@@ -1121,10 +1246,13 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
     fontSize: typography.fontSize.base,
     marginBottom: spacing.sm,
+    backgroundColor: colors.gray50,
+    color: colors.textPrimary,
   },
   categoryButtons: {
     flexDirection: 'row',
@@ -1133,12 +1261,12 @@ const styles = StyleSheet.create({
   },
   categoryButton: {
     flex: 1,
-    paddingVertical: spacing.md,
+    paddingVertical: 12,
     paddingHorizontal: spacing.sm,
-    borderRadius: 8,
+    borderRadius: borderRadius.full,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.white,
+    backgroundColor: colors.gray50,
     alignItems: 'center',
   },
   categoryButtonActive: {
@@ -1147,7 +1275,7 @@ const styles = StyleSheet.create({
   },
   categoryButtonText: {
     fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.medium,
+    fontWeight: typography.fontWeight.semibold,
     color: colors.textPrimary,
   },
   categoryButtonTextActive: {
@@ -1155,47 +1283,22 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.lg,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.white,
   },
   modalButton: {
     flex: 1,
-    marginHorizontal: spacing.xs,
-  },
-  imagePreviewContainer: {
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  imagePreview: {
-    width: 150,
-    height: 150,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  removeImageButton: {
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.error,
-    borderRadius: 4,
-  },
-  removeImageText: {
-    color: colors.white,
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.medium,
   },
   imageButtonsRow: {
     marginBottom: spacing.sm,
   },
   imageButton: {
-    marginBottom: spacing.sm,
-  },
-  helperText: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-    marginTop: -spacing.xs,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   mediaGrid: {
     flexDirection: 'row',
@@ -1206,7 +1309,7 @@ const styles = StyleSheet.create({
   mediaThumbWrap: {
     width: 86,
     height: 86,
-    borderRadius: 10,
+    borderRadius: borderRadius.md,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
@@ -1220,7 +1323,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 6,
     bottom: 6,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: colors.primary,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 8,
@@ -1241,7 +1344,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(17,17,17,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1251,25 +1354,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   noImagePlaceholder: {
-    height: 150,
-    borderRadius: 8,
-    borderWidth: 2,
+    minHeight: 120,
+    borderRadius: borderRadius.md,
+    borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: colors.border,
+    borderColor: colors.blue300,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.md,
-    backgroundColor: colors.background,
+    backgroundColor: '#F0F9FF',
+    gap: 4,
+    paddingVertical: spacing.lg,
   },
   noImageText: {
-    fontSize: typography.fontSize.lg,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.textPrimary,
+    marginTop: spacing.xs,
   },
   noImageSubtext: {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
-    fontStyle: 'italic',
   },
 });
 

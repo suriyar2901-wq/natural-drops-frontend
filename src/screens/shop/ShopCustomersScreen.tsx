@@ -71,8 +71,11 @@ export const ShopCustomersScreen = ({ navigation }: any) => {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Customer Ledger</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setShowCreate(true)}>
-          <Text style={styles.addBtnText}>+ Add Customer</Text>
+        <TouchableOpacity style={styles.addBtn} onPress={() => setShowCreate(true)} activeOpacity={0.88}>
+          <View style={styles.addBtnIcon}>
+            <Ionicons name="add" size={16} color={colors.primary} />
+          </View>
+          <Text style={styles.addBtnText}>Add customer</Text>
         </TouchableOpacity>
       </View>
 
@@ -187,15 +190,31 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     backgroundColor: colors.primary,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
+    paddingLeft: 8,
+    paddingRight: spacing.md,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: colors.primaryDark,
+    ...shadows.md,
+  },
+  addBtnIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   addBtnText: {
     color: colors.white,
     fontWeight: typography.fontWeight.bold,
     fontSize: typography.fontSize.sm,
+    letterSpacing: 0.2,
   },
   summaryRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   summaryCard: { flex: 1, padding: spacing.md, ...shadows.sm },

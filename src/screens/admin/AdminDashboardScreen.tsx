@@ -456,8 +456,24 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
 
       {isSeller() && (
         <View style={styles.hubGrid}>
+          <TouchableOpacity
+            style={styles.addOrderCta}
+            activeOpacity={0.88}
+            onPress={() => navigation.getParent()?.navigate('PhoneOrder') || navigation.navigate('PhoneOrder')}
+          >
+            <View style={styles.addOrderTextCol}>
+              <Text style={styles.addOrderTitle}>Add Order</Text>
+              <Text style={styles.addOrderHint}>Create a phone / walk-in order</Text>
+            </View>
+            <View style={styles.addOrderBtn}>
+              <View style={styles.addOrderBtnIcon}>
+                <Ionicons name="add" size={18} color={colors.primary} />
+              </View>
+              <Text style={styles.addOrderBtnText}>New</Text>
+            </View>
+          </TouchableOpacity>
+
           {[
-            { label: 'Add Order', count: '', screen: 'PhoneOrder' },
             { label: 'My Buyers', count: String(shopBuyers.length), screen: 'ShopBuyers' },
             { label: 'Customers', count: String(shopCustomers.length), screen: 'ShopCustomers' },
             {
@@ -476,18 +492,9 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
               }
             >
               <View style={styles.hubTop}>
-                {item.screen === 'PhoneOrder' ? (
-                  <Text style={[styles.hubLabel, styles.hubPhoneLabel]}>Add Order</Text>
-                ) : (
-                  <Text style={styles.hubCount}>{item.count}</Text>
-                )}
-                {item.screen === 'PhoneOrder' && (
-                  <View style={styles.hubIcon}>
-                    <Ionicons name="add" size={20} color={colors.white} />
-                  </View>
-                )}
+                <Text style={styles.hubCount}>{item.count}</Text>
               </View>
-              {item.screen !== 'PhoneOrder' && <Text style={styles.hubLabel}>{item.label}</Text>}
+              <Text style={styles.hubLabel}>{item.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -1405,13 +1412,63 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginBottom: spacing.lg,
   },
+  addOrderCta: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.primaryDark,
+    gap: spacing.md,
+  },
+  addOrderTextCol: {
+    flex: 1,
+  },
+  addOrderTitle: {
+    color: colors.white,
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    letterSpacing: -0.2,
+  },
+  addOrderHint: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: typography.fontSize.sm,
+    marginTop: 2,
+  },
+  addOrderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderRadius: borderRadius.full,
+    paddingLeft: 6,
+    paddingRight: 14,
+    paddingVertical: 6,
+  },
+  addOrderBtnIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addOrderBtnText: {
+    color: colors.white,
+    fontWeight: typography.fontWeight.bold,
+    fontSize: typography.fontSize.sm,
+  },
   hubCard: {
     flexGrow: 1,
     flexBasis: '46%',
     minWidth: 150,
     maxWidth: '100%',
     backgroundColor: colors.white,
-    borderRadius: spacing.md,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
@@ -1420,14 +1477,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  hubIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   hubCount: {
     fontSize: typography.fontSize.xl,
@@ -1438,10 +1487,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     color: colors.textPrimary,
     fontWeight: typography.fontWeight.semibold,
-  },
-  hubPhoneLabel: {
-    marginTop: 0,
-    fontSize: typography.fontSize.lg,
   },
   splitRow: {
     flexDirection: 'row',

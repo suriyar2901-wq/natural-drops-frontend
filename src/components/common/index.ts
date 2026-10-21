@@ -11,6 +11,7 @@ export * from './AddressMatchFields';
 export * from './AutocompleteInput';
 export * from './Card';
 export * from './Loading';
+export * from './WaterDropLoader';
 export * from './ErrorBoundary';
 export * from './DatePicker';
 export * from './DeliveryLocationSelector';
