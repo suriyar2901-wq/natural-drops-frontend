@@ -553,6 +553,8 @@ export const AppNavigator = () => {
             ForgotPassword: 'ForgotPassword',
             ResetPassword: 'ResetPassword',
             AccountInactive: 'AccountInactive',
+            // Live Dozzle logs: https://natural-drops-frontend.vercel.app/Logs
+            Logs: 'Logs',
             ProductDetail: 'product/:productId',
             SellerProductDetail: 'seller/product/:productId',
             AdminProductDetail: 'admin/product/:productId',
@@ -606,6 +608,11 @@ export const AppNavigator = () => {
             title: 'Account Inactive',
             headerShown: false,
           }}
+        />
+        <Stack.Screen
+          name="Logs"
+          component={DozzleLogsScreen}
+          options={{ title: 'Live Logs (Dozzle)' }}
         />
         
         {/* Admin App Screens - After login (Admin, Seller roles) */}
