@@ -68,7 +68,7 @@ export const ShopCustomersScreen = ({ navigation }: any) => {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Customer Ledger</Text>
         <TouchableOpacity style={styles.addBtn} onPress={() => setShowCreate(true)} activeOpacity={0.88}>
@@ -79,110 +79,121 @@ export const ShopCustomersScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.summaryRow}>
-        <Card style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Total to Collect</Text>
-          <Text style={styles.summaryDue}>{formatCurrency(totals.due)}</Text>
-          <Text style={styles.summaryMeta}>from {totals.dueCustomers} Customer{totals.dueCustomers === 1 ? '' : 's'}</Text>
-        </Card>
-        <Card style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Cans out</Text>
-          <Text style={styles.summaryCans}>{totals.cans}</Text>
-          <Text style={styles.summaryMeta}>from {totals.canCustomers} Customer{totals.canCustomers === 1 ? '' : 's'}</Text>
-        </Card>
-      </View>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.summaryRow}>
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Total to Collect</Text>
+            <Text style={styles.summaryDue}>{formatCurrency(totals.due)}</Text>
+            <Text style={styles.summaryMeta}>from {totals.dueCustomers} Customer{totals.dueCustomers === 1 ? '' : 's'}</Text>
+          </Card>
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Cans out</Text>
+            <Text style={styles.summaryCans}>{totals.cans}</Text>
+            <Text style={styles.summaryMeta}>from {totals.canCustomers} Customer{totals.canCustomers === 1 ? '' : 's'}</Text>
+          </Card>
+        </View>
 
-      <View style={styles.searchWrap}>
-        <Ionicons name="search-outline" size={18} color={colors.gray400} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search.."
-          placeholderTextColor={colors.gray400}
-          value={search}
-          onChangeText={setSearch}
-        />
-      </View>
+        <View style={styles.searchWrap}>
+          <Ionicons name="search-outline" size={18} color={colors.gray400} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search.."
+            placeholderTextColor={colors.gray400}
+            value={search}
+            onChangeText={setSearch}
+          />
+        </View>
 
-      <View style={styles.tabs}>
-        {([
-          { id: 'all' as const, label: 'All' },
-          { id: 'dues' as const, label: 'Dues' },
-          { id: 'cans' as const, label: 'Cans' },
-          { id: 'settled' as const, label: 'Settled' },
-        ]).map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            style={[styles.tab, tab === item.id && styles.tabActive]}
-            onPress={() => setTab(item.id)}
-          >
-            <Text style={[styles.tabText, tab === item.id && styles.tabTextActive]}>{item.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+        <View style={styles.tabs}>
+          {([
+            { id: 'all' as const, label: 'All' },
+            { id: 'dues' as const, label: 'Dues' },
+            { id: 'cans' as const, label: 'Cans' },
+            { id: 'settled' as const, label: 'Settled' },
+          ]).map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={[styles.tab, tab === item.id && styles.tabActive]}
+              onPress={() => setTab(item.id)}
+            >
+              <Text style={[styles.tabText, tab === item.id && styles.tabTextActive]}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {filtered.length === 0 ? (
+          <Card style={styles.empty}>
+            <Text style={styles.emptyText}>No customers in this filter.</Text>
+          </Card>
+        ) : filtered.map((customer) => {
+          const initial = (customer.name || 'C').trim().charAt(0).toUpperCase();
+          return (
+            <TouchableOpacity
+              key={customer.id}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('ShopCustomerDetail', { customerId: customer.id })}
+            >
+              <Card style={styles.card}>
+                <View style={styles.cardTop}>
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{initial}</Text>
+                  </View>
+                  <View style={styles.cardInfo}>
+                    <Text style={styles.name}>{customer.name}</Text>
+                    <Text style={styles.phone}>+91 {customer.mobile || '—'}</Text>
+                  </View>
+                  <View style={styles.cardDue}>
+                    <Text style={styles.dueAmount}>{formatCurrency(customer.due)}</Text>
+                    <Text style={styles.dueLabel}>To Collect</Text>
+                  </View>
+                </View>
+                <View style={styles.cardBottom}>
+                  <View style={styles.cansTag}>
+                    <Ionicons name="water-outline" size={14} color="#854A0E" />
+                    <Text style={styles.cansTagText}>{customer.cansOut} cans out</Text>
+                  </View>
+                  <View style={styles.cardActions}>
+                    <TouchableOpacity style={styles.callBtn} onPress={() => callCustomer(customer.mobile)}>
+                      <Ionicons name="call-outline" size={16} color={colors.primary} />
+                      <Text style={styles.callBtnText}>Call</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.collectBtn}
+                      onPress={() => navigation.navigate('RecordShopPayment', { customerId: customer.id })}
+                    >
+                      <Text style={styles.collectBtnText}>Collect</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Card>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
       <CreateBuyerModal visible={showCreate} onClose={() => setShowCreate(false)} />
-
-      {filtered.length === 0 ? (
-        <Card style={styles.empty}>
-          <Text style={styles.emptyText}>No customers in this filter.</Text>
-        </Card>
-      ) : filtered.map((customer) => {
-        const initial = (customer.name || 'C').trim().charAt(0).toUpperCase();
-        return (
-          <TouchableOpacity
-            key={customer.id}
-            activeOpacity={0.85}
-            onPress={() => navigation.navigate('ShopCustomerDetail', { customerId: customer.id })}
-          >
-            <Card style={styles.card}>
-              <View style={styles.cardTop}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{initial}</Text>
-                </View>
-                <View style={styles.cardInfo}>
-                  <Text style={styles.name}>{customer.name}</Text>
-                  <Text style={styles.phone}>+91 {customer.mobile || '—'}</Text>
-                </View>
-                <View style={styles.cardDue}>
-                  <Text style={styles.dueAmount}>{formatCurrency(customer.due)}</Text>
-                  <Text style={styles.dueLabel}>To Collect</Text>
-                </View>
-              </View>
-              <View style={styles.cardBottom}>
-                <View style={styles.cansTag}>
-                  <Ionicons name="water-outline" size={14} color="#854A0E" />
-                  <Text style={styles.cansTagText}>{customer.cansOut} cans out</Text>
-                </View>
-                <View style={styles.cardActions}>
-                  <TouchableOpacity style={styles.callBtn} onPress={() => callCustomer(customer.mobile)}>
-                    <Ionicons name="call-outline" size={16} color={colors.primary} />
-                    <Text style={styles.callBtnText}>Call</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.collectBtn}
-                    onPress={() => navigation.navigate('RecordShopPayment', { customerId: customer.id })}
-                  >
-                    <Text style={styles.collectBtnText}>Collect</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </Card>
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, paddingBottom: spacing.xl },
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.background,
     gap: spacing.sm,
+    zIndex: 1,
   },
   title: {
     fontSize: typography.fontSize['2xl'],

@@ -21,7 +21,7 @@ import { validators } from '../../utils/validators';
 const thanniCanLogo = require('../../../assets/brand/thanni-can-logo.png');
 
 export const LoginScreen = ({ navigation }: any) => {
-  const { login, isLoading } = useAuth();
+  const { login } = useAuth();
   const { width, height } = useWindowDimensions();
   const isWide = width >= 860;
 
@@ -170,8 +170,6 @@ export const LoginScreen = ({ navigation }: any) => {
       splashLoopC.stop();
     };
   }, [enterOpacity, enterY, ripple, dropFloat, waveDrift, splashA, splashB, splashC]);
-
-  const actualLoading = localLoading;
 
   const validate = () => {
     const newErrors: { username?: string; password?: string } = {};
@@ -436,7 +434,7 @@ export const LoginScreen = ({ navigation }: any) => {
       <Button
         title="Login"
         onPress={handleLogin}
-        loading={actualLoading || isLoading}
+        loading={localLoading}
         fullWidth
         style={styles.loginButton}
       />

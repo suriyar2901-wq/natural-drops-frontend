@@ -21,7 +21,6 @@ import {
 } from '../../store/api/notificationApi';
 import { Order, OrderStatus } from '../../types';
 import { canEditOrderBill, formatCurrency, formatDateTime, formatDeliverySlot, formatOrderStatus, formatYmdDisplay } from '../../utils/formatters';
-import { ORDER_STATUS_COLORS } from '../../utils/constants';
 import { showAlert, showSuccessAlert, showErrorAlert, showConfirmAlert } from '../../utils/alert';
 import { useAuth } from '../../hooks';
 import { useGetShopBuyersQuery } from '../../store/api/shopApi';
@@ -348,29 +347,16 @@ export const OrderManagementScreen = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    const key = normalizeStatus(status) === normalizeStatus(OrderStatus.PROCESSING)
-      ? OrderStatus.CONFIRMED
-      : status;
-    return ORDER_STATUS_COLORS[key as keyof typeof ORDER_STATUS_COLORS] || colors.gray500;
-  };
-
-  /** Soft status surfaces — UI/UX Pro: tint + accent border (not color-only) */
-  const getOrderCardSurface = (status: string) => {
+  /** Status color only on the card's left side mark */
+  const getOrderSideAccent = (status: string) => {
     const s = normalizeStatus(status);
-    if (s === normalizeStatus(OrderStatus.PENDING)) {
-      return { backgroundColor: '#FFF7ED', borderColor: '#FDBA74', accent: '#EA580C', iconBg: '#FFEDD5' };
-    }
+    if (s === normalizeStatus(OrderStatus.PENDING)) return '#EA580C';
     if (s === normalizeStatus(OrderStatus.CONFIRMED) || s === normalizeStatus(OrderStatus.PROCESSING)) {
-      return { backgroundColor: '#EFF6FF', borderColor: '#93C5FD', accent: colors.primary, iconBg: colors.blue100 };
+      return colors.primary;
     }
-    if (s === normalizeStatus(OrderStatus.DELIVERED)) {
-      return { backgroundColor: colors.successTint, borderColor: '#86EFAC', accent: colors.success, iconBg: '#DCFCE7' };
-    }
-    if (s === normalizeStatus(OrderStatus.CANCELED)) {
-      return { backgroundColor: colors.errorTint, borderColor: '#FECACA', accent: colors.error, iconBg: '#FEE2E2' };
-    }
-    return { backgroundColor: colors.white, borderColor: colors.border, accent: colors.gray400, iconBg: colors.gray100 };
+    if (s === normalizeStatus(OrderStatus.DELIVERED)) return colors.success;
+    if (s === normalizeStatus(OrderStatus.CANCELED)) return colors.error;
+    return colors.gray400;
   };
 
   const handleConfirmOrder = async (orderId: number) => {
@@ -607,7 +593,6 @@ export const OrderManagementScreen = () => {
     const isConfirmedOrProcessing = isConfirmed || isProcessing;
     const isEditable = isPending || isConfirmed;
     const expanded = expandedOrderId === item.id;
-    const statusColor = getStatusColor(item.status);
     const callLink = contactLinks(item.buyerPhone).call;
     const orderNote = item.billingNotes?.trim();
     const deliveryAddress = item.deliveryAddress || item.buyerAddress || 'Not specified';
@@ -616,36 +601,28 @@ export const OrderManagementScreen = () => {
       setExpandedOrderId((current) => (current === item.id ? null : item.id));
     };
 
-    const statusTint =
-      isPending ? '#FFEDD5'
-        : isConfirmedOrProcessing ? colors.blue100
-          : normalizedStatus === normalizeStatus(OrderStatus.DELIVERED) ? '#DCFCE7'
-            : normalizedStatus === normalizeStatus(OrderStatus.CANCELED) ? '#FEE2E2'
-              : colors.gray100;
-    const cardSurface = getOrderCardSurface(item.status);
+    const sideAccent = getOrderSideAccent(item.status);
 
     return (
       <View
         style={[
           styles.orderCard,
           {
-            backgroundColor: cardSurface.backgroundColor,
-            borderColor: cardSurface.borderColor,
             borderLeftWidth: 4,
-            borderLeftColor: cardSurface.accent,
+            borderLeftColor: sideAccent,
           },
         ]}
       >
         <View style={styles.orderCardCollapsed}>
           <TouchableOpacity activeOpacity={0.85} onPress={toggleExpanded} style={styles.orderCardTapArea}>
-            <View style={[styles.orderDocIcon, { backgroundColor: cardSurface.iconBg }]}>
-              <Ionicons name="document-text-outline" size={22} color={cardSurface.accent} />
+            <View style={styles.orderDocIcon}>
+              <Ionicons name="document-text-outline" size={22} color={colors.gray500} />
             </View>
             <View style={styles.orderCardHeaderLeft}>
               <View style={styles.orderTitleRow}>
                 <Text style={styles.orderIdCompact}>#Order {String(item.id).padStart(2, '0')}</Text>
-                <View style={[styles.statusPill, { backgroundColor: statusTint }]}>
-                  <Text style={[styles.statusPillText, { color: isPending ? '#9A3412' : statusColor }]}>
+                <View style={[styles.statusPill, { backgroundColor: colors.gray100 }]}>
+                  <Text style={[styles.statusPillText, { color: colors.textSecondary }]}>
                     {formatOrderStatus(item.status)}
                   </Text>
                 </View>
@@ -830,7 +807,7 @@ export const OrderManagementScreen = () => {
         )}
 
         {(isPending || isConfirmedOrProcessing) && (
-          <View style={[styles.orderCardActions, styles.orderCardActionsOnTint]}>
+          <View style={styles.orderCardActions}>
             <TouchableOpacity
               style={styles.cancelTextButton}
               onPress={() => {
@@ -1426,9 +1403,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...shadows.sm,
   },
-  orderCardActionsOnTint: {
-    backgroundColor: 'rgba(255,255,255,0.55)',
-  },
   orderCardCollapsed: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1447,7 +1421,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: colors.gray100,
     alignItems: 'center',
     justifyContent: 'center',
   },
