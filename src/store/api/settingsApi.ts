@@ -82,6 +82,29 @@ export const settingsApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Settings'],
     }),
+
+    getDozzleLogsConfig: builder.query<{
+      dozzleUrl: string;
+      enabled: boolean;
+      hint: string;
+      services: { backend: string; frontend: string; dozzle: string };
+    }, void>({
+      query: () => '/admin/logs/dozzle',
+      transformResponse: (response: any) => {
+        const data = response?.dozzleUrl !== undefined ? response : (response?.data || {});
+        return {
+          dozzleUrl: String(data.dozzleUrl || ''),
+          enabled: data.enabled !== false && !!data.dozzleUrl,
+          hint: String(data.hint || ''),
+          services: {
+            backend: String(data.services?.backend || 'natural-drops-backend'),
+            frontend: String(data.services?.frontend || 'natural-drops-frontend'),
+            dozzle: String(data.services?.dozzle || 'natural-drops-dozzle'),
+          },
+        };
+      },
+      providesTags: ['Settings'],
+    }),
   }),
 });
 
@@ -94,6 +117,7 @@ export const {
   useGetSupportContactsQuery,
   useUpdateCustomerSupportEmailMutation,
   useUpdateSettingsMutation,
+  useGetDozzleLogsConfigQuery,
 } = settingsApi;
 
 

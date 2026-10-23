@@ -40,8 +40,9 @@ export const AppSettingsScreen = () => {
   const [subscriptionRequired, setSubscriptionRequired] = useState(true);
   const [monthlyAmount, setMonthlyAmount] = useState('499.00');
   const [yearlyAmount, setYearlyAmount] = useState('5389.20');
+  const [dozzleUrl, setDozzleUrl] = useState('http://localhost:8082');
   const [daysOpen, setDaysOpen] = useState(false);
-  const [editing, setEditing] = useState<'phone' | 'email' | 'profile' | 'support' | 'subscription' | 'notify' | null>(null);
+  const [editing, setEditing] = useState<'phone' | 'email' | 'profile' | 'support' | 'subscription' | 'notify' | 'dozzle' | null>(null);
   const snapshot = useRef<Record<string, string | boolean> | null>(null);
 
   useEffect(() => {
@@ -72,6 +73,7 @@ export const AppSettingsScreen = () => {
     setSubscriptionRequired(allSettings.subscriptionRequired !== 'false');
     setMonthlyAmount(allSettings.planMonthlyAmount || '499.00');
     setYearlyAmount(allSettings.planYearlyAmount || '5389.20');
+    setDozzleUrl(allSettings.dozzleUrl || 'http://localhost:8082');
   }, [allSettings]);
 
   const phoneError = useMemo(() => {
@@ -94,7 +96,7 @@ export const AppSettingsScreen = () => {
   const currentValues = () => ({
     phone, email, adminName, adminMobile, adminEmail, supportPhone, supportWhatsapp, supportEmail,
     notifyActivation, notifyPayments, notifyFailedPayments, notifyExpiry, expiryReminderDays, subscriptionRequired,
-    monthlyAmount, yearlyAmount,
+    monthlyAmount, yearlyAmount, dozzleUrl,
   });
 
   const beginEdit = (section: NonNullable<typeof editing>) => {
@@ -122,6 +124,7 @@ export const AppSettingsScreen = () => {
       setSubscriptionRequired(saved.subscriptionRequired !== false);
       setMonthlyAmount(String(saved.monthlyAmount || '499.00'));
       setYearlyAmount(String(saved.yearlyAmount || '5389.20'));
+      setDozzleUrl(String(saved.dozzleUrl || 'http://localhost:8082'));
     }
     setDaysOpen(false);
     setEditing(null);
@@ -377,6 +380,36 @@ export const AppSettingsScreen = () => {
             notifyExpiry: String(notifyExpiry),
             expiryReminderDays,
           }, 'Notification preferences saved.')}
+        />
+      </Card>
+
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Dozzle logs (live)</Text>
+        <Text style={styles.sectionHint}>
+          URL of the Dozzle Docker log viewer for backend / frontend containers. Local default: http://localhost:8082
+        </Text>
+        <Input
+          label="Dozzle URL"
+          value={dozzleUrl}
+          onChangeText={setDozzleUrl}
+          autoCapitalize="none"
+          placeholder="http://localhost:8082"
+          editable={editing === 'dozzle'}
+        />
+        <SectionActions
+          editing={editing === 'dozzle'}
+          saveTitle="Save"
+          loading={savingPlatform}
+          onEdit={() => beginEdit('dozzle')}
+          onCancel={cancelEdit}
+          onSave={() => {
+            const url = dozzleUrl.trim();
+            if (!/^https?:\/\//i.test(url)) {
+              Alert.alert('Invalid URL', 'Enter a full URL starting with http:// or https://');
+              return;
+            }
+            handleSavePlatform({ dozzleUrl: url }, 'Dozzle URL saved.');
+          }}
         />
       </Card>
     </ScrollView>
