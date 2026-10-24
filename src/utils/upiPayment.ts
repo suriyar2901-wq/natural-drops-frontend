@@ -7,33 +7,112 @@ export type UpiPayParams = {
   note: string;
 };
 
-/** Standard UPI intent used by GPay / PhonePe / Paytm / BHIM */
+/** Mask VPA for logs / on-screen hints — never log PIN or banking secrets. */
+export const maskUpiId = (upiId: string): string => {
+  const raw = (upiId || '').trim();
+  const at = raw.indexOf('@');
+  if (at <= 0) {
+    if (raw.length <= 4) return '***';
+    return `${raw.slice(0, 2)}***${raw.slice(-2)}`;
+  }
+  const local = raw.slice(0, at);
+  const host = raw.slice(at + 1);
+  const localMask =
+    local.length <= 2 ? '**' : `${local.slice(0, 2)}***${local.slice(-1)}`;
+  return `${localMask}@${host}`;
+};
+
+/**
+ * Safe debug dump of a upi://pay URI (pa/pn/am/cu/tn/tr).
+ * Does not log UPI PIN, OTP, or account credentials (those are never in this URI).
+ */
+export const logUpiPayUriDebug = (upiUrl: string, source: string) => {
+  try {
+    let search = '';
+    if (upiUrl.includes('upi://pay?')) {
+      search = upiUrl.split('upi://pay?')[1] || '';
+    } else if (upiUrl.includes('tez://upi/pay?')) {
+      search = upiUrl.split('tez://upi/pay?')[1] || '';
+    } else if (upiUrl.includes('?')) {
+      search = upiUrl.slice(upiUrl.indexOf('?') + 1);
+    }
+    search = search.split('#')[0];
+    const map = new URLSearchParams(search);
+    const decode = (value: string | null) => {
+      if (value == null) return '';
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
+    };
+    const pa = decode(map.get('pa'));
+    const pn = decode(map.get('pn'));
+    const am = map.get('am') || '';
+    const cu = map.get('cu') || '';
+    const tn = decode(map.get('tn'));
+    const trRaw = map.get('tr');
+    const tr = trRaw != null ? decode(trRaw) : null;
+
+    console.log(`[UPI debug:${source}] scheme=upi://pay`, {
+      paMasked: maskUpiId(pa),
+      pn,
+      am,
+      cu,
+      tn,
+      tr: tr != null && tr.length > 0 ? tr : '(not set)',
+      hasTr: !!(tr && tr.length > 0),
+      uriPreview: `upi://pay?pa=${maskUpiId(pa)}&pn=${pn}&am=${am}&cu=${cu}&tn=${tn}${tr ? '&tr=(set)' : ''}`,
+    });
+  } catch (error) {
+    console.log(`[UPI debug:${source}] failed to parse URI for logging`, error);
+  }
+};
+
+/** Strict INR amount for UPI `am` — always two decimal places. */
+export const formatUpiAmount = (amount: number): string => {
+  const n = Number(amount);
+  if (!(n > 0) || !Number.isFinite(n)) return '';
+  return n.toFixed(2);
+};
+
+/**
+ * Standard NPCI UPI collect link (same string encoded into dynamic QR).
+ * P2P to a personal/seller VPA: pa, pn, am, cu, tn only — do not invent `mc`
+ * (merchant code) or that forces a P2M path GPay rejects for non-merchant VPAs.
+ */
 export const buildUpiPayUrl = ({ upiId, payeeName, amount, note }: UpiPayParams): string => {
-  const am = amount > 0 ? amount.toFixed(2) : '';
+  const am = formatUpiAmount(amount);
   const parts = [
     `pa=${encodeURIComponent(upiId.trim())}`,
-    `pn=${encodeURIComponent(payeeName.trim() || 'Shop')}`,
+    `pn=${encodeURIComponent((payeeName || 'Shop').trim() || 'Shop')}`,
     am ? `am=${encodeURIComponent(am)}` : '',
     'cu=INR',
-    `tn=${encodeURIComponent(note.trim() || 'Bill payment')}`,
+    `tn=${encodeURIComponent((note || 'Bill payment').trim() || 'Bill payment')}`,
   ].filter(Boolean);
   return `upi://pay?${parts.join('&')}`;
 };
 
-const gpayIntentUrl = (upiUrl: string) => {
-  const query = upiUrl.replace(/^upi:\/\/pay\?/, '');
-  return `tez://upi/pay?${query}`;
-};
-
+/**
+ * Optional GPay-only Android intent. Query must be the upi:// query string only —
+ * never embed a second `upi://pay?` inside intent:// (that mangles `am` and often
+ * surfaces a false "limit exceeded" error in GPay).
+ */
 const androidGpayPackageIntent = (upiUrl: string) => {
-  const path = upiUrl.replace(/^upi:\/\//, '');
-  return `intent://${path}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
+  const query = upiUrl.replace(/^upi:\/\/pay\?/, '');
+  return `intent://pay?${query}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
 };
 
 /**
- * Opens GPay when possible, otherwise the system UPI chooser.
- * Note: UPI apps do not return the UTR to third-party apps after pay —
- * the buyer must enter / paste the transaction number from GPay history.
+ * Opens a UPI app with the same payload as the dynamic QR.
+ *
+ * Android: prefer plain `upi://pay?...` first (OS chooser / default handler).
+ * Forcing legacy `tez://upi/pay` first is a common cause of GPay showing
+ * "You've exceeded the bank limit" on small P2P amounts while the identical
+ * QR / manual VPA payment still works.
+ *
+ * UPI apps do not return UTR to third-party apps — buyer must paste UTR;
+ * seller confirmation remains required (never auto-mark paid here).
  */
 export const openUpiPayment = async (params: UpiPayParams): Promise<boolean> => {
   const upiId = (params.upiId || '').trim();
@@ -45,12 +124,14 @@ export const openUpiPayment = async (params: UpiPayParams): Promise<boolean> => 
   }
 
   const upiUrl = buildUpiPayUrl(params);
+  logUpiPayUriDebug(upiUrl, 'openUpiPayment');
+
+  // Order matters: standards upi:// first (parity with QR). Package intent last.
+  // Do not lead with tez:// — that path frequently false-fails P2P with "limit exceeded".
   const candidates =
     Platform.OS === 'android'
-      ? [gpayIntentUrl(upiUrl), androidGpayPackageIntent(upiUrl), upiUrl]
-      : Platform.OS === 'web'
-        ? [upiUrl, gpayIntentUrl(upiUrl)]
-        : [upiUrl, gpayIntentUrl(upiUrl)];
+      ? [upiUrl, androidGpayPackageIntent(upiUrl)]
+      : [upiUrl];
 
   for (const url of candidates) {
     try {
@@ -58,6 +139,7 @@ export const openUpiPayment = async (params: UpiPayParams): Promise<boolean> => 
       if (!can && Platform.OS !== 'web') {
         continue;
       }
+      logUpiPayUriDebug(url.startsWith('upi://') ? url : upiUrl, `openUpiPayment.attempt:${url.slice(0, 12)}`);
       await Linking.openURL(url);
       return true;
     } catch {

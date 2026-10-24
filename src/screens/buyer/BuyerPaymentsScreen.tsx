@@ -22,7 +22,14 @@ import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { moneyValue, orderBillPending } from '../../types/shop.types';
 import { Order } from '../../types';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
-import { buildUpiPayUrl, extractUpiReference, openUpiPayment } from '../../utils/upiPayment';
+import {
+  buildUpiPayUrl,
+  extractUpiReference,
+  formatUpiAmount,
+  logUpiPayUriDebug,
+  maskUpiId,
+  openUpiPayment,
+} from '../../utils/upiPayment';
 
 const orderSplit = (order: Order) => {
   const total = Number(order.total) || 0;
@@ -162,6 +169,15 @@ export const BuyerPaymentsScreen = () => {
     }
     setOpeningUpi(true);
     try {
+      // Same URI shape as QR + GPay open — payment flow unchanged; debug log only.
+      const upiUri = buildUpiPayUrl({
+        upiId,
+        payeeName,
+        amount: payAmount,
+        note: `Order ${selected.id}`,
+      });
+      logUpiPayUriDebug(upiUri, 'BuyerPaymentsScreen.openGpay');
+
       await openUpiPayment({
         upiId,
         payeeName,
@@ -274,11 +290,20 @@ export const BuyerPaymentsScreen = () => {
         <Text style={styles.payLabel}>Seller UPI ID</Text>
         <Text selectable style={styles.upiId}>{upiId || 'Seller has not added a UPI ID yet'}</Text>
 
-        {(uploadedQr || generatedQr) ? (
-          <Image source={{ uri: uploadedQr || generatedQr }} style={styles.qr} resizeMode="contain" />
+        {/* Prefer amount-matched dynamic QR (same upi://pay as Open GPay). Static shop QR is fallback only. */}
+        {(generatedQr || uploadedQr) ? (
+          <Image source={{ uri: generatedQr || uploadedQr }} style={styles.qr} resizeMode="contain" />
         ) : (
           <Text style={styles.meta}>Ask the seller to add a UPI ID or payment QR in Shop Profile.</Text>
         )}
+
+        {selected && upiId && payAmount > 0 ? (
+          <Text style={styles.linkHint}>
+            Payment link: {formatCurrency(Number(formatUpiAmount(payAmount) || payAmount))} → {maskUpiId(upiId)}
+            {' · '}Order {selected.id}
+            {generatedQr ? ' · QR matches this link' : ''}
+          </Text>
+        ) : null}
 
         <Button
           title={openingUpi ? 'Opening GPay…' : 'Open GPay / UPI'}
@@ -287,7 +312,8 @@ export const BuyerPaymentsScreen = () => {
           style={styles.gpayButton}
         />
         <Text style={styles.meta}>
-          Pay in GPay, then copy the transaction / UTR number from the payment success screen.
+          Opens the same upi://pay link as the QR above. Pay in GPay, then copy the UTR and tap I paid this bill.
+          The bill stays unpaid until the seller confirms.
         </Text>
 
         <Text style={styles.step}>3. Enter transaction number &amp; tell seller</Text>
@@ -397,6 +423,14 @@ const styles = StyleSheet.create({
   },
   payLabel: { marginTop: spacing.sm, color: colors.textSecondary, fontWeight: typography.fontWeight.semibold },
   upiId: { color: colors.primary, fontSize: typography.fontSize.lg, fontWeight: typography.fontWeight.bold, marginTop: 4 },
+  linkHint: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    color: colors.textPrimary,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    textAlign: 'center',
+  },
   qr: { width: 180, height: 180, alignSelf: 'center', marginVertical: spacing.md },
   gpayButton: { marginTop: spacing.sm, marginBottom: spacing.sm },
   selectedBill: { color: colors.primary, fontWeight: typography.fontWeight.bold, marginBottom: spacing.sm },
