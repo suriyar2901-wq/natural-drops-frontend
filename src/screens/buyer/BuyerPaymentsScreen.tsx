@@ -24,10 +24,12 @@ import { Order } from '../../types';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
 import {
   buildAndroidGpayIntentUrl,
+  buildDiagnosticUpiVariants,
   buildSellerStaticUpiUrl,
   buildUpiPayUrl,
   extractUpiReference,
   formatUpiAmount,
+  inspectUpiFieldIntegrity,
   listUpiOpenCandidates,
   logUpiPayUriDebug,
   maskUpiId,
@@ -105,6 +107,31 @@ export const BuyerPaymentsScreen = () => {
       ? parseUpiPayParams(buildAndroidGpayIntentUrl(appPayUri))
       : null;
   const openCandidates = listUpiOpenCandidates();
+  const productionNote = selected ? `Order ${selected.id}` : '';
+  const fieldChecks =
+    upiId && appPayUri
+      ? inspectUpiFieldIntegrity(upiId, payeeName, payAmount, productionNote, appPayUri)
+      : null;
+  const diagnosticVariants =
+    upiId && payAmount > 0
+      ? buildDiagnosticUpiVariants({
+          upiId,
+          payeeName,
+          amount: payAmount,
+          orderId: selected?.id ?? null,
+        })
+      : [];
+  const dynamicQrMatchesPay =
+    !!appPayUri &&
+    !!selectedOrderId &&
+    payAmount > 0 &&
+    appPayUri ===
+      buildUpiPayUrl({
+        upiId,
+        payeeName,
+        amount: payAmount,
+        note: `Order ${selectedOrderId}`,
+      });
 
   useEffect(() => {
     if (!upiId || !(payAmount > 0) || !selectedOrderId) {
@@ -423,10 +450,59 @@ export const BuyerPaymentsScreen = () => {
                 .join(', ') || '(none — select bill)'}
             </Text>
             <Text style={styles.diagLine}>
-              App link missing vs Google merchant sample: tr, mc (not added — may require merchant VPA)
+              Dynamic QR === Pay URI: {dynamicQrMatchesPay ? 'YES' : 'NO / N/A'}
             </Text>
+            <Text style={styles.diagLine}>
+              tn vs tr: tn = note (&quot;Order N&quot;). tr = reference id (not in production URI).
+            </Text>
+
+            <Text style={styles.diagSection}>F) Field integrity (production URI)</Text>
+            {fieldChecks ? (
+              <>
+                <Text style={styles.diagLine}>
+                  VPA trimmed={String(fieldChecks.vpaTrimmed)} · looksValid={String(fieldChecks.vpaLooksValid)} ·
+                  whitespace={String(fieldChecks.vpaHasWhitespace)}
+                </Text>
+                <Text style={styles.diagLine}>
+                  Name trimmed={String(fieldChecks.nameTrimmed)} · empty={String(fieldChecks.nameEmpty)}
+                </Text>
+                <Text style={styles.diagLine}>
+                  Amount ##.##={String(fieldChecks.amountFormatOk)} · whitespace={String(fieldChecks.amountHasWhitespace)}
+                </Text>
+                <Text style={styles.diagLine}>
+                  Note edge spaces={String(fieldChecks.noteHasLeadingTrailingSpace)} · possibleDoubleEncoding=
+                  {String(fieldChecks.possibleDoubleEncoding)}
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.diagLine}>Select bill + amount to run checks.</Text>
+            )}
+
+            <Text style={styles.diagSection}>G) Diagnostic URI variants (not opened)</Text>
             <Text style={styles.diagHint}>
-              If A works and B fails with the same pa, the failure is tied to dynamic/amount intent handling in GPay—not a wrong seller UPI ID in code.
+              Constructed only for comparison. Production Pay still uses variant 3. No mc invented. Manual scan of a
+              printed/exported QR is a separate test — this panel does not launch GPay.
+            </Text>
+            {diagnosticVariants.length === 0 ? (
+              <Text style={styles.diagLine}>Select bill + amount to build variants.</Text>
+            ) : (
+              diagnosticVariants.map((variant) => (
+                <View key={variant.id} style={styles.diagVariant}>
+                  <Text style={styles.diagVariantTitle}>{variant.title}</Text>
+                  <Text style={styles.diagLine}>{variant.description}</Text>
+                  <Text style={styles.diagMono}>{variant.maskedPreview}</Text>
+                  <Text style={styles.diagLine}>Keys: [{variant.keys.join(', ')}]</Text>
+                  <Text style={styles.diagHint}>{variant.note}</Text>
+                </View>
+              ))
+            )}
+
+            <Text style={styles.diagSection}>H) Safest next manual test</Text>
+            <Text style={styles.diagHint}>
+              1) Confirm F shows no whitespace / double-encoding issues.{'\n'}
+              2) Outside the app, ask seller to show static QR — pay ₹1 (works path).{'\n'}
+              3) In GPay, scan this screen&apos;s dynamic QR (variant 3) for ₹1 — if it fails like Pay, dynamic am path is confirmed.{'\n'}
+              4) Ask seller/PSP whether the VPA is personal or merchant (QR code / business UPI). Do not add mc/tr to production until that is known.
             </Text>
           </View>
         ) : null}
@@ -588,6 +664,17 @@ const styles = StyleSheet.create({
   },
   diagLine: { marginTop: 2, color: colors.textPrimary, fontSize: typography.fontSize.xs },
   diagHint: { marginTop: spacing.xs, color: colors.textSecondary, fontSize: typography.fontSize.xs, lineHeight: 16 },
+  diagVariant: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  diagVariantTitle: {
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    fontSize: typography.fontSize.sm,
+  },
   selectedBill: { color: colors.primary, fontWeight: typography.fontWeight.bold, marginBottom: spacing.sm },
   suggest: {
     borderWidth: 1,

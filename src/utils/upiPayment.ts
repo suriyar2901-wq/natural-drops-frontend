@@ -223,6 +223,140 @@ export const buildAndroidGpayIntentUrl = (upiUrl: string): string => {
   return `intent://pay?${query}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
 };
 
+export type UpiFieldChecks = {
+  vpaTrimmed: boolean;
+  vpaLooksValid: boolean;
+  vpaHasWhitespace: boolean;
+  nameTrimmed: boolean;
+  nameEmpty: boolean;
+  amountFormatOk: boolean;
+  amountHasWhitespace: boolean;
+  noteHasLeadingTrailingSpace: boolean;
+  /** True if raw URI still contains %25 (possible double-encoding of %). */
+  possibleDoubleEncoding: boolean;
+};
+
+/** Integrity checks on seller fields + a built URI (diagnostic only). */
+export const inspectUpiFieldIntegrity = (
+  upiId: string,
+  payeeName: string,
+  amount: number,
+  note: string,
+  builtUri: string
+): UpiFieldChecks => {
+  const rawId = upiId || '';
+  const trimmedId = rawId.trim();
+  const am = formatUpiAmount(amount);
+  return {
+    vpaTrimmed: rawId === trimmedId,
+    vpaLooksValid: /^[^\s@]+@[^\s@]+$/.test(trimmedId),
+    vpaHasWhitespace: /\s/.test(rawId),
+    nameTrimmed: (payeeName || '') === (payeeName || '').trim(),
+    nameEmpty: !(payeeName || '').trim(),
+    amountFormatOk: /^\d+\.\d{2}$/.test(am),
+    amountHasWhitespace: /\s/.test(am),
+    noteHasLeadingTrailingSpace: note !== note.trim(),
+    possibleDoubleEncoding: /%25[0-9A-Fa-f]{2}/.test(builtUri),
+  };
+};
+
+export type DiagnosticUpiVariant = {
+  id: 'baseline' | 'amount_only' | 'amount_plus_note' | 'amount_plus_test_tr';
+  title: string;
+  description: string;
+  /** Masked decoded preview — never full VPA */
+  maskedPreview: string;
+  keys: string[];
+  /** Notes on tn vs tr — for on-screen education */
+  note: string;
+};
+
+/**
+ * Diagnostic-only URI variants. Does not open GPay and is not used by production Pay.
+ * Does not invent mc / merchant url. Optional test `tr` is clearly labeled non-production.
+ */
+export const buildDiagnosticUpiVariants = (input: {
+  upiId: string;
+  payeeName: string;
+  amount: number;
+  orderId?: number | null;
+}): DiagnosticUpiVariant[] => {
+  const pa = (input.upiId || '').trim();
+  const pn = (input.payeeName || 'Shop').trim() || 'Shop';
+  const am = formatUpiAmount(input.amount);
+  if (!pa || !am) return [];
+
+  const enc = (value: string) => encodeURIComponent(value);
+  const note = input.orderId != null ? `Order ${input.orderId}` : 'Bill payment';
+  // Test-only reference — not wired into production Pay / claim flow.
+  const testTr = `NDTEST${Date.now()}`;
+
+  const make = (
+    id: DiagnosticUpiVariant['id'],
+    title: string,
+    description: string,
+    parts: string[],
+    noteText: string
+  ): DiagnosticUpiVariant => {
+    const uri = `upi://pay?${parts.join('&')}`;
+    const parsed = parseUpiPayParams(uri);
+    return {
+      id,
+      title,
+      description,
+      maskedPreview: parsed
+        ? `${parsed.schemeHost}?${parsed.maskedQueryPreview}`
+        : '(parse failed)',
+      keys: parsed?.paramKeys || [],
+      note: noteText,
+    };
+  };
+
+  return [
+    make(
+      'baseline',
+      '1) Baseline (static-like)',
+      'Same shape as seller shop QR: pa + pn only. No am / cu / tn / tr.',
+      [`pa=${enc(pa)}`, `pn=${enc(pn)}`],
+      'Matches working static QR model. Amount would be typed in GPay.'
+    ),
+    make(
+      'amount_only',
+      '2) Amount only',
+      'pa + pn + am + cu. No tn, no tr.',
+      [`pa=${enc(pa)}`, `pn=${enc(pn)}`, `am=${enc(am)}`, 'cu=INR'],
+      'Isolates locked amount. If this fails in a manual scan test, am/dynamic path is implicated.'
+    ),
+    make(
+      'amount_plus_note',
+      '3) Amount + note (production shape)',
+      'Current production Pay / dynamic QR: pa, pn, am, cu, tn. No tr.',
+      [
+        `pa=${enc(pa)}`,
+        `pn=${enc(pn)}`,
+        `am=${enc(am)}`,
+        'cu=INR',
+        `tn=${enc(note)}`,
+      ],
+      'tn = human-readable transaction note (NOT the UPI transaction reference). Production uses this shape today.'
+    ),
+    make(
+      'amount_plus_test_tr',
+      '4) Amount + unique test tr (diagnostic only)',
+      'pa, pn, am, cu, tn, plus a one-off test tr. Not used for live Pay.',
+      [
+        `pa=${enc(pa)}`,
+        `pn=${enc(pn)}`,
+        `am=${enc(am)}`,
+        'cu=INR',
+        `tn=${enc(note)}`,
+        `tr=${enc(testTr)}`,
+      ],
+      'tr = transaction reference id (order/bill id style). NPCI marks tr conditional/mandatory for merchant & dynamic merchant flows. Google India in-app sample includes tr with merchant VPA + mc. Do not assume tr alone fixes P2P personal VPA.'
+    ),
+  ];
+};
+
 /**
  * Standard NPCI UPI collect link (same string encoded into dynamic QR).
  * P2P to a personal/seller VPA: pa, pn, am, cu, tn only — do not invent `mc`
