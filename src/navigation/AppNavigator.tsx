@@ -103,7 +103,6 @@ import { OrderManagementScreen } from '../screens/admin/OrderManagementScreen';
 import { MenuManagementScreen } from '../screens/admin/MenuManagementScreen';
 import { UserManagementScreen } from '../screens/admin/UserManagementScreen';
 import { AppSettingsScreen } from '../screens/admin/AppSettingsScreen';
-import { DozzleLogsScreen } from '../screens/admin/DozzleLogsScreen';
 import { AdminPlatformPaymentScreen } from '../screens/admin/AdminPlatformPaymentScreen';
 import { SellerListScreen } from '../screens/admin/SellerListScreen';
 import { AddSellerScreen } from '../screens/admin/AddSellerScreen';
@@ -514,7 +513,6 @@ const AdminTabs = ({ navigation }: any) => {
           <Tab.Screen name="UserManagement" component={UserManagementScreen} options={hiddenPageOptions('Users')} />
           <Tab.Screen name="Profile" component={ProfileScreen} options={hiddenPageOptions('Profile')} />
           <Tab.Screen name="AppSettings" component={AppSettingsScreen} options={hiddenPageOptions('App Settings')} />
-          <Tab.Screen name="DozzleLogs" component={DozzleLogsScreen} options={hiddenPageOptions('Live Logs')} />
           <Tab.Screen name="AdminPlatformPayment" component={AdminPlatformPaymentScreen} options={hiddenPageOptions('Platform payment')} />
           <Tab.Screen name="AddSeller" component={AddSellerScreen} options={hiddenPageOptions('Add Seller')} />
           <Tab.Screen name="SellerDetail" component={SellerDetailScreen} options={hiddenPageOptions('Seller Details')} />
@@ -553,8 +551,6 @@ export const AppNavigator = () => {
             ForgotPassword: 'ForgotPassword',
             ResetPassword: 'ResetPassword',
             AccountInactive: 'AccountInactive',
-            // Live Dozzle logs: https://natural-drops-frontend.vercel.app/Logs
-            Logs: 'Logs',
             ProductDetail: 'product/:productId',
             SellerProductDetail: 'seller/product/:productId',
             AdminProductDetail: 'admin/product/:productId',
@@ -608,11 +604,6 @@ export const AppNavigator = () => {
             title: 'Account Inactive',
             headerShown: false,
           }}
-        />
-        <Stack.Screen
-          name="Logs"
-          component={DozzleLogsScreen}
-          options={{ title: 'Live Logs (Dozzle)' }}
         />
         
         {/* Admin App Screens - After login (Admin, Seller roles) */}

@@ -31,7 +31,6 @@ export const MoreScreen = ({ navigation }: any) => {
       { label: 'Users', icon: 'people-outline', onPress: () => navigation.navigate('UserManagement') },
       { label: 'Profile', icon: 'person-outline', onPress: () => navigation.navigate('Profile') },
       { label: 'Platform payment QR', icon: 'qr-code-outline', onPress: () => navigation.navigate('AdminPlatformPayment') },
-      { label: 'Live Logs (Dozzle)', icon: 'terminal-outline', onPress: () => navigation.navigate('DozzleLogs') },
       { label: 'App Settings', icon: 'settings-outline', onPress: () => navigation.navigate('AppSettings') },
     );
   }
