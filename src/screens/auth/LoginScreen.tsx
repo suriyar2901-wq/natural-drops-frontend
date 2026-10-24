@@ -185,9 +185,15 @@ export const LoginScreen = ({ navigation }: any) => {
       return;
     }
 
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
+      showErrorPopup('Login Failed', 'Please enter your username and password.');
+      return;
+    }
+
     setLocalLoading(true);
     try {
-      const result = await login({ username, password });
+      const result = await login({ username: trimmedUsername, password });
 
       if (result.success && result.user) {
         const isActiveBoolean = result.user.isActive !== false;
@@ -214,17 +220,22 @@ export const LoginScreen = ({ navigation }: any) => {
           setAccountStatusMessage(result.error || 'Your account access is restricted.');
           setShowCustomerServiceModal(true);
         } else {
+          const raw = (result.error || '').toLowerCase();
+          const isNetwork =
+            raw.includes('network request failed') ||
+            raw.includes('fetch_error') ||
+            raw.includes('failed to fetch') ||
+            raw.includes('network error');
           const isInvalidCredentials =
             result.errorCode === 'INVALID_CREDENTIALS' ||
-            (result.error || '').toLowerCase().includes('invalid username') ||
-            (result.error || '').toLowerCase().includes('invalid password');
-          const errorMessage = isInvalidCredentials
-            ? 'Invalid username or password. Please check your details and try again.'
-            : result.error || 'Please check your credentials';
-          const title =
-            errorMessage.includes('connect to server') || errorMessage.includes('backend server')
-              ? 'Connection Error'
-              : 'Login Failed';
+            raw.includes('invalid username') ||
+            raw.includes('invalid password');
+          const errorMessage = isNetwork
+            ? 'Cannot reach the API. Use the same Wi‑Fi as your computer, run the backend on port 8080, and start Expo with --host lan (not tunnel-only). Check MOBILE_API_IP / EXPO_PUBLIC_API_BASE_URL.'
+            : isInvalidCredentials
+              ? 'Invalid username or password. Please check your details and try again.'
+              : result.error || 'Please check your credentials';
+          const title = isNetwork ? 'Connection Error' : 'Login Failed';
           showErrorPopup(title, errorMessage);
         }
       }

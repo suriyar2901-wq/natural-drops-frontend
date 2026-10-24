@@ -66,9 +66,11 @@ export const useAuth = () => {
       
       // Handle connection errors with better messages
       if (error.status === 'FETCH_ERROR' || error.data?.code === 'CONNECTION_REFUSED') {
-        return { 
-          success: false, 
-          error: error.data?.message || 'Cannot connect to server. Please ensure the backend server is running on port 8080.',
+        return {
+          success: false,
+          error:
+            error.data?.message ||
+            'Cannot connect to server. Keep phone and PC on the same Wi‑Fi, run Spring Boot on :8080, and use expo start --host lan (tunnel alone cannot reach a local API).',
           isAccountStatusError: false,
         };
       }

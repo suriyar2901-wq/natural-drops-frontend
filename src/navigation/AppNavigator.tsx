@@ -526,7 +526,11 @@ const AdminTabs = ({ navigation }: any) => {
 
 // Main App Navigator - Start with Login Page
 export const AppNavigator = () => {
-  const webOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  // On native Expo Go, `window` may exist without `location` — guard before .origin
+  const webOrigin =
+    typeof window !== 'undefined' && window.location != null && typeof window.location.origin === 'string'
+      ? window.location.origin
+      : '';
   const linkingPrefixes = [
     webOrigin,
     'https://natural-drops-frontend.vercel.app',

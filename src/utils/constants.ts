@@ -1,18 +1,32 @@
 // API Configuration
 // Auto-detect platform: Use localhost for web, network IP for mobile
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 // Environment variable support (preferred for Vercel/Render)
 // Expo uses EXPO_PUBLIC_ prefix to expose variables to client code.
 const ENV_API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
-// ⚠️ IMPORTANT: Update this IP address to match your computer's local IP
-// To find your IP address:
-// - Windows: Run `ipconfig` and look for "IPv4 Address" under your active network adapter
-// - Mac/Linux: Run `ifconfig` or `ip addr show` and look for your network interface IP
-// - Make sure your mobile device is on the SAME Wi-Fi network as your computer
-// - The backend server must be running on port 8080
-const MOBILE_API_IP = '192.168.30.159'; // ⬅️ UPDATE THIS to your computer's IP address
+// Fallback if Expo host cannot be detected (update when your LAN IP changes)
+const MOBILE_API_IP = '192.168.30.159';
+
+/** LAN IP from Expo Go / Metro (e.g. 192.168.x.x:8081). Null for tunnel / localhost. */
+const getExpoLanHost = (): string | null => {
+  const hostUri =
+    Constants.expoConfig?.hostUri ||
+    (Constants as { manifest2?: { extra?: { expoGo?: { debuggerHost?: string } } } }).manifest2?.extra
+      ?.expoGo?.debuggerHost ||
+    (Constants as { manifest?: { debuggerHost?: string } }).manifest?.debuggerHost ||
+    '';
+  if (!hostUri || typeof hostUri !== 'string') return null;
+  const host = hostUri.split(':')[0]?.trim();
+  if (!host || host === '127.0.0.1' || host === 'localhost') return null;
+  // Tunnel URLs cannot reach a laptop-only Spring Boot on :8080
+  if (host.includes('exp.direct') || host.includes('exp.host') || host.includes('ngrok')) {
+    return null;
+  }
+  return host;
+};
 
 const getApiBaseUrl = () => {
   // Prefer environment variable (Render/Vercel/production)
@@ -25,9 +39,9 @@ const getApiBaseUrl = () => {
     return 'http://localhost:8080/api';
   }
 
-  // For mobile devices on the same Wi-Fi network
-  // Make sure to update MOBILE_API_IP above to match your computer's IP
-  return `http://${MOBILE_API_IP}:8080/api`;
+  // Prefer same LAN host Expo Metro uses (works with `expo start --host lan`)
+  const lanHost = getExpoLanHost();
+  return `http://${lanHost || MOBILE_API_IP}:8080/api`;
 };
 
 export const API_BASE_URL = getApiBaseUrl();
