@@ -76,6 +76,153 @@ export const formatUpiAmount = (amount: number): string => {
   return n.toFixed(2);
 };
 
+export type ParsedUpiParams = {
+  schemeHost: string;
+  paMasked: string;
+  pn: string;
+  am: string;
+  cu: string;
+  tn: string;
+  tr: string;
+  mc: string;
+  hasAm: boolean;
+  hasTr: boolean;
+  hasMc: boolean;
+  paramKeys: string[];
+  /** Masked query preview — never includes full VPA */
+  maskedQueryPreview: string;
+};
+
+const decodeParam = (value: string | null): string => {
+  if (value == null) return '';
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+/** Parse a UPI / tez / intent pay URI into masked, decoded fields for on-screen diagnostics. */
+export const parseUpiPayParams = (rawUrl: string): ParsedUpiParams | null => {
+  const url = (rawUrl || '').trim();
+  if (!url) return null;
+
+  let schemeHost = 'unknown';
+  let search = '';
+  if (url.startsWith('upi://pay?')) {
+    schemeHost = 'upi://pay';
+    search = url.slice('upi://pay?'.length);
+  } else if (url.startsWith('tez://upi/pay?')) {
+    schemeHost = 'tez://upi/pay';
+    search = url.slice('tez://upi/pay?'.length);
+  } else if (url.startsWith('intent://pay?')) {
+    schemeHost = 'intent://pay (scheme=upi)';
+    search = url.slice('intent://pay?'.length).split('#')[0];
+  } else if (url.includes('?')) {
+    schemeHost = url.slice(0, url.indexOf('?'));
+    search = url.slice(url.indexOf('?') + 1).split('#')[0];
+  } else {
+    return null;
+  }
+
+  const map = new URLSearchParams(search.split('#')[0]);
+  const pa = decodeParam(map.get('pa'));
+  const pn = decodeParam(map.get('pn'));
+  const am = map.get('am') || '';
+  const cu = map.get('cu') || '';
+  const tn = decodeParam(map.get('tn'));
+  const tr = decodeParam(map.get('tr'));
+  const mc = decodeParam(map.get('mc'));
+  const paramKeys = Array.from(map.keys());
+
+  return {
+    schemeHost,
+    paMasked: maskUpiId(pa),
+    pn,
+    am,
+    cu,
+    tn,
+    tr,
+    mc,
+    hasAm: !!am,
+    hasTr: !!tr,
+    hasMc: !!mc,
+    paramKeys,
+    maskedQueryPreview: [
+      `pa=${maskUpiId(pa)}`,
+      pn ? `pn=${pn}` : '',
+      am ? `am=${am}` : '',
+      cu ? `cu=${cu}` : '',
+      tn ? `tn=${tn}` : '',
+      tr ? `tr=(set,len=${tr.length})` : '',
+      mc ? `mc=${mc}` : '',
+    ]
+      .filter(Boolean)
+      .join('&'),
+  };
+};
+
+/**
+ * Shop Profile seller QR payload (static collect — no amount).
+ * Matches ShopProfileScreen: upi://pay?pa&pn only.
+ */
+export const buildSellerStaticUpiUrl = (upiId: string, payeeName: string): string => {
+  const id = (upiId || '').trim();
+  if (!id) return '';
+  return `upi://pay?pa=${encodeURIComponent(id)}&pn=${encodeURIComponent((payeeName || 'Shop').trim() || 'Shop')}`;
+};
+
+export type UpiOpenCandidate = {
+  method: 'upi://pay' | 'intent://gpay-package' | 'tez://upi/pay' | 'web-location';
+  label: string;
+  usedOn: string;
+};
+
+/** Describes which open methods the app will try (does not open anything). */
+export const listUpiOpenCandidates = (): UpiOpenCandidate[] => {
+  if (Platform.OS === 'android') {
+    return [
+      {
+        method: 'upi://pay',
+        label: 'Standard upi://pay (same string as dynamic QR)',
+        usedOn: 'Android — tried first',
+      },
+      {
+        method: 'intent://gpay-package',
+        label: 'intent://pay?…#Intent;scheme=upi;package=GPay',
+        usedOn: 'Android — fallback if upi:// cannot open',
+      },
+    ];
+  }
+  if (Platform.OS === 'web') {
+    return [
+      {
+        method: 'upi://pay',
+        label: 'Standard upi://pay via Linking / location',
+        usedOn: 'Web — primary',
+      },
+      {
+        method: 'web-location',
+        label: 'window.location.href = upi://pay (last resort)',
+        usedOn: 'Web — if Linking fails',
+      },
+    ];
+  }
+  return [
+    {
+      method: 'upi://pay',
+      label: 'Standard upi://pay',
+      usedOn: Platform.OS,
+    },
+  ];
+};
+
+/** Build Android GPay package intent from a upi://pay URL (for diagnostics only). */
+export const buildAndroidGpayIntentUrl = (upiUrl: string): string => {
+  const query = upiUrl.replace(/^upi:\/\/pay\?/, '');
+  return `intent://pay?${query}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
+};
+
 /**
  * Standard NPCI UPI collect link (same string encoded into dynamic QR).
  * P2P to a personal/seller VPA: pa, pn, am, cu, tn only — do not invent `mc`
@@ -98,10 +245,7 @@ export const buildUpiPayUrl = ({ upiId, payeeName, amount, note }: UpiPayParams)
  * never embed a second `upi://pay?` inside intent:// (that mangles `am` and often
  * surfaces a false "limit exceeded" error in GPay).
  */
-const androidGpayPackageIntent = (upiUrl: string) => {
-  const query = upiUrl.replace(/^upi:\/\/pay\?/, '');
-  return `intent://pay?${query}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
-};
+const androidGpayPackageIntent = (upiUrl: string) => buildAndroidGpayIntentUrl(upiUrl);
 
 /**
  * Opens a UPI app with the same payload as the dynamic QR.

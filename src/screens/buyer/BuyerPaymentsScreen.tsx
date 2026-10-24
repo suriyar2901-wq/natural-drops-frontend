@@ -23,12 +23,16 @@ import { moneyValue, orderBillPending } from '../../types/shop.types';
 import { Order } from '../../types';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
 import {
+  buildAndroidGpayIntentUrl,
+  buildSellerStaticUpiUrl,
   buildUpiPayUrl,
   extractUpiReference,
   formatUpiAmount,
+  listUpiOpenCandidates,
   logUpiPayUriDebug,
   maskUpiId,
   openUpiPayment,
+  parseUpiPayParams,
 } from '../../utils/upiPayment';
 
 const orderSplit = (order: Order) => {
@@ -58,6 +62,7 @@ export const BuyerPaymentsScreen = () => {
   const [generatedQr, setGeneratedQr] = useState('');
   const [openingUpi, setOpeningUpi] = useState(false);
   const [awaitingReturn, setAwaitingReturn] = useState(false);
+  const [showUpiDiag, setShowUpiDiag] = useState(false);
   const refInput = useRef<TextInput>(null);
   const uploadedQr = data?.sellerQr && data.sellerQr.startsWith('data:image') ? data.sellerQr : '';
   const upiId = (data?.sellerUpi || '').trim();
@@ -82,6 +87,24 @@ export const BuyerPaymentsScreen = () => {
   const selectedBalance = selected ? orderSplit(selected).balance : 0;
   const waitingSelected = selected ? pendingByOrder.get(selected.id) : undefined;
   const payAmount = Number(amount);
+
+  const sellerStaticUri = upiId ? buildSellerStaticUpiUrl(upiId, payeeName) : '';
+  const appPayUri =
+    upiId && selected && payAmount > 0
+      ? buildUpiPayUrl({
+          upiId,
+          payeeName,
+          amount: payAmount,
+          note: `Order ${selected.id}`,
+        })
+      : '';
+  const sellerStaticParsed = sellerStaticUri ? parseUpiPayParams(sellerStaticUri) : null;
+  const appPayParsed = appPayUri ? parseUpiPayParams(appPayUri) : null;
+  const intentParsed =
+    appPayUri && Platform.OS === 'android'
+      ? parseUpiPayParams(buildAndroidGpayIntentUrl(appPayUri))
+      : null;
+  const openCandidates = listUpiOpenCandidates();
 
   useEffect(() => {
     if (!upiId || !(payAmount > 0) || !selectedOrderId) {
@@ -316,6 +339,98 @@ export const BuyerPaymentsScreen = () => {
           The bill stays unpaid until the seller confirms.
         </Text>
 
+        <TouchableOpacity
+          style={styles.diagToggle}
+          onPress={() => setShowUpiDiag((open) => !open)}
+          accessibilityRole="button"
+        >
+          <Text style={styles.diagToggleText}>
+            {showUpiDiag ? 'Hide' : 'Show'} UPI diagnostics (no payment)
+          </Text>
+        </TouchableOpacity>
+
+        {showUpiDiag ? (
+          <View style={styles.diagBox}>
+            <Text style={styles.diagTitle}>Compare payment sources</Text>
+            <Text style={styles.diagMeta}>
+              Platform: {Platform.OS}. Values are decoded and VPA is masked. This panel does not open GPay or change bill status.
+            </Text>
+
+            <Text style={styles.diagSection}>A) Seller shop QR (Shop Profile formula)</Text>
+            <Text style={styles.diagMono}>
+              {sellerStaticParsed
+                ? `${sellerStaticParsed.schemeHost}?${sellerStaticParsed.maskedQueryPreview}`
+                : 'No seller UPI'}
+            </Text>
+            {sellerStaticParsed ? (
+              <Text style={styles.diagLine}>
+                Keys: [{sellerStaticParsed.paramKeys.join(', ')}] · am={sellerStaticParsed.hasAm ? 'yes' : 'NO'} ·
+                tr={sellerStaticParsed.hasTr ? 'yes' : 'NO'} · mc={sellerStaticParsed.hasMc ? 'yes' : 'NO'}
+              </Text>
+            ) : null}
+            <Text style={styles.diagHint}>
+              Working path users report: scan this style QR or type UPI ID. Amount is entered in GPay (no locked am).
+            </Text>
+
+            <Text style={styles.diagSection}>B) App Pay button / dynamic QR (same URI)</Text>
+            <Text style={styles.diagMono}>
+              {appPayParsed
+                ? `${appPayParsed.schemeHost}?${appPayParsed.maskedQueryPreview}`
+                : 'Select a bill and amount first'}
+            </Text>
+            {appPayParsed ? (
+              <>
+                <Text style={styles.diagLine}>pa (masked): {appPayParsed.paMasked}</Text>
+                <Text style={styles.diagLine}>pn: {appPayParsed.pn || '(empty)'}</Text>
+                <Text style={styles.diagLine}>am: {appPayParsed.am || '(missing)'}</Text>
+                <Text style={styles.diagLine}>cu: {appPayParsed.cu || '(missing)'}</Text>
+                <Text style={styles.diagLine}>tn: {appPayParsed.tn || '(missing)'}</Text>
+                <Text style={styles.diagLine}>tr: {appPayParsed.hasTr ? appPayParsed.tr : '(not set)'}</Text>
+                <Text style={styles.diagLine}>mc: {appPayParsed.hasMc ? appPayParsed.mc : '(not set)'}</Text>
+                <Text style={styles.diagLine}>Keys: [{appPayParsed.paramKeys.join(', ')}]</Text>
+              </>
+            ) : null}
+
+            <Text style={styles.diagSection}>C) Android intent fallback (if used)</Text>
+            <Text style={styles.diagMono}>
+              {intentParsed
+                ? `${intentParsed.schemeHost}?${intentParsed.maskedQueryPreview}`
+                : Platform.OS === 'android'
+                  ? 'Select bill to preview'
+                  : 'Not used on this platform'}
+            </Text>
+            {intentParsed ? (
+              <Text style={styles.diagLine}>
+                Query keys same as B: [{intentParsed.paramKeys.join(', ')}] — package forced to GPay
+              </Text>
+            ) : null}
+
+            <Text style={styles.diagSection}>D) Open order (no tez://)</Text>
+            {openCandidates.map((item) => (
+              <Text key={item.method} style={styles.diagLine}>
+                · {item.method}: {item.usedOn}
+              </Text>
+            ))}
+
+            <Text style={styles.diagSection}>E) Diff vs working seller QR</Text>
+            <Text style={styles.diagLine}>
+              App link adds: {[
+                appPayParsed?.hasAm ? 'am (locked amount)' : null,
+                appPayParsed?.cu ? 'cu' : null,
+                appPayParsed?.tn ? 'tn' : null,
+              ]
+                .filter(Boolean)
+                .join(', ') || '(none — select bill)'}
+            </Text>
+            <Text style={styles.diagLine}>
+              App link missing vs Google merchant sample: tr, mc (not added — may require merchant VPA)
+            </Text>
+            <Text style={styles.diagHint}>
+              If A works and B fails with the same pa, the failure is tied to dynamic/amount intent handling in GPay—not a wrong seller UPI ID in code.
+            </Text>
+          </View>
+        ) : null}
+
         <Text style={styles.step}>3. Enter transaction number &amp; tell seller</Text>
         <Input
           ref={refInput}
@@ -433,6 +548,46 @@ const styles = StyleSheet.create({
   },
   qr: { width: 180, height: 180, alignSelf: 'center', marginVertical: spacing.md },
   gpayButton: { marginTop: spacing.sm, marginBottom: spacing.sm },
+  diagToggle: {
+    alignSelf: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  diagToggleText: {
+    color: colors.primary,
+    fontWeight: typography.fontWeight.semibold,
+    fontSize: typography.fontSize.sm,
+    textDecorationLine: 'underline',
+  },
+  diagBox: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    backgroundColor: colors.gray100,
+  },
+  diagTitle: {
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  diagMeta: { color: colors.textSecondary, fontSize: typography.fontSize.xs, marginBottom: spacing.sm },
+  diagSection: {
+    marginTop: spacing.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
+    fontSize: typography.fontSize.sm,
+  },
+  diagMono: {
+    marginTop: 4,
+    color: colors.textPrimary,
+    fontSize: typography.fontSize.xs,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : Platform.OS === 'android' ? 'monospace' : undefined,
+  },
+  diagLine: { marginTop: 2, color: colors.textPrimary, fontSize: typography.fontSize.xs },
+  diagHint: { marginTop: spacing.xs, color: colors.textSecondary, fontSize: typography.fontSize.xs, lineHeight: 16 },
   selectedBill: { color: colors.primary, fontWeight: typography.fontWeight.bold, marginBottom: spacing.sm },
   suggest: {
     borderWidth: 1,
