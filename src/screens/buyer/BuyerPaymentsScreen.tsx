@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AppState,
+  Clipboard,
   Image,
   Platform,
   ScrollView,
@@ -23,19 +24,25 @@ import { moneyValue, orderBillPending } from '../../types/shop.types';
 import { Order } from '../../types';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
 import {
-  buildAndroidGpayIntentUrl,
-  buildDiagnosticUpiVariants,
-  buildSellerStaticUpiUrl,
   buildUpiPayUrl,
+  buildUpiPayUrlVariant,
   extractUpiReference,
   formatUpiAmount,
-  inspectUpiFieldIntegrity,
-  listUpiOpenCandidates,
   logUpiPayUriDebug,
   maskUpiId,
+  openUpiNoPrefill,
   openUpiPayment,
+  openUpiWithGpayIntent,
   parseUpiPayParams,
+  UpiVariantId,
 } from '../../utils/upiPayment';
+
+const UPI_VARIANTS: { id: UpiVariantId; label: string; hint: string }[] = [
+  { id: 'V1', label: 'V1', hint: 'pa, pn, am, cu' },
+  { id: 'V2', label: 'V2', hint: 'pa, pn, am, cu, tn' },
+  { id: 'V3', label: 'V3', hint: 'pa, pn, cu (no amount)' },
+  { id: 'V4', label: 'V4', hint: 'V2 + unique tr' },
+];
 
 const orderSplit = (order: Order) => {
   const total = Number(order.total) || 0;
@@ -63,8 +70,13 @@ export const BuyerPaymentsScreen = () => {
   const [billTab, setBillTab] = useState<'unpaid' | 'paid'>('unpaid');
   const [generatedQr, setGeneratedQr] = useState('');
   const [openingUpi, setOpeningUpi] = useState(false);
+  const [openingManualGpay, setOpeningManualGpay] = useState(false);
   const [awaitingReturn, setAwaitingReturn] = useState(false);
   const [showUpiDiag, setShowUpiDiag] = useState(false);
+  const [diagVariant, setDiagVariant] = useState<UpiVariantId | null>(null);
+  const [diagUrl, setDiagUrl] = useState('');
+  const [diagQr, setDiagQr] = useState('');
+  const [openingDiag, setOpeningDiag] = useState(false);
   const refInput = useRef<TextInput>(null);
   const uploadedQr = data?.sellerQr && data.sellerQr.startsWith('data:image') ? data.sellerQr : '';
   const upiId = (data?.sellerUpi || '').trim();
@@ -89,49 +101,8 @@ export const BuyerPaymentsScreen = () => {
   const selectedBalance = selected ? orderSplit(selected).balance : 0;
   const waitingSelected = selected ? pendingByOrder.get(selected.id) : undefined;
   const payAmount = Number(amount);
-
-  const sellerStaticUri = upiId ? buildSellerStaticUpiUrl(upiId, payeeName) : '';
-  const appPayUri =
-    upiId && selected && payAmount > 0
-      ? buildUpiPayUrl({
-          upiId,
-          payeeName,
-          amount: payAmount,
-          note: `Order ${selected.id}`,
-        })
-      : '';
-  const sellerStaticParsed = sellerStaticUri ? parseUpiPayParams(sellerStaticUri) : null;
-  const appPayParsed = appPayUri ? parseUpiPayParams(appPayUri) : null;
-  const intentParsed =
-    appPayUri && Platform.OS === 'android'
-      ? parseUpiPayParams(buildAndroidGpayIntentUrl(appPayUri))
-      : null;
-  const openCandidates = listUpiOpenCandidates();
-  const productionNote = selected ? `Order ${selected.id}` : '';
-  const fieldChecks =
-    upiId && appPayUri
-      ? inspectUpiFieldIntegrity(upiId, payeeName, payAmount, productionNote, appPayUri)
-      : null;
-  const diagnosticVariants =
-    upiId && payAmount > 0
-      ? buildDiagnosticUpiVariants({
-          upiId,
-          payeeName,
-          amount: payAmount,
-          orderId: selected?.id ?? null,
-        })
-      : [];
-  const dynamicQrMatchesPay =
-    !!appPayUri &&
-    !!selectedOrderId &&
-    payAmount > 0 &&
-    appPayUri ===
-      buildUpiPayUrl({
-        upiId,
-        payeeName,
-        amount: payAmount,
-        note: `Order ${selectedOrderId}`,
-      });
+  const amountFormatted = formatUpiAmount(payAmount) || amount.trim();
+  const diagParsed = diagUrl ? parseUpiPayParams(diagUrl) : null;
 
   useEffect(() => {
     if (!upiId || !(payAmount > 0) || !selectedOrderId) {
@@ -194,6 +165,90 @@ export const BuyerPaymentsScreen = () => {
     setAmount(orderSplit(order).balance.toFixed(2));
     setBillTab('unpaid');
     setUpiReference('');
+  };
+
+  const copyText = async (value: string, label: string) => {
+    const text = (value || '').trim();
+    if (!text) {
+      showErrorToast(`Nothing to copy for ${label}`);
+      return;
+    }
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        Clipboard.setString(text);
+      }
+      showSuccessToast(`${label} copied`);
+    } catch {
+      showErrorToast(`Could not copy ${label}`);
+    }
+  };
+
+  const selectDiagVariant = async (variant: UpiVariantId) => {
+    if (!upiId) {
+      showErrorToast('Seller has not added a UPI ID yet');
+      return;
+    }
+    if ((variant === 'V1' || variant === 'V2' || variant === 'V4') && !(payAmount > 0)) {
+      showErrorToast('Enter a valid amount for this variant');
+      return;
+    }
+    try {
+      const url = buildUpiPayUrlVariant(variant, {
+        upiId,
+        payeeName,
+        amount: payAmount > 0 ? payAmount : undefined,
+        orderId: selected?.id ?? selectedOrderId,
+      });
+      setDiagVariant(variant);
+      setDiagUrl(url);
+      logUpiPayUriDebug(url, `diag.${variant}`);
+      const image = await QRCode.toDataURL(url, {
+        width: 240,
+        margin: 1,
+        color: { dark: '#0232AA', light: '#FFFFFF' },
+      });
+      setDiagQr(image);
+    } catch (error: any) {
+      setDiagVariant(null);
+      setDiagUrl('');
+      setDiagQr('');
+      showErrorToast(error?.message || 'Could not build UPI URL');
+    }
+  };
+
+  const openDiagGpay = async () => {
+    if (!diagUrl) {
+      showErrorToast('Select a variant first');
+      return;
+    }
+    setOpeningDiag(true);
+    try {
+      await openUpiWithGpayIntent(diagUrl);
+      showSuccessToast(`Opened ${diagVariant || 'variant'} in GPay (diagnostics only)`);
+    } catch (error: any) {
+      showErrorToast(error?.message || 'Could not open GPay');
+    } finally {
+      setOpeningDiag(false);
+    }
+  };
+
+  const openManualGpay = async () => {
+    if (!upiId) {
+      showErrorToast('Seller has not added a UPI ID yet');
+      return;
+    }
+    setOpeningManualGpay(true);
+    try {
+      await openUpiNoPrefill(upiId, payeeName);
+      setAwaitingReturn(true);
+      showSuccessToast('Enter amount in GPay, pay, then come back with the UTR');
+    } catch (error: any) {
+      showErrorToast(error?.message || 'Could not open GPay');
+    } finally {
+      setOpeningManualGpay(false);
+    }
   };
 
   const openGpay = async () => {
@@ -338,19 +393,45 @@ export const BuyerPaymentsScreen = () => {
 
         <Text style={styles.step}>2. Pay with UPI / GPay</Text>
         <Text style={styles.payLabel}>Seller UPI ID</Text>
-        <Text selectable style={styles.upiId}>{upiId || 'Seller has not added a UPI ID yet'}</Text>
+        <View style={styles.copyRow}>
+          <Text selectable style={[styles.upiId, styles.copyValue]}>
+            {upiId || 'Seller has not added a UPI ID yet'}
+          </Text>
+          <TouchableOpacity
+            style={styles.copyBtn}
+            onPress={() => copyText(upiId, 'UPI ID')}
+            disabled={!upiId}
+            accessibilityRole="button"
+          >
+            <Text style={styles.copyBtnText}>Copy</Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* Prefer amount-matched dynamic QR (same upi://pay as Open GPay). Static shop QR is fallback only. */}
-        {(generatedQr || uploadedQr) ? (
-          <Image source={{ uri: generatedQr || uploadedQr }} style={styles.qr} resizeMode="contain" />
-        ) : (
+        <Text style={styles.payLabel}>Amount</Text>
+        <View style={styles.copyRow}>
+          <Text selectable style={[styles.upiId, styles.copyValue]}>
+            {amountFormatted || '—'}
+          </Text>
+          <TouchableOpacity
+            style={styles.copyBtn}
+            onPress={() => copyText(amountFormatted, 'Amount')}
+            disabled={!amountFormatted}
+            accessibilityRole="button"
+          >
+            <Text style={styles.copyBtnText}>Copy</Text>
+          </TouchableOpacity>
+        </View>
+
+        {generatedQr ? (
+          <Image source={{ uri: generatedQr }} style={styles.qr} resizeMode="contain" />
+        ) : !uploadedQr ? (
           <Text style={styles.meta}>Ask the seller to add a UPI ID or payment QR in Shop Profile.</Text>
-        )}
+        ) : null}
 
         {selected && upiId && payAmount > 0 ? (
           <Text style={styles.linkHint}>
-            Payment link: {formatCurrency(Number(formatUpiAmount(payAmount) || payAmount))} → {maskUpiId(upiId)}
-            {' · '}Order {selected.id}
+            Prefill link: {formatCurrency(Number(formatUpiAmount(payAmount) || payAmount))} → {maskUpiId(upiId)}
+            {' · '}Order{selected.id}
             {generatedQr ? ' · QR matches this link' : ''}
           </Text>
         ) : null}
@@ -362,9 +443,22 @@ export const BuyerPaymentsScreen = () => {
           style={styles.gpayButton}
         />
         <Text style={styles.meta}>
-          Opens the same upi://pay link as the QR above. Pay in GPay, then copy the UTR and tap I paid this bill.
-          The bill stays unpaid until the seller confirms.
+          Prefills amount when possible. If GPay shows risky / bank limit, use the manual fallback below.
         </Text>
+
+        <Text style={styles.step}>Manual fallback (no amount prefill)</Text>
+        <Text style={styles.meta}>
+          Copy UPI ID + amount above, scan the seller QR, or open GPay empty and pay the same UPI ID.
+        </Text>
+        {uploadedQr ? (
+          <Image source={{ uri: uploadedQr }} style={styles.qr} resizeMode="contain" />
+        ) : null}
+        <Button
+          title={openingManualGpay ? 'Opening GPay…' : 'Open GPay (no prefill)'}
+          onPress={openManualGpay}
+          disabled={openingManualGpay || !upiId}
+          style={styles.gpayButton}
+        />
 
         <TouchableOpacity
           style={styles.diagToggle}
@@ -372,138 +466,62 @@ export const BuyerPaymentsScreen = () => {
           accessibilityRole="button"
         >
           <Text style={styles.diagToggleText}>
-            {showUpiDiag ? 'Hide' : 'Show'} UPI diagnostics (no payment)
+            {showUpiDiag ? 'Hide' : 'Show'} UPI diagnostics
           </Text>
         </TouchableOpacity>
 
         {showUpiDiag ? (
           <View style={styles.diagBox}>
-            <Text style={styles.diagTitle}>Compare payment sources</Text>
+            <Text style={styles.diagTitle}>URI variants (A/B test)</Text>
             <Text style={styles.diagMeta}>
-              Platform: {Platform.OS}. Values are decoded and VPA is masked. This panel does not open GPay or change bill status.
+              Platform: {Platform.OS}. Each button builds a URL, shows a QR, and can open GPay via
+              intent://…package=com.google.android.apps.nbu.paisa.user with upi:// fallback.
+              Does not submit a payment claim.
             </Text>
 
-            <Text style={styles.diagSection}>A) Seller shop QR (Shop Profile formula)</Text>
-            <Text style={styles.diagMono}>
-              {sellerStaticParsed
-                ? `${sellerStaticParsed.schemeHost}?${sellerStaticParsed.maskedQueryPreview}`
-                : 'No seller UPI'}
-            </Text>
-            {sellerStaticParsed ? (
-              <Text style={styles.diagLine}>
-                Keys: [{sellerStaticParsed.paramKeys.join(', ')}] · am={sellerStaticParsed.hasAm ? 'yes' : 'NO'} ·
-                tr={sellerStaticParsed.hasTr ? 'yes' : 'NO'} · mc={sellerStaticParsed.hasMc ? 'yes' : 'NO'}
-              </Text>
-            ) : null}
-            <Text style={styles.diagHint}>
-              Working path users report: scan this style QR or type UPI ID. Amount is entered in GPay (no locked am).
-            </Text>
+            <View style={styles.variantRow}>
+              {UPI_VARIANTS.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[styles.variantBtn, diagVariant === item.id && styles.variantBtnOn]}
+                  onPress={() => selectDiagVariant(item.id)}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.variantBtnText, diagVariant === item.id && styles.variantBtnTextOn]}>
+                    {item.label}
+                  </Text>
+                  <Text style={[styles.variantHint, diagVariant === item.id && styles.variantBtnTextOn]}>
+                    {item.hint}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
-            <Text style={styles.diagSection}>B) App Pay button / dynamic QR (same URI)</Text>
-            <Text style={styles.diagMono}>
-              {appPayParsed
-                ? `${appPayParsed.schemeHost}?${appPayParsed.maskedQueryPreview}`
-                : 'Select a bill and amount first'}
-            </Text>
-            {appPayParsed ? (
-              <>
-                <Text style={styles.diagLine}>pa (masked): {appPayParsed.paMasked}</Text>
-                <Text style={styles.diagLine}>pn: {appPayParsed.pn || '(empty)'}</Text>
-                <Text style={styles.diagLine}>am: {appPayParsed.am || '(missing)'}</Text>
-                <Text style={styles.diagLine}>cu: {appPayParsed.cu || '(missing)'}</Text>
-                <Text style={styles.diagLine}>tn: {appPayParsed.tn || '(missing)'}</Text>
-                <Text style={styles.diagLine}>tr: {appPayParsed.hasTr ? appPayParsed.tr : '(not set)'}</Text>
-                <Text style={styles.diagLine}>mc: {appPayParsed.hasMc ? appPayParsed.mc : '(not set)'}</Text>
-                <Text style={styles.diagLine}>Keys: [{appPayParsed.paramKeys.join(', ')}]</Text>
-              </>
-            ) : null}
-
-            <Text style={styles.diagSection}>C) Android intent fallback (if used)</Text>
-            <Text style={styles.diagMono}>
-              {intentParsed
-                ? `${intentParsed.schemeHost}?${intentParsed.maskedQueryPreview}`
-                : Platform.OS === 'android'
-                  ? 'Select bill to preview'
-                  : 'Not used on this platform'}
-            </Text>
-            {intentParsed ? (
-              <Text style={styles.diagLine}>
-                Query keys same as B: [{intentParsed.paramKeys.join(', ')}] — package forced to GPay
-              </Text>
-            ) : null}
-
-            <Text style={styles.diagSection}>D) Open order (no tez://)</Text>
-            {openCandidates.map((item) => (
-              <Text key={item.method} style={styles.diagLine}>
-                · {item.method}: {item.usedOn}
-              </Text>
-            ))}
-
-            <Text style={styles.diagSection}>E) Diff vs working seller QR</Text>
-            <Text style={styles.diagLine}>
-              App link adds: {[
-                appPayParsed?.hasAm ? 'am (locked amount)' : null,
-                appPayParsed?.cu ? 'cu' : null,
-                appPayParsed?.tn ? 'tn' : null,
-              ]
-                .filter(Boolean)
-                .join(', ') || '(none — select bill)'}
-            </Text>
-            <Text style={styles.diagLine}>
-              Dynamic QR === Pay URI: {dynamicQrMatchesPay ? 'YES' : 'NO / N/A'}
-            </Text>
-            <Text style={styles.diagLine}>
-              tn vs tr: tn = note (&quot;Order N&quot;). tr = reference id (not in production URI).
-            </Text>
-
-            <Text style={styles.diagSection}>F) Field integrity (production URI)</Text>
-            {fieldChecks ? (
-              <>
-                <Text style={styles.diagLine}>
-                  VPA trimmed={String(fieldChecks.vpaTrimmed)} · looksValid={String(fieldChecks.vpaLooksValid)} ·
-                  whitespace={String(fieldChecks.vpaHasWhitespace)}
+            {diagUrl ? (
+              <View style={styles.diagVariant}>
+                <Text style={styles.diagVariantTitle}>Selected: {diagVariant}</Text>
+                <Text style={styles.diagMono} selectable>
+                  {diagParsed
+                    ? `${diagParsed.schemeHost}?${diagParsed.maskedQueryPreview}`
+                    : diagUrl}
                 </Text>
-                <Text style={styles.diagLine}>
-                  Name trimmed={String(fieldChecks.nameTrimmed)} · empty={String(fieldChecks.nameEmpty)}
+                <Text style={styles.diagLine}>Keys: [{diagParsed?.paramKeys.join(', ') || '—'}]</Text>
+                <Text style={styles.diagHint} selectable>
+                  Full URL: {diagUrl}
                 </Text>
-                <Text style={styles.diagLine}>
-                  Amount ##.##={String(fieldChecks.amountFormatOk)} · whitespace={String(fieldChecks.amountHasWhitespace)}
-                </Text>
-                <Text style={styles.diagLine}>
-                  Note edge spaces={String(fieldChecks.noteHasLeadingTrailingSpace)} · possibleDoubleEncoding=
-                  {String(fieldChecks.possibleDoubleEncoding)}
-                </Text>
-              </>
+                {diagQr ? (
+                  <Image source={{ uri: diagQr }} style={styles.diagQr} resizeMode="contain" />
+                ) : null}
+                <Button
+                  title={openingDiag ? 'Opening GPay…' : `Open GPay (${diagVariant})`}
+                  onPress={openDiagGpay}
+                  disabled={openingDiag}
+                  style={styles.gpayButton}
+                />
+              </View>
             ) : (
-              <Text style={styles.diagLine}>Select bill + amount to run checks.</Text>
+              <Text style={styles.diagLine}>Tap V1–V4 to generate URL + QR. V1/V2/V4 need an amount.</Text>
             )}
-
-            <Text style={styles.diagSection}>G) Diagnostic URI variants (not opened)</Text>
-            <Text style={styles.diagHint}>
-              Constructed only for comparison. Production Pay still uses variant 3. No mc invented. Manual scan of a
-              printed/exported QR is a separate test — this panel does not launch GPay.
-            </Text>
-            {diagnosticVariants.length === 0 ? (
-              <Text style={styles.diagLine}>Select bill + amount to build variants.</Text>
-            ) : (
-              diagnosticVariants.map((variant) => (
-                <View key={variant.id} style={styles.diagVariant}>
-                  <Text style={styles.diagVariantTitle}>{variant.title}</Text>
-                  <Text style={styles.diagLine}>{variant.description}</Text>
-                  <Text style={styles.diagMono}>{variant.maskedPreview}</Text>
-                  <Text style={styles.diagLine}>Keys: [{variant.keys.join(', ')}]</Text>
-                  <Text style={styles.diagHint}>{variant.note}</Text>
-                </View>
-              ))
-            )}
-
-            <Text style={styles.diagSection}>H) Safest next manual test</Text>
-            <Text style={styles.diagHint}>
-              1) Confirm F shows no whitespace / double-encoding issues.{'\n'}
-              2) Outside the app, ask seller to show static QR — pay ₹1 (works path).{'\n'}
-              3) In GPay, scan this screen&apos;s dynamic QR (variant 3) for ₹1 — if it fails like Pay, dynamic am path is confirmed.{'\n'}
-              4) Ask seller/PSP whether the VPA is personal or merchant (QR code / business UPI). Do not add mc/tr to production until that is known.
-            </Text>
           </View>
         ) : null}
 
@@ -614,6 +632,26 @@ const styles = StyleSheet.create({
   },
   payLabel: { marginTop: spacing.sm, color: colors.textSecondary, fontWeight: typography.fontWeight.semibold },
   upiId: { color: colors.primary, fontSize: typography.fontSize.lg, fontWeight: typography.fontWeight.bold, marginTop: 4 },
+  copyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  copyValue: { flex: 1, flexShrink: 1 },
+  copyBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.white,
+  },
+  copyBtnText: {
+    color: colors.primary,
+    fontWeight: typography.fontWeight.semibold,
+    fontSize: typography.fontSize.sm,
+  },
   linkHint: {
     marginTop: spacing.xs,
     marginBottom: spacing.sm,
@@ -623,6 +661,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   qr: { width: 180, height: 180, alignSelf: 'center', marginVertical: spacing.md },
+  diagQr: { width: 160, height: 160, alignSelf: 'center', marginVertical: spacing.sm },
   gpayButton: { marginTop: spacing.sm, marginBottom: spacing.sm },
   diagToggle: {
     alignSelf: 'center',
@@ -650,12 +689,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   diagMeta: { color: colors.textSecondary, fontSize: typography.fontSize.xs, marginBottom: spacing.sm },
-  diagSection: {
-    marginTop: spacing.sm,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.primary,
-    fontSize: typography.fontSize.sm,
-  },
   diagMono: {
     marginTop: 4,
     color: colors.textPrimary,
@@ -664,6 +697,36 @@ const styles = StyleSheet.create({
   },
   diagLine: { marginTop: 2, color: colors.textPrimary, fontSize: typography.fontSize.xs },
   diagHint: { marginTop: spacing.xs, color: colors.textSecondary, fontSize: typography.fontSize.xs, lineHeight: 16 },
+  variantRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  variantBtn: {
+    flexGrow: 1,
+    minWidth: '45%',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: spacing.sm,
+    backgroundColor: colors.white,
+  },
+  variantBtnOn: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  variantBtnText: {
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    fontSize: typography.fontSize.sm,
+  },
+  variantBtnTextOn: { color: colors.white },
+  variantHint: {
+    marginTop: 2,
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.xs,
+  },
   diagVariant: {
     marginTop: spacing.sm,
     paddingTop: spacing.sm,
