@@ -3,6 +3,8 @@
 A complete React Native mobile application for the Natural Drops Water Supply System, built with Expo, TypeScript, Redux Toolkit, and React Navigation.
 
 ## Latest changes
+- **Cashfree bill pay (Phase 2)**: Buyer Payments uses Cashfree checkout on **web** (`@cashfreepayments/cashfree-js`) and **iOS/Android** (`react-native-cashfree-pg-sdk`). Orders are created only on the backend; the app polls `/payments/cashfree/orders/{cfOrderId}/status` after checkout. Manual UPI/GPay + UTR claim remains as a fallback.
+- Native Cashfree needs an **Expo development / EAS build** (`npx expo run:android` / `run:ios` or EAS). Expo Go does not include the native SDK.
 - Seller and buyer shop screens: phone orders, customers, regular buyers, payments, and 20L cans.
 - Checkout and phone orders use a future date plus an hour and minute with AM/PM.
 - Popups open inside the app. Phone-sized screens scroll so the rest of a long form stays reachable.
@@ -115,10 +117,26 @@ npm run ios
 npm run web
 ```
 
-**Using Expo Go App**:
+**Using Expo Go App** (most features; **not** Cashfree native checkout):
 1. Install Expo Go on your phone (Android/iOS)
 2. Run `npm start`
 3. Scan the QR code with Expo Go (Android) or Camera app (iOS)
+
+**Cashfree on device (development build)**:
+```bash
+npx expo install expo-dev-client
+npx expo run:android
+# or
+npx expo run:ios
+```
+Then start Metro with `npx expo start --dev-client` and open the custom client. Web Cashfree works with `npm run web` once the page origin is whitelisted in the Cashfree Merchant Dashboard (Sandbox).
+
+### Cashfree (buyer bills)
+
+1. Backend must have Sandbox `CASHFREE_*` env vars and webhook URL configured (see Natural-Drops README).
+2. Buyer → **My Payments** → select unpaid bill → **Pay with Cashfree**.
+3. After the checkout UI closes, the app verifies status with the backend. The bill is marked paid only when Cashfree reports `PAID` (webhook or status poll).
+4. If Cashfree is unavailable, expand **manual UPI / GPay fallback** and submit a UTR claim as before.
 
 ### Backend Setup
 

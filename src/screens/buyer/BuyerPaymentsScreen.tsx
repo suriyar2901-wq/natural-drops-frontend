@@ -16,13 +16,20 @@ import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Input, Loading } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
 import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
-import { useClaimOrderPaymentMutation, useGetMyOrderClaimsQuery } from '../../store/api/paymentApi';
+import {
+  CashfreeOrderStatusResponse,
+  useClaimOrderPaymentMutation,
+  useCreateCashfreeOrderMutation,
+  useGetMyOrderClaimsQuery,
+  useLazyGetCashfreeOrderStatusQuery,
+} from '../../store/api/paymentApi';
 import { useGetBuyerOrdersQuery } from '../../store/api/orderApi';
 import { useAuth } from '../../hooks';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { moneyValue, orderBillPending } from '../../types/shop.types';
 import { Order } from '../../types';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
+import { openCashfreeCheckout } from '../../utils/cashfreeCheckout';
 import {
   buildUpiPayUrl,
   buildUpiPayUrlVariant,
@@ -36,6 +43,8 @@ import {
   parseUpiPayParams,
   UpiVariantId,
 } from '../../utils/upiPayment';
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const UPI_VARIANTS: { id: UpiVariantId; label: string; hint: string }[] = [
   { id: 'V1', label: 'V1', hint: 'pa, pn, am, cu' },
@@ -63,15 +72,19 @@ export const BuyerPaymentsScreen = () => {
   const { data, isLoading, refetch } = useGetBuyerAccountSummaryQuery();
   const { data: orders = [], isLoading: ordersLoading } = useGetBuyerOrdersQuery(user?.id || 0, { skip: !user?.id });
   const [claimPayment, { isLoading: saving }] = useClaimOrderPaymentMutation();
+  const [createCashfreeOrder] = useCreateCashfreeOrderMutation();
+  const [fetchCashfreeStatus] = useLazyGetCashfreeOrderStatusQuery();
   const { data: claims = [], refetch: refetchClaims } = useGetMyOrderClaimsQuery();
   const [amount, setAmount] = useState('');
   const [upiReference, setUpiReference] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [billTab, setBillTab] = useState<'unpaid' | 'paid'>('unpaid');
   const [generatedQr, setGeneratedQr] = useState('');
+  const [openingCashfree, setOpeningCashfree] = useState(false);
   const [openingUpi, setOpeningUpi] = useState(false);
   const [openingManualGpay, setOpeningManualGpay] = useState(false);
   const [awaitingReturn, setAwaitingReturn] = useState(false);
+  const [showUpiFallback, setShowUpiFallback] = useState(false);
   const [showUpiDiag, setShowUpiDiag] = useState(false);
   const [diagVariant, setDiagVariant] = useState<UpiVariantId | null>(null);
   const [diagUrl, setDiagUrl] = useState('');
@@ -234,6 +247,101 @@ export const BuyerPaymentsScreen = () => {
     }
   };
 
+  const refreshAfterCashfreePaid = async () => {
+    setAmount('');
+    setUpiReference('');
+    setSelectedOrderId(null);
+    setAwaitingReturn(false);
+    await Promise.all([refetch(), refetchClaims()]);
+  };
+
+  const pollCashfreeUntilSettled = async (cfOrderId: string) => {
+    const delays = [800, 1500, 2500, 4000];
+    let last: CashfreeOrderStatusResponse | undefined;
+    for (const delay of delays) {
+      await sleep(delay);
+      try {
+        const status = await fetchCashfreeStatus(cfOrderId).unwrap();
+        last = status;
+        if (status.paymentApplied || String(status.cfOrderStatus || '').toUpperCase() === 'PAID') {
+          return status;
+        }
+        const local = String(status.status || '').toUpperCase();
+        if (local === 'FAILED' || local === 'EXPIRED' || local === 'USER_DROPPED') {
+          return status;
+        }
+      } catch {
+        // keep polling — webhook may still apply
+      }
+    }
+    return last;
+  };
+
+  const payWithCashfree = async () => {
+    if (!selected) {
+      showErrorToast('Select the unpaid bill you are paying');
+      return;
+    }
+    if (waitingSelected) {
+      showErrorToast('This bill already has a UPI claim waiting for the seller. Ask them to confirm or reject it first.');
+      return;
+    }
+    if (!(selectedBalance > 0)) {
+      showErrorToast('This bill has no unpaid balance');
+      return;
+    }
+
+    setOpeningCashfree(true);
+    try {
+      const session = await createCashfreeOrder({ orderId: selected.id }).unwrap();
+      if (!session?.paymentSessionId || !session?.cfOrderId) {
+        throw new Error('Server did not return a Cashfree payment session');
+      }
+
+      const checkout = await openCashfreeCheckout({
+        paymentSessionId: session.paymentSessionId,
+        cfOrderId: session.cfOrderId,
+        environment: session.environment,
+      });
+
+      if (checkout.status === 'FAILED') {
+        showErrorToast(checkout.message || 'Cashfree payment failed');
+        return;
+      }
+      if (checkout.status === 'CANCELLED') {
+        showErrorToast(checkout.message || 'Payment cancelled');
+        return;
+      }
+
+      showSuccessToast('Verifying payment with server…');
+      const status = await pollCashfreeUntilSettled(session.cfOrderId);
+      if (status?.paymentApplied || String(status?.cfOrderStatus || '').toUpperCase() === 'PAID') {
+        showSuccessToast(`Order #${selected.id} marked paid via Cashfree`);
+        await refreshAfterCashfreePaid();
+        return;
+      }
+
+      const local = String(status?.status || '').toUpperCase();
+      if (local === 'FAILED' || local === 'EXPIRED' || local === 'USER_DROPPED') {
+        showErrorToast('Payment was not completed. You can try Cashfree again or use UPI fallback.');
+        return;
+      }
+
+      showErrorToast(
+        'Payment is still pending. If money was deducted, wait a moment and refresh — the bill updates when Cashfree confirms PAID.'
+      );
+      await Promise.all([refetch(), refetchClaims()]);
+    } catch (error: any) {
+      showErrorToast(
+        error?.data?.message
+          || error?.message
+          || 'Could not start Cashfree payment'
+      );
+    } finally {
+      setOpeningCashfree(false);
+    }
+  };
+
   const openManualGpay = async () => {
     if (!upiId) {
       showErrorToast('Seller has not added a UPI ID yet');
@@ -390,8 +498,45 @@ export const BuyerPaymentsScreen = () => {
           keyboardType="decimal-pad"
           onChangeText={setAmount}
         />
+        <Text style={styles.meta}>
+          Cashfree charges the full unpaid balance for the selected bill (server-side). Amount above is for UPI fallback only.
+        </Text>
 
-        <Text style={styles.step}>2. Pay with UPI / GPay</Text>
+        <Text style={styles.step}>2. Pay with Cashfree (recommended)</Text>
+        <Text style={styles.meta}>
+          Opens Cashfree checkout (UPI / GPay / cards). Bill is marked paid only after the server confirms Cashfree status PAID.
+          {Platform.OS !== 'web'
+            ? ' On phone, use a development build — Expo Go does not include the Cashfree native SDK.'
+            : ' On web, whitelist this domain in the Cashfree dashboard.'}
+        </Text>
+        <Button
+          title={
+            openingCashfree
+              ? 'Opening Cashfree…'
+              : waitingSelected
+                ? 'Waiting for seller (UPI claim)'
+                : selected
+                  ? `Pay ${formatCurrency(selectedBalance)} with Cashfree`
+                  : 'Pay with Cashfree'
+          }
+          onPress={payWithCashfree}
+          disabled={openingCashfree || !!waitingSelected || !selected}
+          style={styles.gpayButton}
+        />
+
+        <TouchableOpacity
+          style={styles.diagToggle}
+          onPress={() => setShowUpiFallback((open) => !open)}
+          accessibilityRole="button"
+        >
+          <Text style={styles.diagToggleText}>
+            {showUpiFallback ? 'Hide' : 'Show'} manual UPI / GPay fallback
+          </Text>
+        </TouchableOpacity>
+
+        {showUpiFallback ? (
+          <>
+        <Text style={styles.step}>3. Pay with UPI / GPay (manual)</Text>
         <Text style={styles.payLabel}>Seller UPI ID</Text>
         <View style={styles.copyRow}>
           <Text selectable style={[styles.upiId, styles.copyValue]}>
@@ -525,7 +670,7 @@ export const BuyerPaymentsScreen = () => {
           </View>
         ) : null}
 
-        <Text style={styles.step}>3. Enter transaction number &amp; tell seller</Text>
+        <Text style={styles.step}>4. Enter transaction number &amp; tell seller</Text>
         <Input
           ref={refInput}
           label="UPI transaction / UTR number"
@@ -546,6 +691,8 @@ export const BuyerPaymentsScreen = () => {
         <Text style={styles.meta}>
           Seller gets a notification with your amount and UTR. The bill becomes Paid only after the seller confirms.
         </Text>
+          </>
+        ) : null}
       </Card>
 
       <View style={styles.categories}>

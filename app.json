@@ -18,7 +18,24 @@
       "infoPlist": {
         "NSCameraUsageDescription": "This app needs camera access to scan QR codes",
         "NSLocationWhenInUseUsageDescription": "This app needs location access to provide delivery services",
-        "NSMicrophoneUsageDescription": "This app does not use the microphone"
+        "NSMicrophoneUsageDescription": "This app does not use the microphone",
+        "LSApplicationQueriesSchemes": [
+          "phonepe",
+          "tez",
+          "paytm",
+          "bhim",
+          "amazonpay",
+          "paytmmp",
+          "gpay",
+          "credpay",
+          "freecharge",
+          "mobikwik",
+          "kiwi",
+          "navi",
+          "jupiter",
+          "upi",
+          "upibiz"
+        ]
       }
     },
     "android": {
@@ -40,6 +57,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-dev-client",
       "expo-barcode-scanner",
       [
         "expo-camera",

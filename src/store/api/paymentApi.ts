@@ -25,6 +25,25 @@ export type PaymentClaim = {
   resolvedBy?: string | null;
 };
 
+/** Response from POST /payments/cashfree/orders (amount is set on the server). */
+export type CashfreeCreateOrderResponse = {
+  orderId: number;
+  cfOrderId: string;
+  paymentSessionId: string;
+  amount: number | string;
+  currency?: string;
+  environment: string;
+  status: string;
+};
+
+/** Response from GET /payments/cashfree/orders/{cfOrderId}/status */
+export type CashfreeOrderStatusResponse = CashfreeCreateOrderResponse & {
+  cfOrderStatus?: string | null;
+  cfPaymentId?: string | null;
+  paymentApplied: boolean;
+  appliedAt?: string | null;
+};
+
 export const paymentApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     getPlatformPayment: builder.query<PlatformPayment, void>({
@@ -101,6 +120,16 @@ export const paymentApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Shop', 'Order', 'BuyerAccount'],
     }),
+    createCashfreeOrder: builder.mutation<CashfreeCreateOrderResponse, { orderId: number }>({
+      query: (body) => ({
+        url: '/payments/cashfree/orders',
+        method: 'POST',
+        body,
+      }),
+    }),
+    getCashfreeOrderStatus: builder.query<CashfreeOrderStatusResponse, string>({
+      query: (cfOrderId) => `/payments/cashfree/orders/${encodeURIComponent(cfOrderId)}/status`,
+    }),
   }),
 });
 
@@ -117,4 +146,6 @@ export const {
   useGetPendingOrderClaimsQuery,
   useConfirmOrderClaimMutation,
   useRejectOrderClaimMutation,
+  useCreateCashfreeOrderMutation,
+  useLazyGetCashfreeOrderStatusQuery,
 } = paymentApi;
