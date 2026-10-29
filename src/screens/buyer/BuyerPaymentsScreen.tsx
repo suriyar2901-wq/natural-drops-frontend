@@ -290,10 +290,22 @@ export const BuyerPaymentsScreen = () => {
       showErrorToast('This bill has no unpaid balance');
       return;
     }
+    if (!(payAmount > 0)) {
+      showErrorToast('Enter a valid amount');
+      return;
+    }
+    if (payAmount > selectedBalance + 0.001) {
+      showErrorToast(`Amount cannot exceed ${formatCurrency(selectedBalance)} for order #${selected.id}`);
+      return;
+    }
 
+    const amountToPay = Number(payAmount.toFixed(2));
     setOpeningCashfree(true);
     try {
-      const session = await createCashfreeOrder({ orderId: selected.id }).unwrap();
+      const session = await createCashfreeOrder({
+        orderId: selected.id,
+        amount: amountToPay.toFixed(2),
+      }).unwrap();
       if (!session?.paymentSessionId || !session?.cfOrderId) {
         throw new Error('Server did not return a Cashfree payment session');
       }
@@ -316,7 +328,14 @@ export const BuyerPaymentsScreen = () => {
       showSuccessToast('Verifying payment with server…');
       const status = await pollCashfreeUntilSettled(session.cfOrderId);
       if (status?.paymentApplied || String(status?.cfOrderStatus || '').toUpperCase() === 'PAID') {
-        showSuccessToast(`Order #${selected.id} marked paid via Cashfree`);
+        const paidAmt = Number(status?.amount ?? session.amount ?? amountToPay);
+        if (paidAmt + 0.001 >= selectedBalance) {
+          showSuccessToast(`Order #${selected.id} marked paid via Cashfree`);
+        } else {
+          showSuccessToast(
+            `Paid ${formatCurrency(paidAmt)} for order #${selected.id}. Remaining balance stays unpaid.`
+          );
+        }
         await refreshAfterCashfreePaid();
         return;
       }
@@ -499,12 +518,12 @@ export const BuyerPaymentsScreen = () => {
           onChangeText={setAmount}
         />
         <Text style={styles.meta}>
-          Cashfree charges the full unpaid balance for the selected bill (server-side). Amount above is for UPI fallback only.
+          Edit Pay amount to pay part or all of the balance. Cashfree and UPI both use this amount (server caps it at the unpaid balance).
         </Text>
 
         <Text style={styles.step}>2. Pay with Cashfree (recommended)</Text>
         <Text style={styles.meta}>
-          Opens Cashfree checkout (UPI / GPay / cards). Bill is marked paid only after the server confirms Cashfree status PAID.
+          Opens Cashfree checkout (UPI / GPay / cards) for the Pay amount above. Applied only after the server confirms Cashfree status PAID.
           {Platform.OS !== 'web'
             ? ' On phone, use a development build — Expo Go does not include the Cashfree native SDK.'
             : ' On web, whitelist this domain in the Cashfree dashboard.'}
@@ -515,12 +534,12 @@ export const BuyerPaymentsScreen = () => {
               ? 'Opening Cashfree…'
               : waitingSelected
                 ? 'Waiting for seller (UPI claim)'
-                : selected
-                  ? `Pay ${formatCurrency(selectedBalance)} with Cashfree`
+                : selected && payAmount > 0
+                  ? `Pay ${formatCurrency(payAmount)} with Cashfree`
                   : 'Pay with Cashfree'
           }
           onPress={payWithCashfree}
-          disabled={openingCashfree || !!waitingSelected || !selected}
+          disabled={openingCashfree || !!waitingSelected || !selected || !(payAmount > 0)}
           style={styles.gpayButton}
         />
 

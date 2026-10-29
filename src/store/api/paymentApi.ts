@@ -120,7 +120,7 @@ export const paymentApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Shop', 'Order', 'BuyerAccount'],
     }),
-    createCashfreeOrder: builder.mutation<CashfreeCreateOrderResponse, { orderId: number }>({
+    createCashfreeOrder: builder.mutation<CashfreeCreateOrderResponse, { orderId: number; amount: string }>({
       query: (body) => ({
         url: '/payments/cashfree/orders',
         method: 'POST',
