@@ -82,6 +82,44 @@ export const settingsApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Settings'],
     }),
+
+    deleteSetting: builder.mutation<void, string>({
+      query: (key) => ({
+        url: `/settings/${encodeURIComponent(key)}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Settings'],
+    }),
+
+    getPricingFees: builder.query<{
+      taxEnabled: string;
+      taxRatePercent: string;
+      platformFeeEnabled: string;
+      platformFeeAmount: string;
+    }, void>({
+      query: () => '/pricing/fees',
+      transformResponse: (response: any) => {
+        const data = response?.taxEnabled !== undefined ? response : (response?.data || {});
+        return {
+          taxEnabled: String(data.taxEnabled ?? 'true'),
+          taxRatePercent: String(data.taxRatePercent ?? '5'),
+          platformFeeEnabled: String(data.platformFeeEnabled ?? 'false'),
+          platformFeeAmount: String(data.platformFeeAmount ?? '0'),
+        };
+      },
+      providesTags: ['Settings'],
+    }),
+
+    getPricingQuote: builder.query<Record<string, any>, { subtotal: number; latitude?: number; longitude?: number }>({
+      query: ({ subtotal, latitude, longitude }) => {
+        const params = new URLSearchParams();
+        params.set('subtotal', String(subtotal || 0));
+        if (latitude != null) params.set('latitude', String(latitude));
+        if (longitude != null) params.set('longitude', String(longitude));
+        return `/pricing/quote?${params.toString()}`;
+      },
+      transformResponse: (response: any) => (response?.total !== undefined ? response : (response?.data || {})),
+    }),
   }),
 });
 
@@ -94,6 +132,10 @@ export const {
   useGetSupportContactsQuery,
   useUpdateCustomerSupportEmailMutation,
   useUpdateSettingsMutation,
+  useDeleteSettingMutation,
+  useGetPricingFeesQuery,
+  useGetPricingQuoteQuery,
+  useLazyGetPricingQuoteQuery,
 } = settingsApi;
 
 

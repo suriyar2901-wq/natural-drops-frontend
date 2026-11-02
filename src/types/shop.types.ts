@@ -105,6 +105,10 @@ export interface ShopProfile {
   openDays?: string | null;
   leaveDates?: string | null;
   showHoursToBuyer?: boolean | null;
+  /** Seller-controlled delivery rate in ₹ per km */
+  deliveryChargePerKm?: number | string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface ShopCustomerPayload {
@@ -135,6 +139,9 @@ export interface BuyerAccountSummary {
   shopLeaveDates?: string | null;
   shopOpenNow?: boolean;
   shopNextOpenLabel?: string | null;
+  deliveryChargePerKm?: number | string | null;
+  shopLatitude?: number | null;
+  shopLongitude?: number | null;
 }
 
 export interface SellerSubscriptionAccess {

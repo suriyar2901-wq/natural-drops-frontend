@@ -20,7 +20,6 @@ export const BuyerEmptyCansScreen = () => {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>My Empty Cans</Text>
       <Card style={styles.card}>
         <Text style={styles.stat}>{data?.emptyCans || 0}</Text>
         <Text style={styles.meta}>20 litre cans still with you. Return these to the seller.</Text>
@@ -58,7 +57,12 @@ export const BuyerEmptyCansScreen = () => {
             }
             try {
               await markReady({ quantity: readyCount }).unwrap();
-              showSuccessToast('Seller notified. They can pick up the cans.');
+              showSuccessToast(
+                readyCount === 1
+                  ? 'Seller notified: 1 empty can ready for pickup'
+                  : `Seller notified: ${readyCount} empty cans ready for pickup`
+              );
+              setQuantity('');
             } catch (error: any) {
               showErrorToast(error?.data?.message || 'Could not notify the seller');
             }
@@ -79,7 +83,6 @@ export const BuyerEmptyCansScreen = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, paddingBottom: spacing.xl },
-  title: { fontSize: typography.fontSize['2xl'], fontWeight: typography.fontWeight.bold, color: colors.textPrimary, marginBottom: spacing.md },
   card: { padding: spacing.md, marginBottom: spacing.md },
   stat: { fontSize: typography.fontSize['3xl'], fontWeight: typography.fontWeight.bold, color: colors.textPrimary },
   meta: { color: colors.textSecondary, marginTop: 4 },

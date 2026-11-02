@@ -7,6 +7,7 @@ import {
   clearCart as clearCartAction,
   setDeliveryCharge,
   setTaxRate,
+  applyFeeSettings,
 } from '../store/slices/cartSlice';
 import { MenuItem, CartItem } from '../types';
 import { storageService } from '../services/storage.service';
@@ -70,6 +71,16 @@ export const useCart = () => {
     dispatch(setTaxRate(rate));
   };
 
+  const updateFeeSettings = (settings: {
+    taxEnabled?: boolean;
+    taxRate?: number;
+    platformFeeEnabled?: boolean;
+    platformFee?: number;
+    deliveryCharge?: number;
+  }) => {
+    dispatch(applyFeeSettings(settings));
+  };
+
   const getCartForOrder = () => {
     return cart.items.map((item) => ({
       menuItemId: item.menuItem.id,
@@ -86,7 +97,11 @@ export const useCart = () => {
     totalItems: cart.totalItems,
     subtotal: cart.subtotal,
     tax: cart.tax,
+    taxRate: cart.taxRate,
+    taxEnabled: cart.taxEnabled,
     deliveryCharge: cart.deliveryCharge,
+    platformFee: cart.platformFee,
+    platformFeeEnabled: cart.platformFeeEnabled,
     total: cart.total,
     addToCart,
     removeFromCart,
@@ -98,6 +113,7 @@ export const useCart = () => {
     isInCart,
     updateDeliveryCharge,
     updateTaxRate,
+    updateFeeSettings,
     getCartForOrder,
   };
 };

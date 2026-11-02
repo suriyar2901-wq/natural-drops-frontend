@@ -19,6 +19,9 @@ export const ShopProfileScreen = () => {
   const [upiId, setUpiId] = useState('');
   const [qrData, setQrData] = useState('');
   const [temporaryQr, setTemporaryQr] = useState('');
+  const [deliveryPerKm, setDeliveryPerKm] = useState('');
+  const [shopLat, setShopLat] = useState('');
+  const [shopLng, setShopLng] = useState('');
 
   useEffect(() => {
     if (editing) {
@@ -27,6 +30,13 @@ export const ShopProfileScreen = () => {
     setShopName(data?.businessName || '');
     setUpiId(data?.upiId || '');
     setQrData(data?.qrData && data.qrData.startsWith('data:image') ? data.qrData : '');
+    setDeliveryPerKm(
+      data?.deliveryChargePerKm != null && data.deliveryChargePerKm !== ''
+        ? String(data.deliveryChargePerKm)
+        : ''
+    );
+    setShopLat(data?.latitude != null ? String(data.latitude) : '');
+    setShopLng(data?.longitude != null ? String(data.longitude) : '');
   }, [data, editing]);
 
   useEffect(() => {
@@ -58,17 +68,25 @@ export const ShopProfileScreen = () => {
 
   const shownQr = qrData || temporaryQr;
 
-  const shopBody = (nextQr = qrData) => ({
-    ...(data || {}),
-    businessName: shopName.trim(),
-    upiId: upiId.trim(),
-    qrData: nextQr,
-    openTime: undefined,
-    closeTime: undefined,
-    openDays: undefined,
-    leaveDates: undefined,
-    showHoursToBuyer: undefined,
-  });
+  const shopBody = (nextQr = qrData) => {
+    const perKm = deliveryPerKm.trim() === '' ? 0 : Number(deliveryPerKm);
+    const lat = shopLat.trim() === '' ? null : Number(shopLat);
+    const lng = shopLng.trim() === '' ? null : Number(shopLng);
+    return {
+      ...(data || {}),
+      businessName: shopName.trim(),
+      upiId: upiId.trim(),
+      qrData: nextQr,
+      deliveryChargePerKm: Number.isFinite(perKm) ? perKm : 0,
+      latitude: lat != null && Number.isFinite(lat) ? lat : null,
+      longitude: lng != null && Number.isFinite(lng) ? lng : null,
+      openTime: undefined,
+      closeTime: undefined,
+      openDays: undefined,
+      leaveDates: undefined,
+      showHoursToBuyer: undefined,
+    };
+  };
 
   const uploadQr = async () => {
     if (!editing) {
@@ -88,6 +106,14 @@ export const ShopProfileScreen = () => {
     }
     if (upiId.trim() && !/^[\w.-]+@[\w.-]+$/.test(upiId.trim())) {
       showErrorToast('Enter a valid UPI ID, for example shop@upi');
+      return;
+    }
+    if (deliveryPerKm.trim() && (Number.isNaN(Number(deliveryPerKm)) || Number(deliveryPerKm) < 0)) {
+      showErrorToast('Delivery charge per km must be 0 or more');
+      return;
+    }
+    if ((shopLat.trim() && Number.isNaN(Number(shopLat))) || (shopLng.trim() && Number.isNaN(Number(shopLng)))) {
+      showErrorToast('Enter valid shop latitude and longitude');
       return;
     }
     try {
@@ -124,6 +150,30 @@ export const ShopProfileScreen = () => {
                 placeholder="example shop@upi"
                 onChangeText={setUpiId}
               />
+              <Input
+                label="Delivery charge per km (₹)"
+                value={deliveryPerKm}
+                keyboardType="decimal-pad"
+                placeholder="e.g. 10"
+                onChangeText={(text) => setDeliveryPerKm(text.replace(/[^0-9.]/g, ''))}
+              />
+              <Text style={styles.qrNote}>
+                Buyers are charged this rate × distance from your shop. Add shop map coordinates for accurate km.
+              </Text>
+              <Input
+                label="Shop latitude (optional)"
+                value={shopLat}
+                keyboardType="decimal-pad"
+                placeholder="e.g. 11.9401"
+                onChangeText={setShopLat}
+              />
+              <Input
+                label="Shop longitude (optional)"
+                value={shopLng}
+                keyboardType="decimal-pad"
+                placeholder="e.g. 79.4861"
+                onChangeText={setShopLng}
+              />
               {!!company?.companyCode && (
                 <View style={styles.infoCell}>
                   <Text style={styles.infoLabel}>Company code</Text>
@@ -144,6 +194,18 @@ export const ShopProfileScreen = () => {
               <View style={[styles.infoCell, !twoCol && styles.stack]}>
                 <Text style={styles.infoLabel}>UPI ID</Text>
                 <Text style={styles.infoValue}>{upiId || 'Not specified'}</Text>
+              </View>
+              <View style={[styles.infoCell, !twoCol && styles.stack]}>
+                <Text style={styles.infoLabel}>Delivery / km</Text>
+                <Text style={styles.infoValue}>
+                  {deliveryPerKm ? `₹${deliveryPerKm} per km` : 'Free / not set'}
+                </Text>
+              </View>
+              <View style={[styles.infoCell, !twoCol && styles.stack]}>
+                <Text style={styles.infoLabel}>Shop map point</Text>
+                <Text style={styles.infoValue}>
+                  {shopLat && shopLng ? `${shopLat}, ${shopLng}` : 'Not set (1 km minimum used)'}
+                </Text>
               </View>
             </View>
           )}

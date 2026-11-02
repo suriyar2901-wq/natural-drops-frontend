@@ -40,8 +40,12 @@ export const AppSettingsScreen = () => {
   const [subscriptionRequired, setSubscriptionRequired] = useState(true);
   const [monthlyAmount, setMonthlyAmount] = useState('499.00');
   const [yearlyAmount, setYearlyAmount] = useState('5389.20');
+  const [taxEnabled, setTaxEnabled] = useState(true);
+  const [taxRatePercent, setTaxRatePercent] = useState('5');
+  const [platformFeeEnabled, setPlatformFeeEnabled] = useState(false);
+  const [platformFeeAmount, setPlatformFeeAmount] = useState('0.00');
   const [daysOpen, setDaysOpen] = useState(false);
-  const [editing, setEditing] = useState<'phone' | 'email' | 'profile' | 'support' | 'subscription' | 'notify' | null>(null);
+  const [editing, setEditing] = useState<'phone' | 'email' | 'profile' | 'support' | 'subscription' | 'notify' | 'charges' | null>(null);
   const snapshot = useRef<Record<string, string | boolean> | null>(null);
 
   useEffect(() => {
@@ -72,6 +76,10 @@ export const AppSettingsScreen = () => {
     setSubscriptionRequired(allSettings.subscriptionRequired !== 'false');
     setMonthlyAmount(allSettings.planMonthlyAmount || '499.00');
     setYearlyAmount(allSettings.planYearlyAmount || '5389.20');
+    setTaxEnabled(allSettings.taxEnabled !== 'false');
+    setTaxRatePercent(allSettings.taxRatePercent || '5');
+    setPlatformFeeEnabled(allSettings.platformFeeEnabled === 'true');
+    setPlatformFeeAmount(allSettings.platformFeeAmount || '0.00');
   }, [allSettings]);
 
   const phoneError = useMemo(() => {
@@ -94,7 +102,7 @@ export const AppSettingsScreen = () => {
   const currentValues = () => ({
     phone, email, adminName, adminMobile, adminEmail, supportPhone, supportWhatsapp, supportEmail,
     notifyActivation, notifyPayments, notifyFailedPayments, notifyExpiry, expiryReminderDays, subscriptionRequired,
-    monthlyAmount, yearlyAmount,
+    monthlyAmount, yearlyAmount, taxEnabled, taxRatePercent, platformFeeEnabled, platformFeeAmount,
   });
 
   const beginEdit = (section: NonNullable<typeof editing>) => {
@@ -122,6 +130,10 @@ export const AppSettingsScreen = () => {
       setSubscriptionRequired(saved.subscriptionRequired !== false);
       setMonthlyAmount(String(saved.monthlyAmount || '499.00'));
       setYearlyAmount(String(saved.yearlyAmount || '5389.20'));
+      setTaxEnabled(saved.taxEnabled !== false);
+      setTaxRatePercent(String(saved.taxRatePercent || '5'));
+      setPlatformFeeEnabled(saved.platformFeeEnabled === true);
+      setPlatformFeeAmount(String(saved.platformFeeAmount || '0.00'));
     }
     setDaysOpen(false);
     setEditing(null);
@@ -294,6 +306,87 @@ export const AppSettingsScreen = () => {
             supportEmail: supportEmail.trim(),
           }, 'Support contacts saved.')}
         />
+      </Card>
+
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Cart charges</Text>
+        <Text style={styles.sectionHint}>
+          Tax and platform fee apply on buyer checkout. Enable or disable each charge, edit the amount, or delete (clears and turns off).
+        </Text>
+        <ToggleRow label="Tax charge" value={taxEnabled} disabled={editing !== 'charges'} onPress={() => setTaxEnabled(!taxEnabled)} />
+        <Input
+          label="Tax rate (%)"
+          value={taxRatePercent}
+          editable={editing === 'charges' && taxEnabled}
+          keyboardType="decimal-pad"
+          onChangeText={(text) => setTaxRatePercent(text.replace(/[^0-9.]/g, ''))}
+        />
+        <ToggleRow label="Platform fee" value={platformFeeEnabled} disabled={editing !== 'charges'} onPress={() => setPlatformFeeEnabled(!platformFeeEnabled)} />
+        <Input
+          label="Platform fee amount (₹)"
+          value={platformFeeAmount}
+          editable={editing === 'charges' && platformFeeEnabled}
+          keyboardType="decimal-pad"
+          onChangeText={(text) => setPlatformFeeAmount(text.replace(/[^0-9.]/g, ''))}
+        />
+        <SectionActions
+          editing={editing === 'charges'}
+          saveTitle="Save"
+          loading={savingPlatform}
+          onEdit={() => beginEdit('charges')}
+          onCancel={cancelEdit}
+          onSave={() => {
+            const rate = Number(taxRatePercent);
+            const fee = Number(platformFeeAmount);
+            if (taxEnabled && (!Number.isFinite(rate) || rate < 0)) {
+              Alert.alert('Invalid tax', 'Enter a tax rate of 0 or more.');
+              return;
+            }
+            if (platformFeeEnabled && (!Number.isFinite(fee) || fee < 0)) {
+              Alert.alert('Invalid platform fee', 'Enter a platform fee of 0 or more.');
+              return;
+            }
+            handleSavePlatform({
+              taxEnabled: String(taxEnabled),
+              taxRatePercent: (Number.isFinite(rate) ? rate : 0).toFixed(2).replace(/\.00$/, ''),
+              platformFeeEnabled: String(platformFeeEnabled),
+              platformFeeAmount: (Number.isFinite(fee) ? fee : 0).toFixed(2),
+            }, 'Cart charges saved.');
+          }}
+        />
+        {editing === 'charges' && (
+          <Button
+            title="Delete charges (turn off & clear)"
+            variant="outline"
+            onPress={() => {
+              Alert.alert(
+                'Delete charges?',
+                'This turns off tax and platform fee and clears their amounts.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () => {
+                      setTaxEnabled(false);
+                      setTaxRatePercent('0');
+                      setPlatformFeeEnabled(false);
+                      setPlatformFeeAmount('0.00');
+                      handleSavePlatform({
+                        taxEnabled: 'false',
+                        taxRatePercent: '0',
+                        platformFeeEnabled: 'false',
+                        platformFeeAmount: '0.00',
+                      }, 'Cart charges cleared.');
+                    },
+                  },
+                ]
+              );
+            }}
+            style={{ marginTop: spacing.sm }}
+            disabled={savingPlatform}
+          />
+        )}
       </Card>
 
       <Card style={styles.card}>

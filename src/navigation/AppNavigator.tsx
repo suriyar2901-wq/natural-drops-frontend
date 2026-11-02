@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HeaderBrand } from '../components/common';
-import { useGetShopCompanyQuery } from '../store/api/shopApi';
+import { useGetShopCompanyQuery, useGetShopInboxQuery } from '../store/api/shopApi';
 import { useGetBuyerAccountSummaryQuery } from '../store/api/buyerAccountApi';
 import { NavigationContainer, CommonActions } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -134,11 +134,14 @@ import { navigationRef } from './navigationRef';
 const HeaderRight = ({ navigation }: any) => {
   const { width } = useWindowDimensions();
   const compact = width < 520;
-  const { user, logout, isBuyer } = useAuth();
+  const { user, logout, isBuyer, isSeller } = useAuth();
   const buyer = isBuyer();
+  const seller = isSeller();
   const { data: buyerUnread = 0 } = useGetUnreadBuyerNotificationCountQuery(user?.id || 0, { skip: !user?.id || !buyer });
   const { data: sellerUnread = 0 } = useGetUnreadAdminNotificationCountQuery(undefined, { skip: !user || buyer });
-  const unread = buyer ? buyerUnread : sellerUnread;
+  const { data: shopInbox = [] } = useGetShopInboxQuery(undefined, { skip: !user || !seller });
+  const inboxUnread = shopInbox.filter((item) => !item.isRead).length;
+  const unread = buyer ? buyerUnread : sellerUnread + inboxUnread;
 
   const performLogout = async () => {
     console.log('performLogout called');
@@ -272,12 +275,23 @@ const HeaderRight = ({ navigation }: any) => {
     console.error('All navigation methods failed');
   };
 
+  const displayName = (user?.fullName || user?.username || 'User').trim();
+  // Buyer/seller: name only. Admin keeps a small role label for clarity.
+  const showAdminRole = !buyer && !seller;
+
   return (
     <View style={[styles.headerRight, compact && styles.headerRightCompact]}>
       {!compact && (
-        <Text style={styles.username} numberOfLines={1}>
-          {user?.username || 'User'}
-        </Text>
+        <View style={styles.userChip}>
+          {showAdminRole ? (
+            <Text style={styles.userRole} numberOfLines={1}>
+              Admin
+            </Text>
+          ) : null}
+          <Text style={styles.username} numberOfLines={1}>
+            {displayName}
+          </Text>
+        </View>
       )}
       <TouchableOpacity
         onPress={() => navigation.getParent()?.navigate('NotificationHistory') || navigation.navigate('NotificationHistory')}
@@ -742,7 +756,17 @@ export const AppNavigator = () => {
         <Stack.Screen
           name="BuyerEmptyCans"
           component={BuyerEmptyCansScreen}
-          options={{ title: 'My Empty Cans' }}
+          options={({ navigation }) => ({
+            title: 'My Empty Cans',
+            headerLeft: () => (
+              <HeaderBack
+                onPress={() => {
+                  if (navigation.canGoBack()) navigation.goBack();
+                  else navigation.navigate('BuyerApp');
+                }}
+              />
+            ),
+          })}
         />
       </Stack.Navigator>
       <SellerSubscriptionGate />
@@ -851,12 +875,24 @@ const styles = StyleSheet.create({
   headerRightCompact: {
     marginRight: spacing.xs,
   },
+  userChip: {
+    marginRight: spacing.sm,
+    maxWidth: 140,
+    flexShrink: 1,
+    alignItems: 'flex-end',
+  },
+  userRole: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 10,
+    fontWeight: typography.fontWeight.semibold,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase' as const,
+  },
   username: {
     color: colors.white,
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.medium,
-    marginRight: spacing.sm,
-    maxWidth: 88,
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
+    maxWidth: 140,
     flexShrink: 1,
   },
   phoneButtonCompact: {

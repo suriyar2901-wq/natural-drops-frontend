@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Platform, StyleSheet, View, ViewStyle } from 'react-native';
+import { Animated, Easing, StyleSheet, View, ViewStyle } from 'react-native';
 import { colors } from '../../theme';
 
 type Props = {
@@ -22,7 +22,7 @@ function WaterDropShape({
   const r = body / 2;
 
   return (
-    <View style={[{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }, style]}>
+    <View style={[{ width: size, height: size, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' }, style]}>
       <View
         style={[
           styles.drop,
@@ -195,13 +195,12 @@ export const WaterDropLoader = ({ size = 'large', color, style }: Props) => {
           ]}
         />
 
-        {/* Main water-drop shape */}
+        {/* Main water-drop shape — no card/shadow behind the drop */}
         <Animated.View
           style={[
             styles.dropWrap,
             {
               transform: [{ translateY }, { scale }],
-              ...dropShadow,
             },
           ]}
         >
@@ -224,37 +223,28 @@ export const WaterDropLoader = ({ size = 'large', color, style }: Props) => {
   );
 };
 
-const dropShadow =
-  Platform.OS === 'web'
-    ? ({
-        boxShadow: '0 14px 28px rgba(2, 50, 170, 0.28)',
-      } as const)
-    : {
-        shadowColor: '#0232AA',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.28,
-        shadowRadius: 16,
-        elevation: 8,
-      };
-
 const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
   stage: {
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
   dropWrap: {
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
     zIndex: 2,
   },
   drop: {
     // Tip UP: sharp TL + rotate +45°
     transform: [{ rotate: '45deg' }],
     overflow: 'hidden',
+    backgroundColor: 'transparent',
   },
   highlight: {
     position: 'absolute',

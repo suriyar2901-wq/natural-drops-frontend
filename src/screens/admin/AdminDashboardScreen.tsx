@@ -545,7 +545,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
           </View>
           <View style={styles.splitRow}>
             <Card style={[styles.chartCard, styles.splitChart]}>
-              <Text style={styles.filterTitle}>Revenue histogram</Text>
+              <Text style={styles.filterTitle}>Monthly earnings</Text>
               <Text style={styles.chartHint}>
                 {dateFilterParams?.fromDate && dateFilterParams?.toDate
                   ? `${dateRangeLabel} — order revenue and seller subscription collections`

@@ -6,11 +6,47 @@ import { deliveryDateFor, isFutureDeliverySlot, toDeliveryYmd } from '../../comp
 import { useCart, useAuth } from '../../hooks';
 import { useCreateOrderMutation, useGetBuyerRegularOrderQuery, usePauseBuyerRegularOrderMutation, useResumeBuyerRegularOrderMutation, useSaveBuyerRegularOrderMutation } from '../../store/api/orderApi';
 import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
+import { useGetPricingFeesQuery } from '../../store/api/settingsApi';
 import { formatClockAmPm, formatCurrency } from '../../utils/formatters';
 import { shopAvailability } from '../../utils/shopHours';
 import { CartItem, CreateOrderRequest } from '../../types';
 import { useDispatch } from 'react-redux';
 import { calculateTotals } from '../../store/slices/cartSlice';
+
+const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const deliveryFromSellerRate = (
+  perKmRaw: number | string | null | undefined,
+  shopLatRaw?: number | null,
+  shopLngRaw?: number | null,
+  buyerLat?: number,
+  buyerLng?: number
+) => {
+  const perKm = Number(perKmRaw) || 0;
+  if (perKm <= 0) return 0;
+  const shopLat = shopLatRaw != null ? Number(shopLatRaw) : NaN;
+  const shopLng = shopLngRaw != null ? Number(shopLngRaw) : NaN;
+  if (
+    Number.isFinite(shopLat) &&
+    Number.isFinite(shopLng) &&
+    buyerLat != null &&
+    buyerLng != null &&
+    Number.isFinite(buyerLat) &&
+    Number.isFinite(buyerLng)
+  ) {
+    const km = Math.max(1, Math.ceil(haversineKm(shopLat, shopLng, buyerLat, buyerLng) * 10) / 10);
+    return Math.round(perKm * km * 100) / 100;
+  }
+  return Math.round(perKm * 100) / 100;
+};
 
 const WEEK_DAYS = [
   { id: 0, label: 'Sun' },
@@ -23,9 +59,25 @@ const WEEK_DAYS = [
 ];
 
 export const CartScreen = ({ navigation, route }: any) => {
-  const { items, total, subtotal, tax, deliveryCharge, incrementQuantity, decrementQuantity, removeFromCart, clearCart, getCartForOrder } = useCart();
+  const {
+    items,
+    total,
+    subtotal,
+    tax,
+    taxEnabled,
+    deliveryCharge,
+    platformFee,
+    platformFeeEnabled,
+    incrementQuantity,
+    decrementQuantity,
+    removeFromCart,
+    clearCart,
+    getCartForOrder,
+    updateFeeSettings,
+  } = useCart();
   const { user, isBuyer } = useAuth();
   const { data: account } = useGetBuyerAccountSummaryQuery(undefined, { skip: !isBuyer() });
+  const { data: feeSettings } = useGetPricingFeesQuery(undefined, { skip: !isBuyer() });
   const [createOrder, { isLoading }] = useCreateOrderMutation();
   const { data: regularPlan } = useGetBuyerRegularOrderQuery(undefined, { skip: !isBuyer() });
   const [saveRegularOrder, { isLoading: savingRegular }] = useSaveBuyerRegularOrderMutation();
@@ -38,6 +90,29 @@ export const CartScreen = ({ navigation, route }: any) => {
   const [deliveryTime, setDeliveryTime] = useState('10:00');
   const [orderKind, setOrderKind] = useState<'normal' | 'regular'>(route?.params?.orderKind === 'regular' ? 'regular' : 'normal');
   const [weekDays, setWeekDays] = useState<number[]>([]);
+
+  // Apply admin tax/platform fee + seller per-km delivery into the cart
+  useEffect(() => {
+    if (!isBuyer()) return;
+    const taxOn = feeSettings ? feeSettings.taxEnabled !== 'false' : false;
+    const taxRate = feeSettings ? Number(feeSettings.taxRatePercent) || 0 : 0;
+    const platformOn = feeSettings ? feeSettings.platformFeeEnabled === 'true' : false;
+    const platformAmount = feeSettings ? Number(feeSettings.platformFeeAmount) || 0 : 0;
+
+      const delivery = deliveryFromSellerRate(
+      account?.deliveryChargePerKm,
+      account?.shopLatitude,
+      account?.shopLongitude
+    );
+
+    updateFeeSettings({
+      taxEnabled: taxOn,
+      taxRate,
+      platformFeeEnabled: platformOn,
+      platformFee: platformAmount,
+      deliveryCharge: delivery,
+    });
+  }, [isBuyer, feeSettings, account?.deliveryChargePerKm, account?.shopLatitude, account?.shopLongitude]);
 
   // Recalculate totals if items exist but total is invalid
   useEffect(() => {
@@ -190,14 +265,23 @@ export const CartScreen = ({ navigation, route }: any) => {
         return;
       }
 
-      // Recalculate total to ensure it's valid
+      // Prefer cart totals already driven by admin/seller fee settings
       const calculatedSubtotal = items.reduce(
         (sum, item) => sum + (item.menuItem.rate || 0) * item.quantity,
         0
       );
-      const calculatedTax = (calculatedSubtotal * 5) / 100; // 5% tax
-      const calculatedDeliveryCharge = deliveryCharge || 20;
-      const calculatedTotal = calculatedSubtotal + calculatedTax + calculatedDeliveryCharge;
+      const calculatedTax = taxEnabled ? tax : 0;
+      const calculatedDeliveryCharge = deliveryFromSellerRate(
+        account?.deliveryChargePerKm,
+        account?.shopLatitude,
+        account?.shopLongitude,
+        latitude,
+        longitude
+      );
+      updateFeeSettings({ deliveryCharge: calculatedDeliveryCharge });
+      const calculatedPlatformFee = platformFeeEnabled ? platformFee : 0;
+      const calculatedTotal =
+        calculatedSubtotal + calculatedTax + calculatedDeliveryCharge + calculatedPlatformFee;
 
       // Ensure total is a valid number
       const finalTotal = Number(calculatedTotal) || Number(total) || 0;
@@ -396,10 +480,18 @@ export const CartScreen = ({ navigation, route }: any) => {
                 <Text style={styles.summaryLabel}>Subtotal</Text>
                 <Text style={styles.summaryValue}>{formatCurrency(subtotal)}</Text>
               </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Tax</Text>
-                <Text style={styles.summaryValue}>{formatCurrency(tax)}</Text>
-              </View>
+              {taxEnabled ? (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Tax</Text>
+                  <Text style={styles.summaryValue}>{formatCurrency(tax)}</Text>
+                </View>
+              ) : null}
+              {platformFeeEnabled && platformFee > 0 ? (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Platform fee</Text>
+                  <Text style={styles.summaryValue}>{formatCurrency(platformFee)}</Text>
+                </View>
+              ) : null}
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Delivery Charge</Text>
                 <Text style={styles.summaryValue}>{formatCurrency(deliveryCharge)}</Text>

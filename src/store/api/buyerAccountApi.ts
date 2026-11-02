@@ -21,6 +21,7 @@ export const buyerAccountApi = baseApi.injectEndpoints({
         method: 'POST',
         body,
       }),
+      invalidatesTags: ['BuyerAccount', 'Shop'],
     }),
   }),
 });
