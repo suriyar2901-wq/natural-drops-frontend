@@ -7,6 +7,7 @@ import {
   useGetAdminSellerQuery,
   useReactivateAdminSellerMutation,
   useRenewAdminSubscriptionMutation,
+  useUpdateSubscriptionDatesMutation,
 } from '../../store/api/platformAdminApi';
 import { useGetSettingsQuery } from '../../store/api/settingsApi';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
@@ -19,12 +20,19 @@ export const SellerDetailScreen = ({ navigation, route }: any) => {
   const [deactivate, { isLoading: deactivating }] = useDeactivateAdminSellerMutation();
   const [reactivate, { isLoading: reactivating }] = useReactivateAdminSellerMutation();
   const [renew, { isLoading: renewing }] = useRenewAdminSubscriptionMutation();
+  const [updateDates, { isLoading: savingDates }] = useUpdateSubscriptionDatesMutation();
   const { data: settings } = useGetSettingsQuery();
   const [reason, setReason] = useState(REASONS[0]);
   const [adminNote, setAdminNote] = useState('');
   const [renewPlan, setRenewPlan] = useState('MONTHLY');
+  const [renewMethod, setRenewMethod] = useState<'CASH' | 'UPI' | 'GATEWAY'>('GATEWAY');
+  const [gatewayRef, setGatewayRef] = useState('');
   const [paidAt, setPaidAt] = useState('');
   const [showRenew, setShowRenew] = useState(false);
+  const [showDates, setShowDates] = useState(false);
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editExpiryDate, setEditExpiryDate] = useState('');
+  const [methodOpen, setMethodOpen] = useState(false);
   const [showDeactivate, setShowDeactivate] = useState(false);
   const [reasonOpen, setReasonOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
@@ -38,6 +46,9 @@ export const SellerDetailScreen = ({ navigation, route }: any) => {
 
   const openRenew = () => {
     setRenewPlan(seller.plan === 'YEARLY' ? 'YEARLY' : 'MONTHLY');
+    setRenewMethod('GATEWAY');
+    setGatewayRef('');
+    setMethodOpen(false);
     const now = new Date();
     const pad = (value: number) => String(value).padStart(2, '0');
     setPaidAt(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`);
@@ -67,12 +78,45 @@ export const SellerDetailScreen = ({ navigation, route }: any) => {
 
   const handleRenew = async () => {
     try {
-      await renew({ sellerId: seller.id, plan: renewPlan, paidAt: paidAt || undefined }).unwrap();
+      await renew({
+        sellerId: seller.id,
+        plan: renewPlan,
+        method: renewMethod,
+        gatewayRef: renewMethod === 'GATEWAY' ? (gatewayRef.trim() || undefined) : undefined,
+        paidAt: paidAt || undefined,
+      }).unwrap();
       setShowRenew(false);
-      setNotice('Cash renewal recorded and the subscription was extended.');
+      setNotice(`${renewMethod} renewal recorded and the subscription was extended.`);
       refetch();
     } catch (e: any) {
       setNotice(e?.data?.message || e?.message || 'Could not renew subscription');
+    }
+  };
+
+  const openDates = () => {
+    setEditStartDate(seller.startDate || '');
+    setEditExpiryDate(seller.expiryDate || '');
+    setShowDates(true);
+  };
+
+  const handleSaveDates = async () => {
+    const start = editStartDate.trim();
+    const expiry = editExpiryDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
+      setNotice('Use YYYY-MM-DD for start and expiry dates.');
+      return;
+    }
+    if (expiry < start) {
+      setNotice('Expiry date cannot be before start date.');
+      return;
+    }
+    try {
+      await updateDates({ sellerId: seller.id, startDate: start, expiryDate: expiry }).unwrap();
+      setShowDates(false);
+      setNotice('Subscription start and expiry dates updated.');
+      refetch();
+    } catch (e: any) {
+      setNotice(e?.data?.message || e?.message || 'Could not update dates');
     }
   };
 
@@ -125,13 +169,20 @@ export const SellerDetailScreen = ({ navigation, route }: any) => {
           <Info label="Address" value={`${seller.businessAddress}, ${seller.area}, ${seller.city} ${seller.pincode}`} />
         </Card>
         <Card style={styles.card}>
-          <Text style={styles.section}>Subscription</Text>
+          <View style={styles.sectionRow}>
+            <Text style={styles.section}>Subscription</Text>
+            {seller.plan !== 'FREE' && (
+              <TouchableOpacity onPress={openDates}>
+                <Text style={styles.link}>Edit dates</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <Text style={styles.amount}>{formatCurrency(seller.amount)}</Text>
           <Text style={styles.hint}>{seller.plan === 'FREE' ? 'Free account' : seller.plan || 'MONTHLY'}</Text>
           <Info label="Start" value={seller.startDate || '—'} />
           <Info label="Expiry" value={seller.plan === 'FREE' ? 'No expiry while free' : seller.expiryDate ? `${seller.expiryDate} (${seller.daysRemaining ?? '—'} days)` : '—'} />
           <TouchableOpacity style={styles.wideBtn} onPress={openRenew}>
-            <Text style={styles.primaryText}>{seller.plan === 'FREE' ? 'Change to paid plan' : 'Record cash renewal'}</Text>
+            <Text style={styles.primaryText}>{seller.plan === 'FREE' ? 'Change to paid plan' : 'Record renewal'}</Text>
           </TouchableOpacity>
         </Card>
       </View>
@@ -173,10 +224,10 @@ export const SellerDetailScreen = ({ navigation, route }: any) => {
       <Modal visible={showRenew} transparent animationType="fade" onRequestClose={() => setShowRenew(false)}>
         <Pressable style={styles.overlay} onPress={() => setShowRenew(false)}>
           <Pressable style={styles.popup}>
-            <Text style={styles.popupTitle}>{seller.plan === 'FREE' ? 'Change to paid plan' : 'Record Cash Renewal'}</Text>
-            <Text style={styles.hint}>Cash collected outside the app. Amount follows the selected paid plan.</Text>
+            <Text style={styles.popupTitle}>{seller.plan === 'FREE' ? 'Change to paid plan' : 'Record Renewal'}</Text>
+            <Text style={styles.hint}>Payment collected outside the app (gateway / UPI / cash). Amount follows the selected paid plan.</Text>
             <Text style={styles.fieldLabel}>Plan</Text>
-            <TouchableOpacity style={styles.field} onPress={() => setPlanOpen((open) => !open)}>
+            <TouchableOpacity style={styles.field} onPress={() => { setPlanOpen((open) => !open); setMethodOpen(false); }}>
               <Text>{renewPlan === 'YEARLY' ? 'Yearly' : 'Monthly'}</Text>
             </TouchableOpacity>
             {planOpen && (
@@ -191,13 +242,63 @@ export const SellerDetailScreen = ({ navigation, route }: any) => {
             <Text style={styles.fieldLabel}>Amount</Text>
             <View style={styles.field}><Text>{formatCurrency(renewPlan === 'YEARLY' ? Number(settings?.planYearlyAmount || 5389.2) : Number(settings?.planMonthlyAmount || 499))}</Text></View>
             <Text style={styles.fieldLabel}>Payment method</Text>
-            <View style={styles.field}><Text>Cash</Text></View>
+            <TouchableOpacity style={styles.field} onPress={() => { setMethodOpen((open) => !open); setPlanOpen(false); }}>
+              <Text>{renewMethod}</Text>
+            </TouchableOpacity>
+            {methodOpen && (
+              <View style={styles.menu}>
+                {(['GATEWAY', 'UPI', 'CASH'] as const).map((item) => (
+                  <TouchableOpacity key={item} style={styles.menuItem} onPress={() => { setRenewMethod(item); setMethodOpen(false); }}>
+                    <Text>{item}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            {renewMethod === 'GATEWAY' && (
+              <>
+                <Text style={styles.fieldLabel}>Gateway reference</Text>
+                <TextInput style={styles.field} value={gatewayRef} onChangeText={setGatewayRef} placeholder="cf_order / payment id" />
+              </>
+            )}
             <Text style={styles.fieldLabel}>Payment date & time</Text>
             <TextInput style={styles.field} value={paidAt} onChangeText={setPaidAt} />
             <View style={styles.popupActions}>
               <TouchableOpacity style={styles.outlineBtn} onPress={() => setShowRenew(false)}><Text>Cancel</Text></TouchableOpacity>
               <TouchableOpacity style={styles.primaryBtn} onPress={handleRenew} disabled={renewing}>
-                <Text style={styles.primaryText}>{renewing ? 'Saving…' : 'Confirm Cash Renewal'}</Text>
+                <Text style={styles.primaryText}>{renewing ? 'Saving…' : `Confirm ${renewMethod} Renewal`}</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showDates} transparent animationType="fade" onRequestClose={() => setShowDates(false)}>
+        <Pressable style={styles.overlay} onPress={() => !savingDates && setShowDates(false)}>
+          <Pressable style={styles.popup}>
+            <Text style={styles.popupTitle}>Edit subscription dates</Text>
+            <Text style={styles.hint}>Use YYYY-MM-DD. Expiry must be on or after start.</Text>
+            <Text style={styles.fieldLabel}>Start date</Text>
+            <TextInput
+              style={styles.field}
+              value={editStartDate}
+              onChangeText={setEditStartDate}
+              placeholder="YYYY-MM-DD"
+              autoCapitalize="none"
+            />
+            <Text style={styles.fieldLabel}>Expiry date</Text>
+            <TextInput
+              style={styles.field}
+              value={editExpiryDate}
+              onChangeText={setEditExpiryDate}
+              placeholder="YYYY-MM-DD"
+              autoCapitalize="none"
+            />
+            <View style={styles.popupActions}>
+              <TouchableOpacity style={styles.outlineBtn} onPress={() => setShowDates(false)} disabled={savingDates}>
+                <Text>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.primaryBtn} onPress={handleSaveDates} disabled={savingDates}>
+                <Text style={styles.primaryText}>{savingDates ? 'Saving…' : 'Save dates'}</Text>
               </TouchableOpacity>
             </View>
           </Pressable>

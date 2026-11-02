@@ -134,11 +134,12 @@ import { navigationRef } from './navigationRef';
 const HeaderRight = ({ navigation }: any) => {
   const { width } = useWindowDimensions();
   const compact = width < 520;
-  const { user, logout, isBuyer, isSeller } = useAuth();
+  const { user, logout, isBuyer, isSeller, isStrictAdmin } = useAuth();
   const buyer = isBuyer();
   const seller = isSeller();
+  const adminOnly = isStrictAdmin();
   const { data: buyerUnread = 0 } = useGetUnreadBuyerNotificationCountQuery(user?.id || 0, { skip: !user?.id || !buyer });
-  const { data: sellerUnread = 0 } = useGetUnreadAdminNotificationCountQuery(undefined, { skip: !user || buyer });
+  const { data: sellerUnread = 0 } = useGetUnreadAdminNotificationCountQuery(undefined, { skip: !user || buyer || adminOnly });
   const { data: shopInbox = [] } = useGetShopInboxQuery(undefined, { skip: !user || !seller });
   const inboxUnread = shopInbox.filter((item) => !item.isRead).length;
   const unread = buyer ? buyerUnread : sellerUnread + inboxUnread;
@@ -439,17 +440,19 @@ const AdminTabs = ({ navigation }: any) => {
         headerTitle: () => isSeller() ? sellerBrand : <Text style={styles.headerTitleText}>Dashboard</Text>,
       }}
     />
-      <Tab.Screen 
-        name="OrderManagement" 
-        component={OrderManagementScreen} 
-        options={{ 
+    {isSeller() && (
+      <Tab.Screen
+        name="OrderManagement"
+        component={OrderManagementScreen}
+        options={{
           title: 'Orders',
           tabBarIcon: tabIcon('receipt-outline', 'receipt'),
           tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
-          headerTitle: isSeller() ? brandOnlyTitle : undefined,
-          headerLeft: () => isSeller() ? <View style={styles.headerBrandWrap}>{sellerBrand}</View> : undefined,
-        }} 
+          headerTitle: brandOnlyTitle,
+          headerLeft: () => <View style={styles.headerBrandWrap}>{sellerBrand}</View>,
+        }}
       />
+    )}
     {isSeller() && (
       <Tab.Screen
         name="MenuManagement"
@@ -523,6 +526,7 @@ const AdminTabs = ({ navigation }: any) => {
     />
       {isStrictAdmin() && (
         <>
+          <Tab.Screen name="OrderManagement" component={OrderManagementScreen} options={hiddenPageOptions('Orders')} />
           <Tab.Screen name="MenuManagement" component={MenuManagementScreen} options={hiddenPageOptions('Products')} />
           <Tab.Screen name="UserManagement" component={UserManagementScreen} options={hiddenPageOptions('Users')} />
           <Tab.Screen name="Profile" component={ProfileScreen} options={hiddenPageOptions('Profile')} />

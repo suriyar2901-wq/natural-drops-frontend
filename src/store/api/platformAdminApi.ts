@@ -59,6 +59,7 @@ export const platformAdminApi = baseApi.injectEndpoints({
     recordSellerPayment: builder.mutation<SellerAdmin, {
       id: number;
       method: string;
+      gatewayRef?: string;
       receivedAmount: string;
       paidAt?: string;
       note?: string;
@@ -74,10 +75,29 @@ export const platformAdminApi = baseApi.injectEndpoints({
       query: () => '/admin/subscriptions',
       providesTags: ['PlatformAdmin'],
     }),
-    renewAdminSubscription: builder.mutation<SellerAdmin, { sellerId: number; plan: string; paidAt?: string; note?: string }>({
+    renewAdminSubscription: builder.mutation<SellerAdmin, {
+      sellerId: number;
+      plan: string;
+      method?: string;
+      gatewayRef?: string;
+      paidAt?: string;
+      note?: string;
+    }>({
       query: ({ sellerId, ...body }) => ({
         url: `/admin/subscriptions/${sellerId}/renew`,
         method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['PlatformAdmin'],
+    }),
+    updateSubscriptionDates: builder.mutation<SellerAdmin, {
+      sellerId: number;
+      startDate: string;
+      expiryDate: string;
+    }>({
+      query: ({ sellerId, ...body }) => ({
+        url: `/admin/subscriptions/${sellerId}/dates`,
+        method: 'PUT',
         body,
       }),
       invalidatesTags: ['PlatformAdmin'],
@@ -104,6 +124,7 @@ export const {
   useRecordSellerPaymentMutation,
   useGetAdminSubscriptionsQuery,
   useRenewAdminSubscriptionMutation,
+  useUpdateSubscriptionDatesMutation,
   useGetAdminPaymentsQuery,
   useGetAdminPaymentQuery,
 } = platformAdminApi;

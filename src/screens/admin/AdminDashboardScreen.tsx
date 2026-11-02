@@ -67,10 +67,12 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
   }, [dashboardStats, dashboardError, dateFilterParams]);
   
   const { data: notifications, isLoading: notificationsLoading, refetch: refetchNotifications } = useGetUnreadAdminNotificationsQuery(
-    undefined
+    undefined,
+    { skip: isStrictAdmin() }
   );
   const { data: unreadCount = 0 } = useGetUnreadAdminNotificationCountQuery(
-    undefined
+    undefined,
+    { skip: isStrictAdmin() }
   );
   const [markAsRead] = useMarkAdminNotificationAsReadMutation();
   const [preview, setPreview] = useState<any>(null);
@@ -106,8 +108,9 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
     ? dashboardStats?.totalOrders || 0
     : dashboardStats?.todayOrders || 0;
 
-  // Show push notification when new order arrives
+  // Seller-only: show local alert when new order notifications arrive (not for platform admin)
   useEffect(() => {
+    if (isStrictAdmin()) return;
     if (unreadCount > previousCountRef.current && previousCountRef.current > 0) {
       const newNotificationsCount = unreadCount - previousCountRef.current;
       const latestMessage = notifications?.[0]?.message?.trim();
@@ -118,7 +121,7 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
       );
     }
     previousCountRef.current = unreadCount;
-  }, [unreadCount, showNotification, notifications]);
+  }, [unreadCount, showNotification, notifications, isStrictAdmin]);
 
   // Auto-fetch when both dates are selected
   useEffect(() => {
@@ -583,8 +586,8 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
         </View>
       )}
 
-      {/* Recent Notifications Section */}
-      {unreadCount > 0 && (
+      {/* Seller order notifications — hidden for platform admin */}
+      {!isStrictAdmin() && unreadCount > 0 && (
         <TouchableOpacity
           style={styles.noticeBar}
           onPress={() => {
@@ -859,7 +862,7 @@ const styles = StyleSheet.create({
   companyCard: {
     padding: spacing.lg,
     marginBottom: spacing.md,
-    backgroundColor: colors.blue50,
+    backgroundColor: '#E8EEFC',
     borderWidth: 1,
     borderColor: colors.primary,
     borderRadius: borderRadius.lg,
@@ -910,9 +913,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
-  earningsPaid: { backgroundColor: colors.successTint },
-  earningsPartial: { backgroundColor: colors.warningTint },
-  earningsDue: { backgroundColor: colors.blue50 },
+  earningsPaid: { backgroundColor: '#D1FAE5' },
+  earningsPartial: { backgroundColor: '#FFEDD5' },
+  earningsDue: { backgroundColor: '#DBEAFE' },
   earningsBar: { width: 8, height: 28, borderRadius: 4 },
   earningsChipLabel: {
     fontSize: typography.fontSize.xs,
@@ -954,12 +957,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize['2xl'],
     fontWeight: typography.fontWeight.bold,
   },
-  podGreen: { backgroundColor: '#E8F8EE' },
-  podGreenText: { color: '#166534' },
-  podOrange: { backgroundColor: '#FFF1E0' },
-  podOrangeText: { color: '#C2410C' },
-  podBlue: { backgroundColor: colors.blue100 },
-  podBlueText: { color: colors.primary },
+  podGreen: { backgroundColor: '#BBF7D0' },
+  podGreenText: { color: '#14532D' },
+  podOrange: { backgroundColor: '#FED7AA' },
+  podOrangeText: { color: '#9A3412' },
+  podBlue: { backgroundColor: '#BFDBFE' },
+  podBlueText: { color: '#1E3A8A' },
   sellerSummaryRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -1162,9 +1165,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: 999,
-    backgroundColor: colors.white,
+    backgroundColor: '#DBEAFE',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#93C5FD',
   },
   noticeText: {
     color: colors.textPrimary,

@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Card, DatePicker, Input, Loading, StatusPill } from '../../components/common';
-import { colors, spacing, typography } from '../../theme';
+import { borderRadius, colors, spacing, typography } from '../../theme';
 import { useGetAdminPaymentsQuery } from '../../store/api/platformAdminApi';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { SellerPayment } from '../../types/platformAdmin.types';
@@ -52,11 +53,29 @@ const FilterDropdown = ({
   </View>
 );
 
+const pad2 = (value: number) => String(value).padStart(2, '0');
+
 const todayString = () => {
   const today = new Date();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  return `${today.getFullYear()}-${month}-${day}`;
+  return `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+};
+
+const shiftDays = (days: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+};
+
+const monthStartString = () => {
+  const today = new Date();
+  return `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-01`;
+};
+
+const formatShortDate = (value: string) => {
+  if (!value) return '';
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
 const paymentDay = (value?: string) => {
@@ -81,11 +100,22 @@ export const PaymentListScreen = ({ navigation, route }: any) => {
   const [search, setSearch] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [draftFrom, setDraftFrom] = useState('');
+  const [draftTo, setDraftTo] = useState('');
+  const [showDateFilter, setShowDateFilter] = useState(false);
   const [method, setMethod] = useState('All');
   const [plan, setPlan] = useState('All');
   const [openFilter, setOpenFilter] = useState<'method' | 'plan' | null>(null);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<SellerPayment | null>(null);
+  const hasDateRange = !!fromDate || !!toDate;
+  const dateRangeLabel = fromDate && toDate
+    ? `${formatShortDate(fromDate)} – ${formatShortDate(toDate)}`
+    : fromDate
+      ? `From ${formatShortDate(fromDate)}`
+      : toDate
+        ? `Until ${formatShortDate(toDate)}`
+        : 'Date range';
 
   useEffect(() => {
     if (route?.params?.status) setTab(route.params.status);
@@ -119,11 +149,39 @@ export const PaymentListScreen = ({ navigation, route }: any) => {
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+  const openDateFilter = () => {
+    setDraftFrom(fromDate);
+    setDraftTo(toDate);
+    setShowDateFilter(true);
+    setOpenFilter(null);
+  };
+
+  const applyDateFilter = () => {
+    setFromDate(draftFrom);
+    setToDate(draftTo);
+    setShowDateFilter(false);
+  };
+
+  const clearDateFilter = () => {
+    setDraftFrom('');
+    setDraftTo('');
+    setFromDate('');
+    setToDate('');
+    setShowDateFilter(false);
+  };
+
+  const applyPreset = (from: string, to: string) => {
+    setDraftFrom(from);
+    setDraftTo(to);
+  };
+
   const clearFilters = () => {
     setTab('All');
     setSearch('');
     setFromDate('');
     setToDate('');
+    setDraftFrom('');
+    setDraftTo('');
     setMethod('All');
     setPlan('All');
     setOpenFilter(null);
@@ -193,11 +251,24 @@ export const PaymentListScreen = ({ navigation, route }: any) => {
           <View style={styles.searchWrap}>
             <Input label="" value={search} onChangeText={setSearch} placeholder="Search transaction, seller ID or business" />
           </View>
-          <View style={styles.dateWrap}>
-            <DatePicker label="From" value={fromDate} onChange={setFromDate} maxDate={toDate || todayString()} placeholder="From date" />
-          </View>
-          <View style={styles.dateWrap}>
-            <DatePicker label="To" value={toDate} onChange={setToDate} maxDate={todayString()} placeholder="To date" />
+          <View style={styles.dateFilterBar}>
+            <TouchableOpacity
+              style={[styles.dateRangeBtn, hasDateRange && styles.dateRangeBtnActive]}
+              onPress={openDateFilter}
+              accessibilityRole="button"
+              accessibilityLabel="Date range filter"
+            >
+              <Ionicons name="calendar-outline" size={18} color={hasDateRange ? colors.white : colors.primary} />
+              <Text style={[styles.dateRangeText, hasDateRange && styles.dateRangeTextActive]} numberOfLines={1}>
+                {dateRangeLabel}
+              </Text>
+              {hasDateRange && <View style={styles.dateRangeDot} />}
+            </TouchableOpacity>
+            {hasDateRange && (
+              <TouchableOpacity style={styles.dateClearIcon} onPress={clearDateFilter} accessibilityLabel="Clear date range">
+                <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
           </View>
           <FilterDropdown
             label="All Methods"
@@ -272,6 +343,72 @@ export const PaymentListScreen = ({ navigation, route }: any) => {
         <Legend title="Gateway verification" text="Gateway reference is stored with the payment. Cash has no gateway ref." />
       </View>
       <Text style={styles.boundary}>This ledger contains only seller platform subscription transactions. Buyer order payments stay on Orders.</Text>
+
+      <Modal visible={showDateFilter} transparent animationType="fade" onRequestClose={() => setShowDateFilter(false)}>
+        <View style={styles.dateModalOverlay}>
+          <View style={styles.dateModalCard}>
+            <View style={styles.dateModalHeader}>
+              <Text style={styles.dateModalTitle}>Date range</Text>
+              <TouchableOpacity onPress={() => setShowDateFilter(false)} accessibilityLabel="Close">
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.presetRow}>
+              <TouchableOpacity style={styles.presetChip} onPress={() => applyPreset(todayString(), todayString())}>
+                <Text style={styles.presetText}>Today</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.presetChip} onPress={() => applyPreset(shiftDays(-6), todayString())}>
+                <Text style={styles.presetText}>Last 7 days</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.presetChip} onPress={() => applyPreset(shiftDays(-29), todayString())}>
+                <Text style={styles.presetText}>Last 30 days</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.presetChip} onPress={() => applyPreset(monthStartString(), todayString())}>
+                <Text style={styles.presetText}>This month</Text>
+              </TouchableOpacity>
+            </View>
+
+            <DatePicker
+              label="From"
+              value={draftFrom}
+              onChange={(date) => {
+                setDraftFrom(date);
+                if (draftTo && date > draftTo) setDraftTo('');
+              }}
+              maxDate={draftTo || todayString()}
+              placeholder="Start date"
+            />
+            <DatePicker
+              label="To"
+              value={draftTo}
+              onChange={(date) => {
+                setDraftTo(date);
+                if (draftFrom && date < draftFrom) setDraftFrom('');
+              }}
+              maxDate={todayString()}
+              placeholder="End date"
+            />
+
+            {!!draftFrom && !!draftTo && draftFrom > draftTo && (
+              <Text style={styles.validationText}>From date must be before or equal to To date</Text>
+            )}
+
+            <View style={styles.dateModalActions}>
+              <TouchableOpacity style={styles.dateModalSecondary} onPress={clearDateFilter}>
+                <Text style={styles.dateModalSecondaryText}>Clear</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.dateModalPrimary, (!!draftFrom && !!draftTo && draftFrom > draftTo) && styles.dateModalPrimaryDisabled]}
+                onPress={applyDateFilter}
+                disabled={!!draftFrom && !!draftTo && draftFrom > draftTo}
+              >
+                <Text style={styles.dateModalPrimaryText}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={!!selected} transparent animationType="fade" onRequestClose={() => setSelected(null)}>
         <Pressable style={styles.overlay} onPress={() => setSelected(null)}>
@@ -365,7 +502,113 @@ const styles = StyleSheet.create({
   tabTextActive: { color: colors.textPrimary },
   filterRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, zIndex: 5 },
   searchWrap: { flexGrow: 1, minWidth: 220 },
-  dateWrap: { width: 160 },
+  dateFilterBar: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dateRangeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 42,
+    maxWidth: 260,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.white,
+    position: 'relative',
+  },
+  dateRangeBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  dateRangeText: {
+    color: colors.primary,
+    fontWeight: typography.fontWeight.semibold,
+    fontSize: typography.fontSize.sm,
+    flexShrink: 1,
+  },
+  dateRangeTextActive: { color: colors.white },
+  dateRangeDot: {
+    position: 'absolute',
+    top: 5,
+    right: 6,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.warning,
+  },
+  dateClearIcon: { padding: 2 },
+  dateModalOverlay: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  dateModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  dateModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  dateModalTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.xs },
+  presetChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.blue50,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  presetText: {
+    color: colors.primary,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  dateModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  dateModalSecondary: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.gray100,
+  },
+  dateModalSecondaryText: {
+    color: colors.textPrimary,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  dateModalPrimary: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.primary,
+  },
+  dateModalPrimaryDisabled: { opacity: 0.5 },
+  dateModalPrimaryText: {
+    color: colors.white,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  validationText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.error,
+    fontWeight: typography.fontWeight.medium,
+  },
   dropWrap: { minWidth: 140, position: 'relative' },
   dropWrapOpen: { zIndex: 20 },
   dropButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },

@@ -3,15 +3,15 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors, spacing, typography } from '../../theme';
 
 const TONE: Record<string, { bg: string; fg: string }> = {
-  ACTIVE: { bg: colors.successTint, fg: colors.success },
-  Active: { bg: colors.successTint, fg: colors.success },
-  SUCCESSFUL: { bg: colors.successTint, fg: colors.success },
-  PENDING: { bg: colors.warningTint, fg: colors.warning },
-  'Payment Pending': { bg: colors.warningTint, fg: colors.warning },
-  'Expiring Soon': { bg: colors.warningTint, fg: colors.warning },
-  FAILED: { bg: colors.errorTint, fg: colors.error },
-  Expired: { bg: colors.errorTint, fg: colors.error },
-  DEACTIVATED: { bg: colors.gray100, fg: colors.textSecondary },
+  ACTIVE: { bg: '#BBF7D0', fg: '#166534' },
+  Active: { bg: '#BBF7D0', fg: '#166534' },
+  SUCCESSFUL: { bg: '#BBF7D0', fg: '#166534' },
+  PENDING: { bg: '#FDE68A', fg: '#854A0E' },
+  'Payment Pending': { bg: '#FDE68A', fg: '#854A0E' },
+  'Expiring Soon': { bg: '#FED7AA', fg: '#9A3412' },
+  FAILED: { bg: '#FECACA', fg: '#991B1B' },
+  Expired: { bg: '#FECACA', fg: '#991B1B' },
+  DEACTIVATED: { bg: '#E5E7EB', fg: '#374151' },
 };
 
 export const StatusPill = ({ label }: { label?: string }) => {

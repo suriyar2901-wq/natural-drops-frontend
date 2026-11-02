@@ -17,7 +17,8 @@ export const ActivatePaymentScreen = ({ navigation, route }: any) => {
   const { data: seller, isLoading } = useGetAdminSellerQuery(sellerId, { skip: !sellerId });
   const { data: platform } = useGetPlatformPaymentQuery();
   const [recordPayment, { isLoading: saving }] = useRecordSellerPaymentMutation();
-  const [method, setMethod] = useState<'UPI' | 'CASH'>('UPI');
+  const [method, setMethod] = useState<'UPI' | 'CASH' | 'GATEWAY'>('GATEWAY');
+  const [gatewayRef, setGatewayRef] = useState('');
   const [received, setReceived] = useState('');
   const [paidAt, setPaidAt] = useState(nowLocal());
   const [note, setNote] = useState('');
@@ -38,6 +39,7 @@ export const ActivatePaymentScreen = ({ navigation, route }: any) => {
       await recordPayment({
         id: sellerId,
         method,
+        gatewayRef: method === 'GATEWAY' ? (gatewayRef.trim() || undefined) : undefined,
         receivedAmount: Number(received).toFixed(2),
         paidAt,
         note: note || undefined,
@@ -73,13 +75,22 @@ export const ActivatePaymentScreen = ({ navigation, route }: any) => {
       <Card style={styles.card}>
         <Text style={styles.section}>Record payment</Text>
         <View style={styles.row}>
+          <TouchableOpacity style={[styles.method, method === 'GATEWAY' && styles.methodActive]} onPress={() => setMethod('GATEWAY')}>
+            <Text style={method === 'GATEWAY' ? styles.methodTextActive : styles.methodText}>Gateway</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={[styles.method, method === 'UPI' && styles.methodActive]} onPress={() => setMethod('UPI')}>
-            <Text style={method === 'UPI' ? styles.methodTextActive : styles.methodText}>Company QR / UPI</Text>
+            <Text style={method === 'UPI' ? styles.methodTextActive : styles.methodText}>UPI</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.method, method === 'CASH' && styles.methodActive]} onPress={() => setMethod('CASH')}>
             <Text style={method === 'CASH' ? styles.methodTextActive : styles.methodText}>Cash</Text>
           </TouchableOpacity>
         </View>
+        {method === 'GATEWAY' && (
+          <>
+            <Text style={styles.hint}>Online payment gateway (Cashfree / card / UPI via gateway). Optional ref from the gateway dashboard.</Text>
+            <Input label="Gateway reference" value={gatewayRef} onChangeText={setGatewayRef} placeholder="cf_order / payment id" />
+          </>
+        )}
         {method === 'UPI' && (
           <>
             <Text style={styles.hint}>UPI ID: {platform?.upiId || 'Set this in More → Platform payment QR'}</Text>

@@ -27,6 +27,7 @@ export const MoreScreen = ({ navigation }: any) => {
 
   if (isStrictAdmin()) {
     actions.push(
+      { label: 'Orders', icon: 'receipt-outline', onPress: () => navigation.navigate('OrderManagement') },
       { label: 'Products', icon: 'cube-outline', onPress: () => navigation.navigate('MenuManagement') },
       { label: 'Users', icon: 'people-outline', onPress: () => navigation.navigate('UserManagement') },
       { label: 'Profile', icon: 'person-outline', onPress: () => navigation.navigate('Profile') },

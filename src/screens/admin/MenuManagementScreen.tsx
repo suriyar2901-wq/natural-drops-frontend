@@ -40,16 +40,6 @@ export const MenuManagementScreen = () => {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<'ALL' | 'water' | 'beverage'>('ALL');
   const [togglingStockId, setTogglingStockId] = useState<number | null>(null);
-  const [sellerFilter, setSellerFilter] = useState('ALL');
-  const sellerOptions = useMemo(() => {
-    const source = products;
-    const names = new Set<string>();
-    (source || []).forEach((item) => {
-      const name = item.sellerName?.trim();
-      if (name) names.add(name);
-    });
-    return Array.from(names).sort((left, right) => left.localeCompare(right));
-  }, [products]);
   const [showProductModal, setShowProductModal] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [imagePickerLoading, setImagePickerLoading] = useState(false);
@@ -470,11 +460,7 @@ export const MenuManagementScreen = () => {
     );
   };
 
-  const displayProducts = useMemo(() => (
-    isAdminAccount && sellerFilter !== 'ALL'
-      ? (products || []).filter((item) => (item.sellerName || '').trim() === sellerFilter)
-      : (products || [])
-  ), [isAdminAccount, sellerFilter, products]);
+  const displayProducts = useMemo(() => products || [], [products]);
 
   const categoryCounts = useMemo(() => {
     const water = displayProducts.filter((item) => String(item.category || '').toLowerCase() === 'water').length;
@@ -493,10 +479,6 @@ export const MenuManagementScreen = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.screenHeader}>
-        <Text style={styles.screenTitle}>Products</Text>
-      </View>
-
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -526,27 +508,6 @@ export const MenuManagementScreen = () => {
         })}
       </ScrollView>
 
-      {isAdminAccount && sellerOptions.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.sellerFilterRow}
-          contentContainerStyle={styles.sellerFilterContent}
-        >
-          {['ALL', ...sellerOptions].map((name) => (
-            <TouchableOpacity
-              key={name}
-              style={[styles.sellerChip, sellerFilter === name && styles.sellerChipActive]}
-              onPress={() => setSellerFilter(name)}
-            >
-              <Text style={[styles.sellerChipText, sellerFilter === name && styles.sellerChipTextActive]}>
-                {name === 'ALL' ? 'All sellers' : name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-      
       <FlatList
         data={filteredProducts}
         renderItem={renderProduct}
@@ -786,19 +747,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  screenHeader: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-    backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  screenTitle: {
-    fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.textPrimary,
-  },
   categoryTabsScroll: {
     maxHeight: 56,
     backgroundColor: colors.white,
@@ -853,35 +801,6 @@ const styles = StyleSheet.create({
   },
   categoryTabCountTextActive: {
     color: colors.white,
-  },
-  sellerFilterRow: {
-    maxHeight: 48,
-    marginBottom: spacing.sm,
-  },
-  sellerFilterContent: {
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
-    alignItems: 'center',
-  },
-  sellerChip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
-    borderRadius: 999,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  sellerChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  sellerChipText: {
-    color: colors.textPrimary,
-    fontSize: typography.fontSize.sm,
-  },
-  sellerChipTextActive: {
-    color: colors.white,
-    fontWeight: typography.fontWeight.semibold,
   },
   filterButton: {
     paddingHorizontal: spacing.md,
