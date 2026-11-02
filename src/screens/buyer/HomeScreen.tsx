@@ -3,8 +3,8 @@ import { useDispatch } from 'react-redux';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Image, Alert, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { colors, typography, spacing } from '../../theme';
-import { Card, EmptyState, Loading, Input, HeaderBrand, ProductPhotoPlaceholder, ShareAppButton } from '../../components/common';
+import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
+import { Card, EmptyState, Loading, Input, ProductPhotoPlaceholder } from '../../components/common';
 import { useGetMenuItemsQuery } from '../../store/api/menuApi';
 import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
 import { useGetBuyerOrdersQuery } from '../../store/api/orderApi';
@@ -18,11 +18,25 @@ import { shopAvailability } from '../../utils/shopHours';
 import { API_BASE_URL } from '../../utils/constants';
 import { navigate } from '../../navigation/navigationRef';
 
+const greetingPart = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+};
+
+const deliveryStage = (order: Order): 'scheduled' | 'on_the_way' | 'delivered' => {
+  const status = String(order.status || '').toLowerCase();
+  if (status === 'delivered') return 'delivered';
+  if (status === 'processing' || status === 'confirmed' || status === 'out_for_delivery') return 'on_the_way';
+  return 'scheduled';
+};
+
 export const HomeScreen = ({ navigation }: any) => {
   const { width } = useWindowDimensions();
   const compact = width < 520;
-  const columns = width >= 900 ? 2 : 1;
-  const photoSize = 112;
+  const columns = 2;
+  const photoSize = Math.min(120, Math.floor((width - spacing.md * 3) / 2) - 24);
   const { user, isBuyer } = useAuth();
   const { data: products, isLoading, refetch, error } = useGetMenuItemsQuery();
   const { data: account } = useGetBuyerAccountSummaryQuery(undefined, { skip: !isBuyer() });
@@ -31,6 +45,7 @@ export const HomeScreen = ({ navigation }: any) => {
   const { addToCart, getItemQuantity, incrementQuantity, decrementQuantity, totalItems } = useCart();
   const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [category, setCategory] = useState<'all' | 'water' | 'beverage'>('all');
   const nextDelivery = useMemo(() => {
     const open = (buyerOrders as Order[]).filter((order) => (
       order.status !== 'canceled'
@@ -74,16 +89,16 @@ export const HomeScreen = ({ navigation }: any) => {
     }
 
     const inStock = products.filter((product: MenuItem) => (product.stockQuantity ?? 0) > 0);
-    if (!searchQuery.trim()) {
-      return inStock;
-    }
-
-    const query = searchQuery.toLowerCase().trim();
-    return inStock.filter((product: MenuItem) => {
-      const productName = product.name?.toLowerCase() || '';
-      return productName.includes(query);
+    const byCategory = inStock.filter((product: MenuItem) => {
+      if (category === 'all') return true;
+      const cat = String(product.category || '').toLowerCase();
+      if (category === 'beverage') return cat.includes('beverage') || cat.includes('drink');
+      return !cat.includes('beverage') && !cat.includes('drink');
     });
-  }, [products, searchQuery]);
+    if (!searchQuery.trim()) return byCategory;
+    const query = searchQuery.toLowerCase().trim();
+    return byCategory.filter((product: MenuItem) => (product.name || '').toLowerCase().includes(query));
+  }, [products, searchQuery, category]);
 
   const renderProduct = ({ item }: { item: MenuItem }) => {
     // Get image URL - prioritize images array, then direct image field
@@ -142,84 +157,53 @@ export const HomeScreen = ({ navigation }: any) => {
       );
     
     const qty = getItemQuantity(item.id);
+    const isBeverage = String(item.category || '').toLowerCase().includes('beverage')
+      || String(item.category || '').toLowerCase().includes('drink');
     return (
       <TouchableOpacity
         activeOpacity={0.9}
-        onPress={() => {
-          // Navigate to PDP using root navigation ref (works across nested tabs + web deep links)
-          navigate('ProductDetail', { productId: item.id });
-        }}
+        style={styles.productCardWrap}
+        onPress={() => navigate('ProductDetail', { productId: item.id })}
       >
-        <Card style={[styles.productCard, columns > 1 && styles.productCardWide, { borderLeftColor: String(item.category || '').toLowerCase() === 'beverage' ? '#F59E0B' : colors.primary }]}>
-        {isValidImageUrl ? (
-          <View style={[styles.imageContainer, { width: photoSize, height: photoSize, backgroundColor: String(item.category || '').toLowerCase() === 'beverage' ? '#FFF7ED' : '#EFF6FF' }]}>
-            <Image
-              source={{ uri: imageUri }}
-              style={styles.productImage}
-              resizeMode="contain"
-              onError={() => {
-                // Mark this image as failed so we show placeholder on next render
-                setFailedImages(prev => new Set(prev).add(item.id));
-              }}
-              onLoad={() => {
-                // Remove from failed set if it loads successfully
-                setFailedImages(prev => {
-                  const newSet = new Set(prev);
-                  newSet.delete(item.id);
-                  return newSet;
-                });
-              }}
-            />
+        <Card style={styles.productCard}>
+          <View style={[styles.imageContainer, { height: photoSize, backgroundColor: isBeverage ? '#FFE9E6' : '#E3F1FF' }]}>
+            {isValidImageUrl ? (
+              <Image
+                source={{ uri: imageUri }}
+                style={styles.productImage}
+                resizeMode="contain"
+                onError={() => setFailedImages((prev) => new Set(prev).add(item.id))}
+              />
+            ) : (
+              <ProductPhotoPlaceholder size={Math.min(72, photoSize - 16)} />
+            )}
           </View>
-        ) : (
-          <View style={[styles.placeholderImage, { width: photoSize, height: photoSize }]}>
-            <ProductPhotoPlaceholder size={photoSize} />
-          </View>
-        )}
-        
-        <View style={styles.productDetails}>
-          <Text style={styles.productName}>{item.name}</Text>
-          {item.packSize && (
-            <Text style={styles.productSize}>{item.packSize}</Text>
-          )}
+          <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+          <Text style={styles.productDescription} numberOfLines={1}>
+            {item.description?.trim() || item.packSize || (isBeverage ? 'Beverage' : 'Refill, return empty can')}
+          </Text>
           <View style={styles.priceRow}>
             <Text style={styles.price}>{formatCurrency(item.rate || 0)}</Text>
-          </View>
-          {!!item.description?.trim() && (
-            <Text style={styles.productDescription} numberOfLines={1}>
-              {item.description.trim()}
-            </Text>
-          )}
-          <View style={[styles.categoryChip, { backgroundColor: String(item.category || '').toLowerCase() === 'beverage' ? '#FEF3C7' : '#DBEAFE' }]}>
-            <Text style={[styles.categoryChipText, { color: String(item.category || '').toLowerCase() === 'beverage' ? '#92400E' : '#1D4ED8' }]}>
-              {item.category || 'Product'}
-            </Text>
-          </View>
-          
-          <View style={styles.quantityRow}>
-            <View style={styles.qtyControl}>
+            {qty > 0 ? (
+              <View style={styles.qtyControl}>
+                <TouchableOpacity style={styles.qtyBtnSm} onPress={() => decrementQuantity(item.id)}>
+                  <Text style={styles.qtyBtnText}>−</Text>
+                </TouchableOpacity>
+                <Text style={styles.qtyValue}>{qty}</Text>
+                <TouchableOpacity style={styles.qtyBtnSm} onPress={() => incrementQuantity(item.id)}>
+                  <Text style={styles.qtyBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
               <TouchableOpacity
-                style={[styles.qtyBtn, qty === 0 && styles.qtyBtnDisabled]}
-                onPress={() => {
-                  if (qty > 0) decrementQuantity(item.id);
-                }}
-                disabled={qty === 0}
+                style={styles.addBtn}
+                onPress={() => addToCart(item, 1)}
+                accessibilityLabel={`Add ${item.name}`}
               >
-                <Text style={[styles.qtyBtnText, qty === 0 && styles.qtyBtnTextDisabled]}>−</Text>
+                <Ionicons name="add" size={20} color={colors.white} />
               </TouchableOpacity>
-              <Text style={styles.qtyValue}>{qty}</Text>
-              <TouchableOpacity
-                style={styles.qtyBtn}
-                onPress={() => {
-                  if (qty === 0) addToCart(item, 1);
-                  else incrementQuantity(item.id);
-                }}
-              >
-                <Text style={styles.qtyBtnText}>+</Text>
-              </TouchableOpacity>
-            </View>
+            )}
           </View>
-        </View>
         </Card>
       </TouchableOpacity>
     );
@@ -229,145 +213,157 @@ export const HomeScreen = ({ navigation }: any) => {
     return <Loading fullScreen message="Loading products..." />;
   }
 
+  const firstName = (user?.fullName || user?.username || 'there').split(' ')[0];
+  const stage = nextDelivery ? deliveryStage(nextDelivery) : 'scheduled';
+  const usualLabel = lastNormal
+    ? (lastNormal.items || []).map((line) => `${line.quantity}× ${line.itemName}`).join(', ')
+    : '';
+
+  const reorderUsual = () => {
+    if (!lastNormal) return;
+    const lines = (lastNormal.items || []).filter((line) => line.menuItemId && line.quantity > 0);
+    if (!lines.length) {
+      showErrorToast('This order has no products to add again');
+      return;
+    }
+    dispatch(replaceCart(lines.map((line) => ({
+      quantity: line.quantity,
+      menuItem: {
+        id: line.menuItemId,
+        name: line.itemName,
+        category: 'water',
+        stockQuantity: 0,
+        rate: line.rate || 0,
+        createdAt: '',
+        updatedAt: '',
+      } as MenuItem,
+    }))));
+    showSuccessToast('Usual order copied to cart');
+    const parentNav = navigation?.getParent?.();
+    if (parentNav?.navigate) parentNav.navigate('Cart');
+    else navigation.navigate('Cart');
+  };
+
   const pageHeader = (
     <>
       <View style={styles.header}>
-        {isBuyer() && (
-          <View style={styles.shopBrand}>
-            <HeaderBrand
-              name={account?.companyName || account?.sellerBusiness}
-              photo={account?.sellerProfilePhoto}
-              light
-            />
-          </View>
-        )}
-        <Text style={styles.greeting}>Welcome, {user?.username || user?.fullName || 'User'}!</Text>
-        <Text style={styles.subtitle}>
-          {shopHours.hasHours
-            ? `Shop available ${shopHours.openLabel} to ${shopHours.closeLabel}`
-            : 'Order fresh water today'}
-        </Text>
-        {isBuyer() && (
-          <View style={[styles.accountRow, compact && styles.accountRowCompact]}>
-            <TouchableOpacity
-              style={styles.accountChip}
-              onPress={() => navigation.navigate('BuyerPayments')}
-            >
-              <View style={styles.accountIcon}>
-                <Ionicons name="wallet-outline" size={20} color={colors.white} />
-              </View>
-              <View style={styles.accountCopy}>
-                <Text style={styles.accountValue}>{formatCurrency(dueAmount)}</Text>
-                <Text style={styles.accountLabel}>Due</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.accountChip}
-              onPress={() => navigation.getParent()?.navigate('BuyerEmptyCans') || navigation.navigate('BuyerEmptyCans')}
-            >
-              <View style={styles.accountIcon}>
-                <Ionicons name="water-outline" size={20} color={colors.white} />
-              </View>
-              <View style={styles.accountCopy}>
-                <Text style={styles.accountValue}>{account?.emptyCans || 0}</Text>
-                <Text style={styles.accountLabel}>Cans to return</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        )}
-        {isBuyer() && !!account?.companyCode && (
-          <ShareAppButton
-            companyCode={account.companyCode}
-            companyName={account.companyName || account.sellerBusiness}
-            tone="light"
-          />
-        )}
+        <Text style={styles.greeting}>{greetingPart()}.</Text>
+        <Text style={styles.greetingName}>Hi {firstName}, need water today?</Text>
       </View>
 
-      {isBuyer() && nextDelivery && (
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.getParent()?.navigate('OrderDetail', { order: nextDelivery }) || navigation.navigate('OrderDetail', { order: nextDelivery })}
-        >
-          <Card style={styles.nextDelivery}>
-            <View style={styles.nextDeliveryRow}>
-              <View style={styles.nextDeliveryIcon}>
-                <Ionicons name="calendar-outline" size={22} color={colors.primary} />
-              </View>
-              <View style={styles.accountCopy}>
-                <Text style={styles.nextDeliveryTitle}>Next delivery</Text>
-                <Text style={styles.nextDeliverySlot}>{formatDeliverySlot(nextDelivery)}</Text>
-                <Text style={styles.nextDeliveryMeta}>Order #{nextDelivery.id}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+      {isBuyer() ? (
+        <View style={[styles.dashRow, compact && styles.dashRowCompact]}>
+          <Card style={styles.dashCard}>
+            <View style={styles.dashLabelRow}>
+              <Ionicons name="wallet-outline" size={16} color={colors.warning} />
+              <Text style={styles.dashLabel}>Amount due</Text>
             </View>
+            <Text style={styles.dashValue}>{formatCurrency(dueAmount)}</Text>
+            <TouchableOpacity style={styles.dashPrimary} onPress={() => navigation.navigate('BuyerPayments')}>
+              <Text style={styles.dashPrimaryText}>Pay now</Text>
+            </TouchableOpacity>
           </Card>
-        </TouchableOpacity>
-      )}
+          <Card style={styles.dashCard}>
+            <View style={styles.dashLabelRow}>
+              <Ionicons name="water-outline" size={16} color={colors.primary} />
+              <Text style={styles.dashLabel}>Cans to return</Text>
+            </View>
+            <Text style={styles.dashValue}>{account?.emptyCans || 0} cans</Text>
+            <TouchableOpacity
+              style={styles.dashSecondary}
+              onPress={() => navigation.getParent()?.navigate('BuyerEmptyCans') || navigation.navigate('BuyerEmptyCans')}
+            >
+              <Text style={styles.dashSecondaryText}>Schedule pickup</Text>
+            </TouchableOpacity>
+          </Card>
+        </View>
+      ) : null}
 
-      {isBuyer() && lastNormal && (
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => {
-            const lines = (lastNormal.items || []).filter((line) => line.menuItemId && line.quantity > 0);
-            if (!lines.length) {
-              showErrorToast('This order has no products to add again');
-              return;
-            }
-            dispatch(replaceCart(lines.map((line) => ({
-              quantity: line.quantity,
-              menuItem: {
-                id: line.menuItemId,
-                name: line.itemName,
-                category: 'water',
-                stockQuantity: 0,
-                rate: line.rate || 0,
-                createdAt: '',
-                updatedAt: '',
-              } as MenuItem,
-            }))));
-            showSuccessToast('Last order copied to cart');
-            const parentNav = navigation?.getParent?.();
-            if (parentNav?.navigate) parentNav.navigate('Cart');
-            else navigation.navigate('Cart');
-          }}
-        >
-          <Card style={styles.nextDelivery}>
-            <View style={styles.nextDeliveryRow}>
-              <View style={styles.nextDeliveryIcon}>
-                <Ionicons name="refresh-outline" size={22} color={colors.primary} />
-              </View>
-              <View style={styles.accountCopy}>
-                <Text style={styles.nextDeliveryTitle}>Order again</Text>
-                <Text style={styles.nextDeliveryMeta}>
-                  {(lastNormal.items || []).map((line) => `${line.quantity}x ${line.itemName}`).join(', ')}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+      {isBuyer() && lastNormal ? (
+        <Card style={styles.usualCard}>
+          <View style={styles.usualIcon}>
+            <Ionicons name="refresh" size={18} color={colors.primary} />
+          </View>
+          <View style={styles.usualCopy}>
+            <Text style={styles.usualTitle}>Your usual order</Text>
+            <Text style={styles.usualMeta} numberOfLines={1}>{usualLabel}</Text>
+          </View>
+          <TouchableOpacity style={styles.usualBtn} onPress={reorderUsual}>
+            <Text style={styles.usualBtnText}>Reorder</Text>
+          </TouchableOpacity>
+        </Card>
+      ) : null}
+
+      {isBuyer() && nextDelivery ? (
+        <Card style={styles.nextCard}>
+          <View style={styles.nextTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.nextTitle}>Next delivery · Order #{nextDelivery.id}</Text>
+              <Text style={styles.nextSlot}>{formatDeliverySlot(nextDelivery)}</Text>
             </View>
-          </Card>
-        </TouchableOpacity>
-      )}
+            <TouchableOpacity
+              style={styles.trackBtn}
+              onPress={() => navigation.getParent()?.navigate('OrderDetail', { order: nextDelivery }) || navigation.navigate('OrderDetail', { order: nextDelivery })}
+            >
+              <Text style={styles.trackBtnText}>Track order</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.stepper}>
+            {([
+              { key: 'scheduled', label: 'Scheduled' },
+              { key: 'on_the_way', label: 'On the way' },
+              { key: 'delivered', label: 'Delivered' },
+            ] as const).map((item, index) => {
+              const current = stage === 'scheduled' ? 0 : stage === 'on_the_way' ? 1 : 2;
+              const on = index <= current;
+              return (
+                <View key={item.key} style={styles.stepItem}>
+                  <View style={[styles.stepDot, on && styles.stepDotOn]} />
+                  <Text style={[styles.stepLabel, on && styles.stepLabelOn]}>{item.label}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </Card>
+      ) : null}
 
       {shopClosed && (
         <Card style={styles.closedCard}>
           <Text style={styles.closedTitle}>Shop is closed</Text>
           <Text style={styles.closedText}>
-            The shop opens next {shopHours.nextLabel}. You can still place an order. The seller will receive it, and it will be taken when the shop opens.
+            The shop opens next {shopHours.nextLabel}. You can still place an order.
           </Text>
         </Card>
       )}
 
-      {/* Search Bar */}
+      <Text style={styles.shopHeading}>Shop</Text>
       <View style={styles.searchContainer}>
         <Input
-          placeholder="Search products…"
+          placeholder="Search products"
           value={searchQuery}
           onChangeText={setSearchQuery}
           containerStyle={styles.searchInput}
           autoCapitalize="none"
           autoCorrect={false}
         />
+      </View>
+      <View style={styles.catRow}>
+        {([
+          { id: 'all' as const, label: 'All' },
+          { id: 'water' as const, label: 'Water' },
+          { id: 'beverage' as const, label: 'Beverages' },
+        ]).map((item) => {
+          const on = category === item.id;
+          return (
+            <TouchableOpacity
+              key={item.id}
+              style={[styles.catPill, on && styles.catPillOn]}
+              onPress={() => setCategory(item.id)}
+            >
+              <Text style={[styles.catPillText, on && styles.catPillTextOn]}>{item.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </>
   );
@@ -430,302 +426,224 @@ export const HomeScreen = ({ navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-  quantityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: spacing.sm,
-  },
   qtyControl: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.gray100,
+    backgroundColor: colors.secondary,
     borderRadius: 999,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
-  qtyBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  qtyBtnSm: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  qtyBtnDisabled: {
-    backgroundColor: colors.gray300,
-  },
   qtyBtnText: {
     color: colors.white,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: typography.fontWeight.bold,
-    lineHeight: 18,
-  },
-  qtyBtnTextDisabled: {
-    color: colors.white,
-    opacity: 0.9,
+    lineHeight: 16,
   },
   qtyValue: {
-    minWidth: 28,
+    minWidth: 22,
     textAlign: 'center',
-    fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
-    marginHorizontal: spacing.xs,
   },
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
+  addBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
-    padding: spacing.xl,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
     backgroundColor: colors.primary,
   },
-  shopBrand: {
-    marginBottom: spacing.sm,
-  },
   greeting: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.semibold,
+    color: 'rgba(255,255,255,0.9)',
+  },
+  greetingName: {
+    marginTop: 4,
     fontSize: typography.fontSize['2xl'],
     fontWeight: typography.fontWeight.bold,
     color: colors.white,
-    marginBottom: spacing.xs,
   },
-  subtitle: {
-    fontSize: typography.fontSize.base,
-    color: colors.white,
-  },
-  accountRow: {
+  dashRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginTop: spacing.md,
+    marginTop: -spacing.md,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
   },
-  accountRowCompact: {
-    flexDirection: 'column',
+  dashRowCompact: { flexDirection: 'column' },
+  dashCard: {
+    flex: 1,
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    ...shadows.md,
   },
+  dashLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  dashLabel: { color: colors.textSecondary, fontWeight: typography.fontWeight.semibold, fontSize: typography.fontSize.sm },
+  dashValue: { fontSize: typography.fontSize.xl, fontWeight: typography.fontWeight.bold, color: colors.textPrimary, marginBottom: spacing.sm },
+  dashPrimary: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  dashPrimaryText: { color: colors.white, fontWeight: typography.fontWeight.bold },
+  dashSecondary: {
+    backgroundColor: colors.secondary,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  dashSecondaryText: { color: colors.primary, fontWeight: typography.fontWeight.bold },
+  usualCard: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: borderRadius.lg,
+  },
+  usualIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  usualCopy: { flex: 1 },
+  usualTitle: { color: colors.textSecondary, fontSize: typography.fontSize.sm },
+  usualMeta: { color: colors.textPrimary, fontWeight: typography.fontWeight.semibold, marginTop: 2 },
+  usualBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  usualBtnText: { color: colors.white, fontWeight: typography.fontWeight.bold },
+  nextCard: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+  },
+  nextTop: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  nextTitle: { color: colors.textSecondary, fontSize: typography.fontSize.sm, fontWeight: typography.fontWeight.semibold },
+  nextSlot: { marginTop: 4, color: colors.textPrimary, fontWeight: typography.fontWeight.bold, fontSize: typography.fontSize.base },
+  trackBtn: {
+    backgroundColor: '#FFF1D6',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  trackBtnText: { color: '#8A5200', fontWeight: typography.fontWeight.bold, fontSize: typography.fontSize.sm },
+  stepper: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.md },
+  stepItem: { alignItems: 'center', flex: 1 },
+  stepDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.gray300, marginBottom: 6 },
+  stepDotOn: { backgroundColor: colors.primary },
+  stepLabel: { fontSize: typography.fontSize.xs, color: colors.textSecondary },
+  stepLabelOn: { color: colors.primary, fontWeight: typography.fontWeight.semibold },
   closedCard: {
     marginHorizontal: spacing.md,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
     backgroundColor: '#FFF8E1',
     borderWidth: 1,
     borderColor: colors.warning,
   },
-  closedTitle: {
-    fontSize: typography.fontSize.lg,
+  closedTitle: { fontSize: typography.fontSize.lg, fontWeight: typography.fontWeight.bold, color: colors.textPrimary, marginBottom: spacing.xs },
+  closedText: { color: colors.textSecondary, fontSize: typography.fontSize.sm },
+  shopHeading: {
+    marginTop: spacing.sm,
+    marginHorizontal: spacing.md,
+    fontSize: typography.fontSize['2xl'],
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  closedText: {
-    color: colors.textSecondary,
-    fontSize: typography.fontSize.sm,
-  },
-  nextDelivery: {
-    marginHorizontal: spacing.md,
-    marginTop: spacing.md,
-    padding: spacing.md,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-  },
-  nextDeliveryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  nextDeliveryIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: colors.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.space12,
-  },
-  nextDeliveryTitle: {
-    color: colors.textSecondary,
-    fontWeight: typography.fontWeight.semibold,
-  },
-  nextDeliverySlot: {
-    marginTop: spacing.xs,
-    color: colors.primary,
-    fontWeight: typography.fontWeight.bold,
-    fontSize: typography.fontSize.base,
-  },
-  nextDeliveryMeta: {
-    marginTop: 2,
-    color: colors.textSecondary,
-  },
-  accountChip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-    padding: spacing.sm,
-  },
-  accountIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-  accountCopy: {
-    flex: 1,
-  },
-  accountValue: {
-    color: colors.white,
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-  },
-  accountLabel: {
-    color: colors.white,
-    opacity: 0.85,
-    marginTop: 2,
   },
   searchContainer: {
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
-    backgroundColor: colors.background,
   },
-  searchInput: {
-    marginBottom: 0,
+  searchInput: { marginBottom: 0 },
+  catRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
   },
+  catPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  catPillOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  catPillText: { color: colors.textPrimary, fontWeight: typography.fontWeight.semibold },
+  catPillTextOn: { color: colors.white },
   list: { flex: 1 },
-  listContent: {
-    paddingBottom: 110,
-  },
+  listContent: { paddingBottom: 110 },
   productRow: {
     paddingHorizontal: spacing.md,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
+  productCardWrap: { flex: 1, marginBottom: spacing.sm },
   productCard: {
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.md,
-    flexDirection: 'row',
-    overflow: 'hidden',
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-    minWidth: 0,
-  },
-  productCardWide: {
     flex: 1,
-    marginHorizontal: 0,
+    padding: spacing.sm,
+    borderRadius: borderRadius.lg,
+    minWidth: 0,
   },
   imageContainer: {
-    width: 112,
-    height: 112,
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: 'hidden',
-    marginRight: spacing.md,
-    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    marginBottom: spacing.sm,
   },
-  productImage: {
-    width: 92,
-    height: 92,
-  },
-  placeholderImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 8,
-    backgroundColor: colors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: spacing.md,
-  },
-  placeholderText: {
-    fontSize: 48,
-  },
-  placeholderSubtext: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  productDetails: {
-    flex: 1,
-    minWidth: 0,
-  },
+  productImage: { width: '80%', height: '80%' },
   productName: {
-    flexShrink: 1,
-    fontSize: typography.fontSize.xl,
+    fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
-    marginBottom: spacing.xs,
+    minHeight: 40,
   },
-  productSize: {
-    fontSize: typography.fontSize.sm,
+  productDescription: {
+    fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
     marginBottom: spacing.sm,
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    justifyContent: 'space-between',
   },
   price: {
-    fontSize: typography.fontSize['2xl'],
+    fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
-    color: colors.primary,
-    marginRight: spacing.sm,
+    color: colors.textPrimary,
   },
-  mrp: {
-    fontSize: typography.fontSize.base,
-    color: colors.textSecondary,
-    textDecorationLine: 'line-through',
-  },
-  description: {
-    fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.md,
-  },
-  categoryChip: {
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    marginBottom: spacing.sm,
-  },
-  categoryChipText: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.bold,
-    textTransform: 'capitalize',
-  },
-  productDescription: {
-    fontSize: typography.fontSize.base,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  emptyContainer: {
-    padding: spacing.xl,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: typography.fontSize.base,
-    color: colors.textSecondary,
-  },
-  emptySubtext: {
-    fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  errorText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.error,
-    marginTop: spacing.sm,
-  },
-  cartButtonCompact: {
-    right: spacing.md,
-    bottom: spacing.md,
-  },
+  emptyContainer: { padding: spacing.xl, alignItems: 'center' },
+  errorText: { fontSize: typography.fontSize.sm, color: colors.error, marginTop: spacing.sm },
+  cartButtonCompact: { right: spacing.md, bottom: spacing.md },
   cartButton: {
     position: 'absolute',
     bottom: spacing.xl,
@@ -737,13 +655,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderRadius: 30,
-    ...{
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 4,
-      elevation: 8,
-    },
+    ...shadows.lg,
   },
   cartButtonText: {
     color: colors.white,

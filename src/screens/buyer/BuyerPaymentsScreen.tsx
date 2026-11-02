@@ -18,6 +18,7 @@ import { colors, spacing, typography } from '../../theme';
 import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi';
 import {
   CashfreeOrderStatusResponse,
+  useAttachOrderPaymentReferenceMutation,
   useClaimOrderPaymentMutation,
   useCreateCashfreeOrderMutation,
   useGetMyOrderClaimsQuery,
@@ -72,12 +73,23 @@ export const BuyerPaymentsScreen = () => {
   const { data, isLoading, refetch } = useGetBuyerAccountSummaryQuery();
   const { data: orders = [], isLoading: ordersLoading } = useGetBuyerOrdersQuery(user?.id || 0, { skip: !user?.id });
   const [claimPayment, { isLoading: saving }] = useClaimOrderPaymentMutation();
+  const [attachReference, { isLoading: savingUtr }] = useAttachOrderPaymentReferenceMutation();
   const [createCashfreeOrder] = useCreateCashfreeOrderMutation();
   const [fetchCashfreeStatus] = useLazyGetCashfreeOrderStatusQuery();
   const { data: claims = [], refetch: refetchClaims } = useGetMyOrderClaimsQuery();
   const [amount, setAmount] = useState('');
   const [upiReference, setUpiReference] = useState('');
-  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [unpaidLimit, setUnpaidLimit] = useState(8);
+  const [paidLimit, setPaidLimit] = useState(3);
+  const [paySheet, setPaySheet] = useState(false);
+  const [editAmt, setEditAmt] = useState(false);
+  const [payStage, setPayStage] = useState<'pay' | 'sent'>('pay');
+  const [sentClaimIds, setSentClaimIds] = useState<number[]>([]);
+  const [sentNote, setSentNote] = useState('');
+  const [sentAmt, setSentAmt] = useState(0);
+  const [utrOpen, setUtrOpen] = useState(false);
+  const [utrSaved, setUtrSaved] = useState(false);
   const [billTab, setBillTab] = useState<'unpaid' | 'paid'>('unpaid');
   const [generatedQr, setGeneratedQr] = useState('');
   const [openingCashfree, setOpeningCashfree] = useState(false);
@@ -110,15 +122,41 @@ export const BuyerPaymentsScreen = () => {
   const orderDue = unpaidBills.reduce((sum, order) => sum + orderSplit(order).balance, 0);
   const paidTotal = paidBills.reduce((sum, order) => sum + orderSplit(order).paid, 0);
   const due = unpaidBills.length > 0 || paidBills.length > 0 ? orderDue : moneyValue(data?.due);
-  const selected = unpaidBills.find((order) => order.id === selectedOrderId) || null;
-  const selectedBalance = selected ? orderSplit(selected).balance : 0;
-  const waitingSelected = selected ? pendingByOrder.get(selected.id) : undefined;
+  const selectableBills = unpaidBills.filter((order) => !pendingByOrder.has(order.id));
+  const selectedOrders = selectableBills.filter((order) => selectedIds.includes(order.id));
+  const selected = selectedOrders[0] || null;
+  const selectedBalance = selectedOrders.reduce((sum, order) => sum + orderSplit(order).balance, 0);
+  const awaitingTotal = unpaidBills.reduce((sum, order) => {
+    const claim = pendingByOrder.get(order.id);
+    return sum + (claim ? Number(claim.amount) || 0 : 0);
+  }, 0);
   const payAmount = Number(amount);
   const amountFormatted = formatUpiAmount(payAmount) || amount.trim();
   const diagParsed = diagUrl ? parseUpiPayParams(diagUrl) : null;
+  const allSelected = selectableBills.length > 0 && selectedOrders.length === selectableBills.length;
+  const noteLabel = payStage === 'sent'
+    ? sentNote
+    : selectedOrders.map((order) => `#${order.id}`).join(', ');
+
+  const allocateOldestFirst = () => {
+    const oldest = [...selectedOrders].sort((left, right) => left.id - right.id);
+    let remaining = Number(payAmount.toFixed(2));
+    const parts: { order: Order; amount: number }[] = [];
+    oldest.forEach((order) => {
+      if (remaining <= 0.001) return;
+      const balance = orderSplit(order).balance;
+      const slice = Math.min(balance, remaining);
+      if (slice > 0.001) {
+        const amountPaid = Number(slice.toFixed(2));
+        parts.push({ order, amount: amountPaid });
+        remaining = Number((remaining - amountPaid).toFixed(2));
+      }
+    });
+    return parts;
+  };
 
   useEffect(() => {
-    if (!upiId || !(payAmount > 0) || !selectedOrderId) {
+    if (!upiId || !(payAmount > 0) || selectedOrders.length === 0) {
       if (uploadedQr) {
         setGeneratedQr('');
         return undefined;
@@ -131,7 +169,7 @@ export const BuyerPaymentsScreen = () => {
       upiId,
       payeeName,
       amount: payAmount,
-      note: `Order ${selectedOrderId}`,
+      note: `Order ${selectedOrders.map((order) => order.id).join(',')}`,
     });
     QRCode.toDataURL(payload, {
       width: 280,
@@ -147,14 +185,14 @@ export const BuyerPaymentsScreen = () => {
     return () => {
       active = false;
     };
-  }, [uploadedQr, upiId, payeeName, selectedOrderId, payAmount]);
+  }, [uploadedQr, upiId, payeeName, selectedIds, payAmount]);
 
   useEffect(() => {
     if (!awaitingReturn) return undefined;
     const sub = AppState.addEventListener('change', (state) => {
       if (state !== 'active') return;
       setAwaitingReturn(false);
-      showSuccessToast('Enter the UPI transaction / UTR number from GPay, then tap I paid this bill');
+      showSuccessToast('Payment app closed. Tap I have paid — the seller confirms it. UTR is optional.');
       setTimeout(() => refInput.current?.focus(), 300);
       tryPasteUtr();
     });
@@ -173,11 +211,34 @@ export const BuyerPaymentsScreen = () => {
     }
   };
 
-  const chooseBill = (order: Order) => {
-    setSelectedOrderId(order.id);
-    setAmount(orderSplit(order).balance.toFixed(2));
+  const toggleBill = (order: Order) => {
+    if (pendingByOrder.has(order.id)) return;
     setBillTab('unpaid');
+    setPayStage('pay');
+    setSelectedIds((current) => (
+      current.includes(order.id) ? current.filter((id) => id !== order.id) : [...current, order.id]
+    ));
+  };
+
+  const toggleAllBills = () => {
+    setPayStage('pay');
+    setSelectedIds(allSelected ? [] : selectableBills.map((order) => order.id));
+  };
+
+  const openPaySheet = () => {
+    if (selectedOrders.length === 0) {
+      showErrorToast('Select the unpaid bills you are paying');
+      return;
+    }
+    setAmount(selectedBalance.toFixed(2));
+    setEditAmt(false);
+    setPayStage('pay');
     setUpiReference('');
+    setUtrOpen(false);
+    setUtrSaved(false);
+    setSentClaimIds([]);
+    setPaySheet(true);
+    setShowUpiFallback(false);
   };
 
   const copyText = async (value: string, label: string) => {
@@ -212,7 +273,7 @@ export const BuyerPaymentsScreen = () => {
         upiId,
         payeeName,
         amount: payAmount > 0 ? payAmount : undefined,
-        orderId: selected?.id ?? selectedOrderId,
+        orderId: selected?.id,
       });
       setDiagVariant(variant);
       setDiagUrl(url);
@@ -250,7 +311,8 @@ export const BuyerPaymentsScreen = () => {
   const refreshAfterCashfreePaid = async () => {
     setAmount('');
     setUpiReference('');
-    setSelectedOrderId(null);
+    setSelectedIds([]);
+    setPaySheet(false);
     setAwaitingReturn(false);
     await Promise.all([refetch(), refetchClaims()]);
   };
@@ -278,16 +340,9 @@ export const BuyerPaymentsScreen = () => {
   };
 
   const payWithCashfree = async () => {
-    if (!selected) {
-      showErrorToast('Select the unpaid bill you are paying');
-      return;
-    }
-    if (waitingSelected) {
-      showErrorToast('This bill already has a UPI claim waiting for the seller. Ask them to confirm or reject it first.');
-      return;
-    }
-    if (!(selectedBalance > 0)) {
-      showErrorToast('This bill has no unpaid balance');
+    const parts = allocateOldestFirst();
+    if (parts.length !== 1) {
+      showErrorToast('Cashfree pays one bill at a time. Select a single bill, or use I have paid for several bills.');
       return;
     }
     if (!(payAmount > 0)) {
@@ -295,15 +350,16 @@ export const BuyerPaymentsScreen = () => {
       return;
     }
     if (payAmount > selectedBalance + 0.001) {
-      showErrorToast(`Amount cannot exceed ${formatCurrency(selectedBalance)} for order #${selected.id}`);
+      showErrorToast(`Amount cannot exceed ${formatCurrency(selectedBalance)} for the selected bills`);
       return;
     }
 
-    const amountToPay = Number(payAmount.toFixed(2));
+    const target = parts[0];
+    const amountToPay = target.amount;
     setOpeningCashfree(true);
     try {
       const session = await createCashfreeOrder({
-        orderId: selected.id,
+        orderId: target.order.id,
         amount: amountToPay.toFixed(2),
       }).unwrap();
       if (!session?.paymentSessionId || !session?.cfOrderId) {
@@ -329,11 +385,12 @@ export const BuyerPaymentsScreen = () => {
       const status = await pollCashfreeUntilSettled(session.cfOrderId);
       if (status?.paymentApplied || String(status?.cfOrderStatus || '').toUpperCase() === 'PAID') {
         const paidAmt = Number(status?.amount ?? session.amount ?? amountToPay);
-        if (paidAmt + 0.001 >= selectedBalance) {
-          showSuccessToast(`Order #${selected.id} marked paid via Cashfree`);
+        const billBalance = orderSplit(target.order).balance;
+        if (paidAmt + 0.001 >= billBalance) {
+          showSuccessToast(`Order #${target.order.id} marked paid via Cashfree`);
         } else {
           showSuccessToast(
-            `Paid ${formatCurrency(paidAmt)} for order #${selected.id}. Remaining balance stays unpaid.`
+            `Paid ${formatCurrency(paidAmt)} for order #${target.order.id}. Remaining balance stays unpaid.`
           );
         }
         await refreshAfterCashfreePaid();
@@ -379,12 +436,8 @@ export const BuyerPaymentsScreen = () => {
   };
 
   const openGpay = async () => {
-    if (!selected) {
-      showErrorToast('Select the unpaid bill you are paying');
-      return;
-    }
-    if (waitingSelected) {
-      showErrorToast('This bill is already waiting for the seller to confirm');
+    if (selectedOrders.length === 0) {
+      showErrorToast('Select the unpaid bills you are paying');
       return;
     }
     if (!upiId) {
@@ -396,17 +449,16 @@ export const BuyerPaymentsScreen = () => {
       return;
     }
     if (payAmount > selectedBalance + 0.001) {
-      showErrorToast(`Amount cannot exceed ${formatCurrency(selectedBalance)} for order #${selected.id}`);
+      showErrorToast(`The selected bills total ${formatCurrency(selectedBalance)}. Enter that or less.`);
       return;
     }
     setOpeningUpi(true);
     try {
-      // Same URI shape as QR + GPay open — payment flow unchanged; debug log only.
       const upiUri = buildUpiPayUrl({
         upiId,
         payeeName,
         amount: payAmount,
-        note: `Order ${selected.id}`,
+        note: `Order ${selectedOrders.map((order) => order.id).join(',')}`,
       });
       logUpiPayUriDebug(upiUri, 'BuyerPaymentsScreen.openGpay');
 
@@ -414,10 +466,10 @@ export const BuyerPaymentsScreen = () => {
         upiId,
         payeeName,
         amount: payAmount,
-        note: `Order ${selected.id}`,
+        note: `Order ${selectedOrders.map((order) => order.id).join(',')}`,
       });
       setAwaitingReturn(true);
-      showSuccessToast('Complete payment in GPay, then come back with the transaction number');
+      showSuccessToast('Complete payment in GPay, then tap I have paid');
     } catch (error: any) {
       showErrorToast(error?.message || 'Could not open GPay. Scan the QR instead.');
     } finally {
@@ -426,40 +478,43 @@ export const BuyerPaymentsScreen = () => {
   };
 
   const save = async () => {
-    const parsed = Number(amount);
-    if (!selected) {
-      showErrorToast('Select the unpaid bill you are paying');
+    const parts = allocateOldestFirst();
+    if (parts.length === 0) {
+      showErrorToast('Select the unpaid bills you are paying');
       return;
     }
-    if (waitingSelected) {
-      showErrorToast('This bill is already waiting for the seller to confirm');
-      return;
-    }
-    if (!parsed || parsed <= 0) {
+    if (!(payAmount > 0)) {
       showErrorToast('Enter a valid amount');
       return;
     }
-    if (parsed > selectedBalance + 0.001) {
-      showErrorToast(`Amount cannot exceed ${formatCurrency(selectedBalance)} for order #${selected.id}`);
+    if (payAmount > selectedBalance + 0.001) {
+      showErrorToast(`The selected bills total ${formatCurrency(selectedBalance)}. Enter that or less.`);
       return;
     }
     const reference = upiReference.trim();
-    if (reference.length < 6) {
-      showErrorToast('Enter the UPI transaction / UTR number from GPay');
+    if (reference && reference.length < 6) {
+      showErrorToast('UTR must be at least 6 characters, or leave it blank');
       return;
     }
     try {
-      await claimPayment({
-        amount: parsed.toFixed(2),
-        method: 'UPI',
-        orderId: selected.id,
-        upiReference: reference,
-      }).unwrap();
-      showSuccessToast(`Payment sent to seller for order #${selected.id}. Waiting for confirmation.`);
-      setAmount('');
-      setUpiReference('');
-      setSelectedOrderId(null);
-      setAwaitingReturn(false);
+      const created: number[] = [];
+      for (const part of parts) {
+        const claim = await claimPayment({
+          amount: part.amount.toFixed(2),
+          method: 'UPI',
+          orderId: part.order.id,
+          ...(reference ? { upiReference: reference } : {}),
+        }).unwrap();
+        created.push(claim.id);
+      }
+      const note = `Order ${parts.map((part) => `#${part.order.id}`).join(', ')}`;
+      setSentClaimIds(created);
+      setSentNote(note);
+      setSentAmt(payAmount);
+      setPayStage('sent');
+      setSelectedIds([]);
+      setUtrSaved(!!reference);
+      showSuccessToast(`Seller notified for ${formatCurrency(payAmount)}. Bills stay awaiting until the seller confirms.`);
       refetch();
       refetchClaims();
     } catch (error: any) {
@@ -467,95 +522,185 @@ export const BuyerPaymentsScreen = () => {
     }
   };
 
+  const saveUtr = async () => {
+    const reference = upiReference.trim();
+    if (reference.length < 6) {
+      showErrorToast('Enter the UPI transaction / UTR number');
+      return;
+    }
+    if (sentClaimIds.length === 0) {
+      showErrorToast('Tell the seller you paid before adding a UTR');
+      return;
+    }
+    try {
+      for (const id of sentClaimIds) {
+        await attachReference({ id, upiReference: reference }).unwrap();
+      }
+      setUtrSaved(true);
+      showSuccessToast('UTR saved for the seller');
+      refetchClaims();
+    } catch (error: any) {
+      showErrorToast(error?.data?.message || 'Could not save UTR');
+    }
+  };
+
   if (isLoading || ordersLoading) {
     return <Loading fullScreen message="Loading payments..." />;
   }
 
+  const amountOver = payAmount > selectedBalance + 0.001;
+  const showPayBar = billTab === 'unpaid' && selectedOrders.length > 0 && !paySheet;
+  const visibleBills = billTab === 'unpaid' ? unpaidBills.slice(0, unpaidLimit) : paidBills.slice(0, paidLimit);
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>My Payments</Text>
-      <Card style={styles.card}>
-        <Text style={styles.stat}>{formatCurrency(due)}</Text>
-        <Text style={styles.meta}>{payeeName} outstanding</Text>
-        {!data?.customer && (
-          <Text style={styles.meta}>No shop account is linked yet. Ask the seller to add your mobile as a customer.</Text>
-        )}
-
-        <Text style={styles.step}>1. Select unpaid bill</Text>
-        {unpaidBills.length === 0 ? (
-          <Text style={styles.meta}>No unpaid bills.</Text>
-        ) : (
-          unpaidBills.slice(0, 8).map((order) => {
-            const split = orderSplit(order);
-            const active = order.id === selectedOrderId;
-            const waiting = pendingByOrder.has(order.id);
-            return (
-              <TouchableOpacity key={order.id} activeOpacity={0.8} onPress={() => chooseBill(order)}>
-                <View style={[styles.suggest, active && styles.suggestActive]}>
-                  <Text style={[styles.name, active && styles.suggestTextOn]}>
-                    Order #{order.id}{waiting ? ' · Waiting' : ''}
-                  </Text>
-                  <Text style={[styles.meta, active && styles.suggestTextOn]}>
-                    Balance {formatCurrency(split.balance)}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
-
-        {selected ? (
-          <Text style={styles.selectedBill}>
-            Paying order #{selected.id} · {formatCurrency(selectedBalance)}
-            {waitingSelected ? ' · Waiting for seller' : ''}
-          </Text>
+    <View style={styles.screen}>
+    <ScrollView style={styles.container} contentContainerStyle={[styles.contentFlush, showPayBar && styles.contentWithBar]}>
+      <View style={styles.hero}>
+        <Text style={styles.heroKicker}>Total outstanding</Text>
+        <Text style={styles.heroTitle}>{formatCurrency(due)}</Text>
+        {awaitingTotal > 0 ? (
+          <Text style={styles.heroAwaiting}>{formatCurrency(awaitingTotal)} awaiting seller confirmation</Text>
         ) : null}
-
-        <Input
-          label="Pay amount"
-          value={amount}
-          keyboardType="decimal-pad"
-          onChangeText={setAmount}
-        />
-        <Text style={styles.meta}>
-          Edit Pay amount to pay part or all of the balance. Cashfree and UPI both use this amount (server caps it at the unpaid balance).
-        </Text>
-
-        <Text style={styles.step}>2. Pay with Cashfree (recommended)</Text>
-        <Text style={styles.meta}>
-          Opens Cashfree checkout (UPI / GPay / cards) for the Pay amount above. Applied only after the server confirms Cashfree status PAID.
-          {Platform.OS !== 'web'
-            ? ' On phone, use a development build — Expo Go does not include the Cashfree native SDK.'
-            : ' On web, whitelist this domain in the Cashfree dashboard.'}
-        </Text>
-        <Button
-          title={
-            openingCashfree
-              ? 'Opening Cashfree…'
-              : waitingSelected
-                ? 'Waiting for seller (UPI claim)'
-                : selected && payAmount > 0
-                  ? `Pay ${formatCurrency(payAmount)} with Cashfree`
-                  : 'Pay with Cashfree'
-          }
-          onPress={payWithCashfree}
-          disabled={openingCashfree || !!waitingSelected || !selected || !(payAmount > 0)}
-          style={styles.gpayButton}
-        />
-
+      </View>
+      {!data?.customer && (
+        <Text style={[styles.meta, { paddingHorizontal: spacing.md }]}>No shop account is linked yet. Ask the seller to add your mobile as a customer.</Text>
+      )}
+      <View style={styles.categories}>
         <TouchableOpacity
-          style={styles.diagToggle}
-          onPress={() => setShowUpiFallback((open) => !open)}
-          accessibilityRole="button"
+          style={[styles.category, billTab === 'unpaid' ? styles.categoryOn : styles.categoryOff]}
+          onPress={() => setBillTab('unpaid')}
         >
-          <Text style={styles.diagToggleText}>
-            {showUpiFallback ? 'Hide' : 'Show'} manual UPI / GPay fallback
+          <Text style={[styles.categoryLabel, billTab === 'unpaid' && styles.categoryLabelOn]}>Unpaid</Text>
+          <Text style={[styles.categoryValue, billTab === 'unpaid' && styles.categoryLabelOn]}>{formatCurrency(orderDue)}</Text>
+          <Text style={[styles.categoryCount, billTab === 'unpaid' && styles.categoryLabelOn]}>
+            {unpaidBills.length} bill{unpaidBills.length === 1 ? '' : 's'}
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.category, billTab === 'paid' ? styles.categoryOn : styles.categoryOff]}
+          onPress={() => setBillTab('paid')}
+        >
+          <Text style={[styles.categoryLabel, billTab === 'paid' && styles.categoryLabelOn]}>Paid</Text>
+          <Text style={[styles.categoryValue, billTab === 'paid' && styles.categoryLabelOn]}>{formatCurrency(paidTotal)}</Text>
+          <Text style={[styles.categoryCount, billTab === 'paid' && styles.categoryLabelOn]}>
+            {paidBills.length} bill{paidBills.length === 1 ? '' : 's'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.contentPad}>
 
-        {showUpiFallback ? (
+        {paySheet ? (
+          <View style={styles.sheet}>
+            <Text style={styles.sheetKicker}>
+              {payStage === 'sent' ? 'Seller notified' : `Paying ${selectedOrders.length === 1 ? '1 bill' : `${selectedOrders.length} bills`}`}
+            </Text>
+            {payStage === 'pay' ? (
+              <>
+                {editAmt ? (
+                  <Input
+                    label="Amount to pay now"
+                    value={amount}
+                    keyboardType="decimal-pad"
+                    onChangeText={setAmount}
+                  />
+                ) : (
+                  <Text style={styles.amountHero}>{payAmount > 0 ? formatCurrency(payAmount) : formatCurrency(0)}</Text>
+                )}
+                <TouchableOpacity onPress={() => setEditAmt((open) => !open)}>
+                  <Text style={styles.link}>{editAmt ? 'Use full selected total' : 'Pay a different amount'}</Text>
+                </TouchableOpacity>
+                {amountOver ? (
+                  <Text style={styles.balance}>
+                    The selected bills total {formatCurrency(selectedBalance)}. Enter that or less.
+                  </Text>
+                ) : (
+                  <Text style={styles.meta}>A smaller amount is applied to the oldest selected bills first.</Text>
+                )}
+                <Text style={styles.payLabel}>Pay to · {payeeName}</Text>
+                <View style={styles.copyRow}>
+                  <Text selectable style={[styles.upiId, styles.copyValue]}>
+                    {upiId || 'Seller has not added a UPI ID yet'}
+                  </Text>
+                  <TouchableOpacity style={styles.copyBtn} onPress={() => copyText(upiId, 'UPI ID')} disabled={!upiId}>
+                    <Text style={styles.copyBtnText}>Copy</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.noteLabel}>Note added automatically</Text>
+                <Text style={styles.noteValue}>{noteLabel || '—'}</Text>
+                <TouchableOpacity
+                  style={[styles.outlineBtn, (openingUpi || !(payAmount > 0) || amountOver) && styles.btnOff]}
+                  onPress={openGpay}
+                  disabled={openingUpi || !(payAmount > 0) || amountOver}
+                >
+                  <Text style={styles.outlineBtnText}>{openingUpi ? 'Opening GPay…' : 'Pay with GPay / UPI'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.paidBtn, (saving || !(payAmount > 0) || amountOver) && styles.btnOff]}
+                  onPress={save}
+                  disabled={saving || !(payAmount > 0) || amountOver}
+                >
+                  <Text style={styles.paidBtnText}>
+                    {saving ? 'Telling seller…' : `I have paid ${payAmount > 0 ? formatCurrency(payAmount) : ''}`}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={styles.meta}>
+                  One tap. The seller is told the amount and which orders you paid. No transaction number needed.
+                </Text>
+                {selectedOrders.length === 1 ? (
+                  <TouchableOpacity onPress={payWithCashfree} disabled={openingCashfree || !(payAmount > 0) || amountOver}>
+                    <Text style={styles.link}>{openingCashfree ? 'Opening Cashfree…' : 'Pay with Cashfree instead'}</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity onPress={() => setShowUpiFallback((open) => !open)}>
+                  <Text style={styles.link}>{showUpiFallback ? 'Hide QR code' : 'Prefer to scan a QR code?'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setPaySheet(false)}>
+                  <Text style={styles.linkMuted}>Close</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.meta}>
+                  We sent {formatCurrency(sentAmt)} for {sentNote}. Your bills show as awaiting until the seller confirms.
+                </Text>
+                <TouchableOpacity style={styles.diagToggle} onPress={() => setUtrOpen((open) => !open)}>
+                  <Text style={styles.diagToggleText}>
+                    {utrOpen ? 'Hide' : 'Add'} transaction number (optional)
+                  </Text>
+                </TouchableOpacity>
+                {utrOpen ? (
+                  <>
+                    <Input
+                      ref={refInput}
+                      label="UPI transaction / UTR number"
+                      value={upiReference}
+                      onChangeText={(value) => {
+                        const cleaned = value.replace(/\s/g, '').toUpperCase();
+                        const extracted = extractUpiReference(cleaned);
+                        setUpiReference(extracted || cleaned);
+                        setUtrSaved(false);
+                      }}
+                      placeholder="Optional, helps the seller confirm faster"
+                      autoCapitalize="characters"
+                    />
+                    <Button
+                      title={utrSaved ? 'Saved' : savingUtr ? 'Saving…' : 'Save UTR'}
+                      onPress={saveUtr}
+                      disabled={savingUtr || utrSaved || upiReference.trim().length < 6}
+                    />
+                  </>
+                ) : null}
+                <TouchableOpacity onPress={() => setPaySheet(false)}>
+                  <Text style={styles.link}>Done</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        ) : null}
+
+        {showUpiFallback && paySheet && payStage === 'pay' ? (
           <>
-        <Text style={styles.step}>3. Pay with UPI / GPay (manual)</Text>
+        <Text style={styles.step}>Scan QR</Text>
         <Text style={styles.payLabel}>Seller UPI ID</Text>
         <View style={styles.copyRow}>
           <Text selectable style={[styles.upiId, styles.copyValue]}>
@@ -603,7 +748,7 @@ export const BuyerPaymentsScreen = () => {
         <Button
           title={openingUpi ? 'Opening GPay…' : 'Open GPay / UPI'}
           onPress={openGpay}
-          disabled={openingUpi || !!waitingSelected || !selected}
+          disabled={openingUpi || selectedOrders.length === 0}
           style={styles.gpayButton}
         />
         <Text style={styles.meta}>
@@ -688,104 +833,188 @@ export const BuyerPaymentsScreen = () => {
             )}
           </View>
         ) : null}
-
-        <Text style={styles.step}>4. Enter transaction number &amp; tell seller</Text>
-        <Input
-          ref={refInput}
-          label="UPI transaction / UTR number"
-          value={upiReference}
-          onChangeText={(value) => {
-            const cleaned = value.replace(/\s/g, '').toUpperCase();
-            const extracted = extractUpiReference(cleaned);
-            setUpiReference(extracted || cleaned);
-          }}
-          placeholder="Paste UTR from GPay"
-          autoCapitalize="characters"
-        />
-        <Button
-          title={saving ? 'Submitting…' : waitingSelected ? 'Waiting for seller' : 'I paid this bill'}
-          onPress={save}
-          disabled={saving || !!waitingSelected || !selected}
-        />
-        <Text style={styles.meta}>
-          Seller gets a notification with your amount and UTR. The bill becomes Paid only after the seller confirms.
-        </Text>
           </>
         ) : null}
-      </Card>
 
-      <View style={styles.categories}>
-        <TouchableOpacity
-          style={[styles.category, billTab === 'unpaid' && styles.categoryUnpaid]}
-          onPress={() => setBillTab('unpaid')}
-        >
-          <Text style={[styles.categoryLabel, billTab === 'unpaid' && styles.categoryLabelOn]}>Unpaid</Text>
-          <Text style={[styles.categoryValue, billTab === 'unpaid' && styles.categoryLabelOn]}>{formatCurrency(orderDue)}</Text>
-          <Text style={[styles.categoryCount, billTab === 'unpaid' && styles.categoryLabelOn]}>
-            {unpaidBills.length} bill{unpaidBills.length === 1 ? '' : 's'}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.category, billTab === 'paid' && styles.categoryPaid]}
-          onPress={() => setBillTab('paid')}
-        >
-          <Text style={[styles.categoryLabel, billTab === 'paid' && styles.categoryLabelOn]}>Paid</Text>
-          <Text style={[styles.categoryValue, billTab === 'paid' && styles.categoryLabelOn]}>{formatCurrency(paidTotal)}</Text>
-          <Text style={[styles.categoryCount, billTab === 'paid' && styles.categoryLabelOn]}>
-            {paidBills.length} bill{paidBills.length === 1 ? '' : 's'}
-          </Text>
-        </TouchableOpacity>
+      <View style={styles.listHead}>
+        <Text style={styles.listTitle}>{billTab === 'unpaid' ? 'Select bills to pay' : 'Paid bills'}</Text>
+        {billTab === 'unpaid' && selectableBills.length > 0 ? (
+          <TouchableOpacity onPress={toggleAllBills}>
+            <Text style={styles.link}>{allSelected ? 'Clear' : 'Select all'}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
-      {(billTab === 'unpaid' ? unpaidBills : paidBills).map((order) => {
+      {visibleBills.map((order) => {
         const split = orderSplit(order);
-        const active = order.id === selectedOrderId;
+        const waiting = pendingByOrder.get(order.id);
+        const active = selectedIds.includes(order.id);
+        const chip = billTab === 'paid'
+          ? 'Paid in full'
+          : waiting
+            ? `${formatCurrency(Number(waiting.amount) || 0)} awaiting`
+            : split.paid > 0
+              ? 'Partial'
+              : 'Unpaid';
         return (
           <TouchableOpacity
             key={order.id}
             activeOpacity={0.7}
             onPress={() => {
-              if (billTab === 'unpaid') chooseBill(order);
+              if (billTab === 'unpaid') toggleBill(order);
               else navigation.navigate('OrderDetail', { order });
             }}
           >
-            <Card style={[styles.rowCard, active && styles.rowCardActive]}>
-              <View style={styles.rowBetween}>
+            <View style={[styles.billRow, active && styles.billRowOn]}>
+              {billTab === 'unpaid' && !waiting ? (
+                <View style={[styles.check, active && styles.checkOn]}>
+                  {active ? <Text style={styles.checkMark}>✓</Text> : null}
+                </View>
+              ) : (
+                <View style={styles.checkSpacer} />
+              )}
+              <View style={styles.billBody}>
                 <Text style={styles.name}>Order #{order.id}</Text>
-                <Text style={styles.name}>
-                  {billTab === 'paid'
-                    ? 'Paid'
-                    : pendingByOrder.has(order.id)
-                      ? 'Waiting'
-                      : split.paid > 0
-                        ? 'Partial'
-                        : 'Unpaid'}
-                </Text>
+                <Text style={styles.meta}>Bill {formatCurrency(split.total)} · Paid {formatCurrency(split.paid)}</Text>
+                {billTab === 'unpaid' ? <Text style={styles.balance}>Balance {formatCurrency(split.balance)}</Text> : null}
               </View>
-              <Text style={styles.meta}>Bill {formatCurrency(split.total)} · Paid {formatCurrency(split.paid)}</Text>
-              {billTab === 'unpaid' && <Text style={styles.balance}>Balance {formatCurrency(split.balance)}</Text>}
-            </Card>
+              <Text style={[
+                styles.chip,
+                billTab === 'paid' ? styles.chipPaid : waiting ? styles.chipWait : styles.chipUnpaid,
+              ]}>
+                {chip}
+              </Text>
+            </View>
           </TouchableOpacity>
         );
       })}
 
-      {(data?.ledger || []).map((event) => (
-        <Card key={event.id} style={styles.rowCard}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.name}>{event.kind}</Text>
-            <Text style={styles.name}>{formatCurrency(moneyValue(event.amount))}</Text>
-          </View>
-          <Text style={styles.meta}>{event.method || '—'} • {formatDateTime(event.occurredAt)}</Text>
-        </Card>
-      ))}
+      {billTab === 'unpaid' && unpaidBills.length > unpaidLimit ? (
+        <TouchableOpacity onPress={() => setUnpaidLimit((count) => count + 8)}>
+          <Text style={styles.link}>Showing {unpaidLimit} of {unpaidBills.length} unpaid bills · Load more</Text>
+        </TouchableOpacity>
+      ) : null}
+      {billTab === 'paid' && paidBills.length > paidLimit ? (
+        <TouchableOpacity onPress={() => setPaidLimit((count) => count + 6)}>
+          <Text style={styles.link}>Showing {paidLimit} of {paidBills.length} paid bills · Load more</Text>
+        </TouchableOpacity>
+      ) : null}
+      </View>
     </ScrollView>
+    {showPayBar ? (
+      <View style={styles.payBar}>
+        <View>
+          <Text style={styles.payBarCount}>{selectedOrders.length === 1 ? '1 bill' : `${selectedOrders.length} bills`}</Text>
+          <Text style={styles.payBarTotal}>{formatCurrency(selectedBalance)}</Text>
+        </View>
+        <TouchableOpacity style={styles.payNow} onPress={openPaySheet}>
+          <Text style={styles.payNowText}>Pay now</Text>
+        </TouchableOpacity>
+      </View>
+    ) : null}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, paddingBottom: spacing.xl },
-  title: { fontSize: typography.fontSize['2xl'], fontWeight: typography.fontWeight.bold, color: colors.textPrimary, marginBottom: spacing.md },
+  contentFlush: { paddingBottom: spacing.xl },
+  contentPad: { paddingHorizontal: spacing.md },
+  contentWithBar: { paddingBottom: 110 },
+  hero: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
+  },
+  heroKicker: { color: 'rgba(255,255,255,0.85)', fontSize: typography.fontSize.sm, fontWeight: typography.fontWeight.semibold },
+  heroTitle: { fontSize: typography.fontSize['3xl'], fontWeight: typography.fontWeight.bold, color: colors.white, marginTop: 4 },
+  heroAwaiting: { color: '#FFF1D6', fontWeight: typography.fontWeight.semibold, marginTop: 6 },
+  sheet: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  sheetKicker: { color: colors.textSecondary, fontWeight: typography.fontWeight.semibold, marginBottom: spacing.xs },
+  amountHero: { fontSize: typography.fontSize['3xl'], fontWeight: typography.fontWeight.bold, color: colors.textPrimary },
+  link: { color: colors.primary, fontWeight: typography.fontWeight.semibold, marginTop: spacing.sm, marginBottom: spacing.sm },
+  linkMuted: { color: colors.textSecondary, fontWeight: typography.fontWeight.semibold, marginTop: spacing.sm, textAlign: 'center' },
+  noteLabel: { color: colors.textSecondary, fontSize: typography.fontSize.xs, marginTop: spacing.sm },
+  noteValue: { color: colors.textPrimary, fontWeight: typography.fontWeight.semibold, marginBottom: spacing.sm },
+  outlineBtn: {
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: 12,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+    backgroundColor: colors.white,
+  },
+  outlineBtnText: { color: colors.primary, fontWeight: typography.fontWeight.bold, fontSize: typography.fontSize.base },
+  paidBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+  },
+  paidBtnText: { color: colors.white, fontWeight: typography.fontWeight.bold, fontSize: typography.fontSize.base },
+  btnOff: { opacity: 0.45 },
+  listHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
+  listTitle: { fontWeight: typography.fontWeight.bold, color: colors.textPrimary, fontSize: typography.fontSize.base },
+  billRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  billRowOn: { borderColor: colors.primary, borderWidth: 2 },
+  check: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkOn: { backgroundColor: colors.primary },
+  checkMark: { color: colors.white, fontSize: 14, fontWeight: typography.fontWeight.bold },
+  checkSpacer: { width: 22 },
+  billBody: { flex: 1 },
+  chip: { fontSize: typography.fontSize.xs, fontWeight: typography.fontWeight.bold, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, overflow: 'hidden' },
+  chipUnpaid: { color: colors.error, backgroundColor: colors.errorTint },
+  chipWait: { color: colors.warning, backgroundColor: colors.warningTint },
+  chipPaid: { color: colors.success, backgroundColor: colors.successTint },
+  payBar: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    bottom: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  payBarCount: { color: colors.textSecondary, fontSize: typography.fontSize.sm },
+  payBarTotal: { color: colors.textPrimary, fontWeight: typography.fontWeight.bold, fontSize: typography.fontSize.lg },
+  payNow: { backgroundColor: colors.primary, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12 },
+  payNowText: { color: colors.white, fontWeight: typography.fontWeight.bold },
   card: { padding: spacing.md, marginBottom: spacing.md },
   stat: { fontSize: typography.fontSize['3xl'], fontWeight: typography.fontWeight.bold, color: colors.textPrimary },
   meta: { color: colors.textSecondary, marginTop: 4, marginBottom: spacing.sm },
@@ -915,21 +1144,27 @@ const styles = StyleSheet.create({
   },
   suggestActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   suggestTextOn: { color: colors.white },
-  categories: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
+  categories: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: -spacing.lg,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
   category: {
     flex: 1,
     minWidth: 140,
     minHeight: 96,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.white,
     padding: spacing.md,
     justifyContent: 'center',
   },
-  categoryUnpaid: { backgroundColor: colors.primary, borderColor: colors.primary },
-  categoryPaid: { backgroundColor: colors.primary, borderColor: colors.primary },
-  categoryLabel: { color: colors.textSecondary, fontWeight: typography.fontWeight.bold, fontSize: typography.fontSize.lg },
+  categoryOn: { backgroundColor: colors.primaryDark, borderColor: colors.primaryDark },
+  categoryOff: { backgroundColor: colors.white, borderColor: colors.border },
+  categoryLabel: { color: colors.textSecondary, fontWeight: typography.fontWeight.bold, fontSize: typography.fontSize.base },
   categoryValue: { color: colors.textPrimary, fontWeight: typography.fontWeight.bold, fontSize: typography.fontSize['2xl'], marginTop: 4 },
   categoryCount: { color: colors.textSecondary, marginTop: 2 },
   categoryLabelOn: { color: colors.white },

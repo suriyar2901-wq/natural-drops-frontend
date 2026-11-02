@@ -97,6 +97,14 @@ export const paymentApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['BuyerAccount', 'Shop', 'Order'],
     }),
+    attachOrderPaymentReference: builder.mutation<PaymentClaim, { id: number; upiReference: string }>({
+      query: ({ id, upiReference }) => ({
+        url: `/payments/order/${id}/reference`,
+        method: 'POST',
+        body: { upiReference },
+      }),
+      invalidatesTags: ['BuyerAccount', 'Order'],
+    }),
     getMyOrderClaims: builder.query<PaymentClaim[], void>({
       query: () => '/payments/order/mine',
       providesTags: ['BuyerAccount', 'Order'],
@@ -142,6 +150,7 @@ export const {
   useConfirmSubscriptionClaimMutation,
   useRejectSubscriptionClaimMutation,
   useClaimOrderPaymentMutation,
+  useAttachOrderPaymentReferenceMutation,
   useGetMyOrderClaimsQuery,
   useGetPendingOrderClaimsQuery,
   useConfirmOrderClaimMutation,

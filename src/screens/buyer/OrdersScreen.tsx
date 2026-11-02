@@ -652,8 +652,8 @@ export const OrdersScreen = ({ navigation }: any) => {
       <View style={styles.filterContainer}>
         <View style={styles.categoryRow}>
           {([
-            { id: 'active' as const, label: 'Active Order' },
-            { id: 'complete' as const, label: 'Complete Order' },
+            { id: 'active' as const, label: 'Active' },
+            { id: 'complete' as const, label: 'Completed' },
           ]).map((item) => {
             const selected = statusFilter === OrderStatus.CANCELED
               ? false
@@ -662,6 +662,12 @@ export const OrdersScreen = ({ navigation }: any) => {
                 : statusFilter === OrderStatus.PENDING || statusFilter === OrderStatus.CONFIRMED
                   ? item.id === 'active'
                   : category === item.id;
+            const count = item.id === 'active'
+              ? (orders || []).filter((o) => {
+                  const status = String(o.status || '');
+                  return status !== OrderStatus.DELIVERED && status !== OrderStatus.CANCELED;
+                }).length
+              : (orders || []).filter((o) => String(o.status || '') === OrderStatus.DELIVERED).length;
             return (
               <TouchableOpacity
                 key={item.id}
@@ -672,55 +678,24 @@ export const OrdersScreen = ({ navigation }: any) => {
                   setStatusMenuOpen(false);
                 }}
               >
-                <Text style={[styles.filterButtonText, selected && styles.filterButtonTextActive]}>{item.label}</Text>
+                <Text style={[styles.filterButtonText, selected && styles.filterButtonTextActive]}>
+                  {item.label} · {count}
+                </Text>
               </TouchableOpacity>
             );
           })}
         </View>
-        <TouchableOpacity
-          style={styles.statusMenuButton}
-          onPress={() => setStatusMenuOpen((open) => !open)}
-        >
-          <Text style={styles.statusMenuText}>{statusLabel}</Text>
-          <Text style={styles.statusMenuCaret}>{statusMenuOpen ? '▴' : '▾'}</Text>
-        </TouchableOpacity>
-        {statusMenuOpen && (
-          <View style={styles.statusMenu}>
-            {([
-              { id: 'ALL' as const, label: 'All status' },
-              { id: OrderStatus.PENDING, label: 'Pending' },
-              { id: OrderStatus.CONFIRMED, label: 'Confirmed' },
-              { id: OrderStatus.DELIVERED, label: 'Delivered' },
-              { id: OrderStatus.CANCELED, label: 'Cancelled' },
-              { id: 'REGULAR' as const, label: 'Regular order' },
-            ]).map((option) => (
-              <TouchableOpacity
-                key={option.id}
-                style={[styles.statusMenuItem, statusFilter === option.id && styles.statusMenuItemActive]}
-                onPress={() => {
-                  setStatusFilter(option.id);
-                  setStatusMenuOpen(false);
-                  if (option.id === OrderStatus.DELIVERED) setCategory('complete');
-                  if (option.id === OrderStatus.PENDING || option.id === OrderStatus.CONFIRMED) setCategory('active');
-                }}
-              >
-                <Text style={[styles.statusMenuItemText, statusFilter === option.id && styles.statusMenuItemTextActive]}>
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
         <View style={styles.dateRangeRow}>
           <TouchableOpacity style={styles.dateRangeButton} onPress={() => setDateModalVisible(true)}>
-            <Text style={styles.dateRangeButtonText}>Select Date Range</Text>
+            <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+            <Text style={styles.dateRangeButtonText}>{hasDateRange ? `${fromDate} → ${toDate}` : 'Date range'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.exportOrdersButton, exporting && styles.exportOrdersButtonDisabled]}
             onPress={exportOrders}
             disabled={exporting}
           >
-            <Text style={styles.exportOrdersButtonText}>{exporting ? 'Exporting…' : 'Export'}</Text>
+            <Ionicons name="download-outline" size={18} color={colors.primary} />
           </TouchableOpacity>
         </View>
         {hasDateRange && (
@@ -910,19 +885,22 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.semibold,
   },
   exportOrdersButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.secondary,
     paddingHorizontal: spacing.md,
     minHeight: 44,
+    minWidth: 44,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   exportOrdersButtonDisabled: {
-    backgroundColor: colors.gray400,
+    opacity: 0.5,
   },
   exportOrdersButtonText: {
     fontSize: typography.fontSize.sm,
-    color: colors.white,
+    color: colors.primary,
     fontWeight: typography.fontWeight.semibold,
   },
   dateRangeRow: {
@@ -934,11 +912,13 @@ const styles = StyleSheet.create({
   dateRangeButton: {
     flex: 1,
     minHeight: 44,
-    backgroundColor: colors.gray100,
+    backgroundColor: colors.secondary,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
     borderRadius: 12,
+    flexDirection: 'row',
+    gap: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },

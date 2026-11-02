@@ -16,7 +16,7 @@ const tabIcon =
   (outline: IonName, filled: IonName) =>
   ({ color, focused }: { color: string; size: number; focused: boolean }) =>
     (
-      <View style={styles.tabIconBox}>
+      <View style={[styles.tabIconBox, focused && styles.tabIconBoxOn]}>
         <Ionicons
           name={focused ? filled : outline}
           size={TAB_ICON_SIZE}
@@ -349,8 +349,8 @@ const BuyerTabs = ({ navigation }: any) => {
       name="Orders"
       component={OrdersScreen}
       options={{
-        title: 'My Orders',
-        tabBarLabel: 'My Orders',
+        title: 'My orders',
+        tabBarLabel: 'Orders',
         tabBarIcon: tabIcon('receipt-outline', 'receipt'),
         headerTitle: brandOnlyTitle,
         headerLeft: () => <View style={styles.headerBrandWrap}>{shopBrand}</View>,
@@ -361,7 +361,7 @@ const BuyerTabs = ({ navigation }: any) => {
       component={BuyerPaymentsScreen}
       options={{
         title: 'My Payments',
-        tabBarLabel: 'My Payments',
+        tabBarLabel: 'Payments',
         tabBarIcon: tabIcon('wallet-outline', 'wallet'),
         headerTitle: brandOnlyTitle,
         headerLeft: () => <View style={styles.headerBrandWrap}>{shopBrand}</View>,
@@ -758,10 +758,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   tabIconBox: {
-    width: TAB_ICON_SIZE,
-    height: TAB_ICON_SIZE,
+    width: 40,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  tabIconBoxOn: {
+    backgroundColor: colors.secondary,
   },
   tabIconGlyph: {
     width: TAB_ICON_SIZE,
@@ -773,7 +777,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: 8,
+    paddingTop: 6,
+    paddingBottom: 4,
     minHeight: 64,
   },
   adminTabItem: {

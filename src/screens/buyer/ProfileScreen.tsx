@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image, TouchableOpacity, Alert, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image, TouchableOpacity, Alert, useWindowDimensions, Clipboard, Switch } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Picker } from '@react-native-picker/picker';
-import { colors, typography, spacing, borderRadius } from '../../theme';
-import { Card, Button, Input, DatePicker, SupportContactCard } from '../../components/common';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
+import { Card, Button, Input, DatePicker, SupportContactCard, ShareAppButton } from '../../components/common';
+import { formatCurrency } from '../../utils/formatters';
+import { moneyValue } from '../../types/shop.types';
 import { AutocompleteInput, AutocompleteOption } from '../../components/common/AutocompleteInput';
 import { useAuth } from '../../hooks';
 import { useUpdateOwnProfileMutation } from '../../store/api/userApi';
@@ -22,6 +25,8 @@ import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi'
 import { formatClockAmPm } from '../../utils/formatters';
 import { Ionicons } from '@expo/vector-icons';
 import { BuyerRegularOrderCard } from '../../components/buyer/BuyerRegularOrderCard';
+
+const BUYER_ALERT_PREFS_KEY = 'buyer_alert_prefs_v1';
 
 interface FormErrors {
   fullName?: string;
@@ -214,7 +219,7 @@ const ShopClock = ({ label, value, onChange, disabled }: { label: string; value:
 };
 
 export const ProfileScreen = () => {
-  const { user, isBuyer, isSeller, isAdmin, isStrictAdmin } = useAuth();
+  const { user, isBuyer, isSeller, isAdmin, isStrictAdmin, logout } = useAuth();
   const { width } = useWindowDimensions();
   const twoCol = width >= 760;
   const roleLabel = isSeller() ? 'Seller' : isStrictAdmin() ? 'Admin' : 'Buyer';
@@ -229,6 +234,11 @@ export const ProfileScreen = () => {
   const [showHoursToBuyer, setShowHoursToBuyer] = useState(false);
   const [hoursOpen, setHoursOpen] = useState(false);
   const [hoursEditing, setHoursEditing] = useState(false);
+  const [alertPrefs, setAlertPrefs] = useState({
+    reminders: true,
+    payments: true,
+    offers: false,
+  });
   const navigation = useNavigation();
   const dispatch = useDispatch<AppDispatch>();
   const [isEditMode, setIsEditMode] = useState(false);
@@ -301,6 +311,49 @@ export const ProfileScreen = () => {
       setOriginalData(newFormData);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!isBuyer()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(BUYER_ALERT_PREFS_KEY);
+        if (!raw || cancelled) return;
+        const parsed = JSON.parse(raw);
+        setAlertPrefs((prev) => ({
+          reminders: typeof parsed.reminders === 'boolean' ? parsed.reminders : prev.reminders,
+          payments: typeof parsed.payments === 'boolean' ? parsed.payments : prev.payments,
+          offers: typeof parsed.offers === 'boolean' ? parsed.offers : prev.offers,
+        }));
+      } catch {
+        // keep defaults
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isBuyer]);
+
+  const updateAlertPref = async (key: 'reminders' | 'payments' | 'offers', value: boolean) => {
+    setAlertPrefs((prev) => {
+      const next = { ...prev, [key]: value };
+      AsyncStorage.setItem(BUYER_ALERT_PREFS_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+
+  const handleLogout = () => {
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: () => {
+          logout().catch(() => {});
+        },
+      },
+    ]);
+  };
 
   // Check if form has changes
   const hasChanges = () => {
@@ -964,6 +1017,61 @@ export const ProfileScreen = () => {
             </>
           ) : (
             <>
+              {isBuyer() ? (
+                <>
+                  <View style={styles.codeRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.identityLabel}>Seller company code</Text>
+                      <Text style={styles.codeValue}>{buyerAccount?.companyCode || 'Not specified'}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.copyCodeBtn}
+                      onPress={() => {
+                        const code = (buyerAccount?.companyCode || '').trim();
+                        if (!code) {
+                          showErrorToast('No company code to copy');
+                          return;
+                        }
+                        Clipboard.setString(code);
+                        showSuccessToast('Company code copied');
+                      }}
+                    >
+                      <Text style={styles.copyCodeText}>Copy</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.shortcutGrid}>
+                    <TouchableOpacity style={styles.shortcutCard} onPress={() => navigation.navigate('BuyerPayments' as never)}>
+                      <Ionicons name="wallet-outline" size={22} color={colors.primary} />
+                      <Text style={styles.shortcutTitle}>My payments</Text>
+                      <Text style={styles.shortcutMeta}>{formatCurrency(moneyValue(buyerAccount?.due))} due</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.shortcutCard} onPress={() => navigation.navigate('BuyerEmptyCans' as never)}>
+                      <Ionicons name="water-outline" size={22} color={colors.primary} />
+                      <Text style={styles.shortcutTitle}>My empty cans</Text>
+                      <Text style={styles.shortcutMeta}>{buyerAccount?.emptyCans || 0} to return</Text>
+                    </TouchableOpacity>
+                    <View style={styles.shortcutCard}>
+                      <Ionicons name="qr-code-outline" size={22} color={colors.primary} />
+                      <Text style={styles.shortcutTitle}>My QR code</Text>
+                      <Text style={styles.shortcutMeta}>{buyerAccount?.companyCode || '—'}</Text>
+                    </View>
+                    <View style={styles.shortcutCard}>
+                      <Text style={styles.shortcutTitle}>Share app</Text>
+                      {!!buyerAccount?.companyCode ? (
+                        <ShareAppButton
+                          companyCode={buyerAccount.companyCode}
+                          companyName={buyerAccount.companyName || buyerAccount.sellerBusiness}
+                          tone="outline"
+                        />
+                      ) : (
+                        <Text style={styles.shortcutMeta}>Ask seller for a code</Text>
+                      )}
+                    </View>
+                  </View>
+                  <BuyerRegularOrderCard navigation={navigation} />
+                </>
+              ) : null}
+
               <View style={styles.section}>
                 <Text style={styles.blockTitle}>Your details</Text>
                 <View style={styles.grid}>
@@ -978,12 +1086,6 @@ export const ProfileScreen = () => {
                     <View style={[styles.identityCell, !twoCol && styles.infoCellStack]}>
                       <Text style={styles.identityLabel}>Company code</Text>
                       <Text style={styles.identityValue}>{shopCompany?.companyCode || 'Not specified'}</Text>
-                    </View>
-                  )}
-                  {isBuyer() && (
-                    <View style={[styles.identityCell, !twoCol && styles.infoCellStack]}>
-                      <Text style={styles.identityLabel}>Seller company code</Text>
-                      <Text style={styles.identityValue}>{buyerAccount?.companyCode || 'Not specified'}</Text>
                     </View>
                   )}
                   {detail('Gender', genderLabel(user?.gender))}
@@ -1004,15 +1106,36 @@ export const ProfileScreen = () => {
 
               <View style={styles.section}>
                 <Text style={styles.blockTitle}>{isBuyer() ? 'Delivery address' : 'Address'}</Text>
-                <View style={styles.grid}>
-                  {detail('House / door no', user?.houseDoorNo)}
-                  {detail('Street / area', user?.streetArea)}
-                  {detail('City', user?.city)}
-                  {detail('District', user?.district)}
-                  {detail('State', user?.state)}
-                  {detail('Pincode', user?.pincode)}
-                  {detail('Landmark', user?.landmark)}
-                </View>
+                {isBuyer() ? (
+                  <View style={styles.addressRow}>
+                    <View style={styles.addressIcon}>
+                      <Ionicons name="location-outline" size={20} color={colors.primary} />
+                    </View>
+                    <Text style={styles.addressText}>
+                      {[
+                        user?.houseDoorNo,
+                        user?.streetArea,
+                        user?.city,
+                        user?.district,
+                        user?.state,
+                        user?.pincode,
+                        user?.landmark,
+                      ]
+                        .filter(Boolean)
+                        .join(', ') || user?.address || 'Not specified'}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.grid}>
+                    {detail('House / door no', user?.houseDoorNo)}
+                    {detail('Street / area', user?.streetArea)}
+                    {detail('City', user?.city)}
+                    {detail('District', user?.district)}
+                    {detail('State', user?.state)}
+                    {detail('Pincode', user?.pincode)}
+                    {detail('Landmark', user?.landmark)}
+                  </View>
+                )}
               </View>
 
               {isSeller() && (
@@ -1144,6 +1267,48 @@ export const ProfileScreen = () => {
 
               <SupportContactCard title={isAdmin() ? 'Customer contact details' : 'Contact admin'} />
 
+              {isBuyer() && (
+                <View style={styles.alertsCard}>
+                  <Text style={styles.blockTitle}>Alerts</Text>
+                  <View style={styles.alertRow}>
+                    <View style={styles.alertCopy}>
+                      <Text style={styles.alertTitle}>Delivery reminders</Text>
+                      <Text style={styles.alertSub}>One day before each delivery</Text>
+                    </View>
+                    <Switch
+                      value={alertPrefs.reminders}
+                      onValueChange={(v) => updateAlertPref('reminders', v)}
+                      trackColor={{ false: colors.border, true: colors.primary }}
+                      thumbColor={colors.white}
+                    />
+                  </View>
+                  <View style={styles.alertRow}>
+                    <View style={styles.alertCopy}>
+                      <Text style={styles.alertTitle}>Payment updates</Text>
+                      <Text style={styles.alertSub}>Dues and seller confirmations</Text>
+                    </View>
+                    <Switch
+                      value={alertPrefs.payments}
+                      onValueChange={(v) => updateAlertPref('payments', v)}
+                      trackColor={{ false: colors.border, true: colors.primary }}
+                      thumbColor={colors.white}
+                    />
+                  </View>
+                  <View style={[styles.alertRow, styles.alertRowLast]}>
+                    <View style={styles.alertCopy}>
+                      <Text style={styles.alertTitle}>Offers and news</Text>
+                      <Text style={styles.alertSub}>Occasional messages from the seller</Text>
+                    </View>
+                    <Switch
+                      value={alertPrefs.offers}
+                      onValueChange={(v) => updateAlertPref('offers', v)}
+                      trackColor={{ false: colors.border, true: colors.primary }}
+                      thumbColor={colors.white}
+                    />
+                  </View>
+                </View>
+              )}
+
               <View style={styles.securitySection}>
                 {(isSeller() || isAdmin()) && (
                   <TouchableOpacity style={styles.actionRow} onPress={() => navigation.navigate('ShopProfile' as never)}>
@@ -1154,31 +1319,15 @@ export const ProfileScreen = () => {
                     <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
                   </TouchableOpacity>
                 )}
-                {isBuyer() && (
-                  <>
-                    <BuyerRegularOrderCard navigation={navigation} />
-                    <Button
-                      title="My Payments"
-                      onPress={() => navigation.navigate('BuyerPayments' as never)}
-                      variant="outline"
-                      fullWidth
-                      style={styles.changePasswordButton}
-                    />
-                    <Button
-                      title="My Empty Cans"
-                      onPress={() => navigation.navigate('BuyerEmptyCans' as never)}
-                      variant="outline"
-                      fullWidth
-                      style={styles.changePasswordButton}
-                    />
-                  </>
-                )}
                 <TouchableOpacity style={styles.actionRow} onPress={() => navigation.navigate('ChangePassword')}>
                   <View style={styles.iconBadge}>
                     <Ionicons name="lock-closed-outline" size={18} color={colors.primary} />
                   </View>
-                  <Text style={styles.actionRowText}>Change Password</Text>
+                  <Text style={styles.actionRowText}>Change password</Text>
                   <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.logoutRow} onPress={handleLogout}>
+                  <Text style={styles.logoutText}>Log out</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -1340,6 +1489,56 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontWeight: typography.fontWeight.bold,
   },
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.gray50,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  codeValue: {
+    fontSize: typography.fontSize.lg,
+    color: colors.primary,
+    fontWeight: typography.fontWeight.bold,
+  },
+  copyCodeBtn: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: colors.white,
+  },
+  copyCodeText: { color: colors.primary, fontWeight: typography.fontWeight.bold },
+  shortcutGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  shortcutCard: {
+    width: '48%',
+    flexGrow: 1,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    minHeight: 100,
+    ...shadows.sm,
+  },
+  shortcutTitle: {
+    marginTop: spacing.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  shortcutMeta: {
+    marginTop: 4,
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.sm,
+  },
   addressValue: {
     fontSize: typography.fontSize.sm,
     color: colors.textPrimary,
@@ -1463,7 +1662,7 @@ const styles = StyleSheet.create({
   actionRowText: {
     flex: 1,
     color: colors.primary,
-    fontSize: typography.fontSize.md,
+    fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.semibold,
   },
   toolbarHint: {
@@ -1588,7 +1787,7 @@ const styles = StyleSheet.create({
   calendarTitle: {
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
-    fontSize: typography.fontSize.md,
+    fontSize: typography.fontSize.base,
   },
   weekRow: {
     flexDirection: 'row',
@@ -1708,6 +1907,75 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  addressIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E8EAF6',
+  },
+  addressText: {
+    flex: 1,
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.textPrimary,
+    lineHeight: 22,
+  },
+  alertsCard: {
+    marginTop: spacing.lg,
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  alertRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  alertRowLast: {
+    borderBottomWidth: 0,
+    paddingBottom: 0,
+  },
+  alertCopy: {
+    flex: 1,
+  },
+  alertTitle: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.textPrimary,
+  },
+  alertSub: {
+    marginTop: 2,
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+  },
+  logoutRow: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+  },
+  logoutText: {
+    color: colors.error,
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
   },
   metaText: { color: colors.textSecondary, marginTop: spacing.xs },
   changePasswordButton: {
