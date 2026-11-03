@@ -627,6 +627,23 @@ export const BuyerPaymentsScreen = () => {
                 </View>
                 <Text style={styles.noteLabel}>Note added automatically</Text>
                 <Text style={styles.noteValue}>{noteLabel || '—'}</Text>
+                {selectedOrders.length === 1 ? (
+                  <TouchableOpacity
+                    style={[styles.paidBtn, (openingCashfree || !(payAmount > 0) || amountOver) && styles.btnOff]}
+                    onPress={payWithCashfree}
+                    disabled={openingCashfree || !(payAmount > 0) || amountOver}
+                  >
+                    <Text style={styles.paidBtnText}>
+                      {openingCashfree
+                        ? 'Opening Cashfree…'
+                        : `Pay online ${payAmount > 0 ? formatCurrency(payAmount) : ''} (Cashfree)`}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.meta}>
+                    Select one bill to pay online with Cashfree. For several bills together, use GPay / UPI below.
+                  </Text>
+                )}
                 <TouchableOpacity
                   style={[styles.outlineBtn, (openingUpi || !(payAmount > 0) || amountOver) && styles.btnOff]}
                   onPress={openGpay}
@@ -635,22 +652,17 @@ export const BuyerPaymentsScreen = () => {
                   <Text style={styles.outlineBtnText}>{openingUpi ? 'Opening GPay…' : 'Pay with GPay / UPI'}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.paidBtn, (saving || !(payAmount > 0) || amountOver) && styles.btnOff]}
+                  style={[styles.outlineBtn, (saving || !(payAmount > 0) || amountOver) && styles.btnOff]}
                   onPress={save}
                   disabled={saving || !(payAmount > 0) || amountOver}
                 >
-                  <Text style={styles.paidBtnText}>
-                    {saving ? 'Telling seller…' : `I have paid ${payAmount > 0 ? formatCurrency(payAmount) : ''}`}
+                  <Text style={styles.outlineBtnText}>
+                    {saving ? 'Telling seller…' : `I have paid ${payAmount > 0 ? formatCurrency(payAmount) : ''} (manual)`}
                   </Text>
                 </TouchableOpacity>
                 <Text style={styles.meta}>
-                  One tap. The seller is told the amount and which orders you paid. No transaction number needed.
+                  Online pay confirms automatically. Manual UPI needs the seller to confirm.
                 </Text>
-                {selectedOrders.length === 1 ? (
-                  <TouchableOpacity onPress={payWithCashfree} disabled={openingCashfree || !(payAmount > 0) || amountOver}>
-                    <Text style={styles.link}>{openingCashfree ? 'Opening Cashfree…' : 'Pay with Cashfree instead'}</Text>
-                  </TouchableOpacity>
-                ) : null}
                 <TouchableOpacity onPress={() => setShowUpiFallback((open) => !open)}>
                   <Text style={styles.link}>{showUpiFallback ? 'Hide QR code' : 'Prefer to scan a QR code?'}</Text>
                 </TouchableOpacity>

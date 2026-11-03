@@ -138,6 +138,16 @@ export const paymentApi = baseApi.injectEndpoints({
     getCashfreeOrderStatus: builder.query<CashfreeOrderStatusResponse, string>({
       query: (cfOrderId) => `/payments/cashfree/orders/${encodeURIComponent(cfOrderId)}/status`,
     }),
+    createCashfreeSubscriptionOrder: builder.mutation<CashfreeCreateOrderResponse, { plan: string }>({
+      query: (body) => ({
+        url: '/payments/cashfree/subscription/orders',
+        method: 'POST',
+        body,
+      }),
+    }),
+    getCashfreeSubscriptionStatus: builder.query<CashfreeOrderStatusResponse, string>({
+      query: (cfOrderId) => `/payments/cashfree/subscription/orders/${encodeURIComponent(cfOrderId)}/status`,
+    }),
   }),
 });
 
@@ -157,4 +167,6 @@ export const {
   useRejectOrderClaimMutation,
   useCreateCashfreeOrderMutation,
   useLazyGetCashfreeOrderStatusQuery,
+  useCreateCashfreeSubscriptionOrderMutation,
+  useLazyGetCashfreeSubscriptionStatusQuery,
 } = paymentApi;
