@@ -4,8 +4,42 @@ import type { CashfreeCheckoutParams, CashfreeCheckoutResult } from './cashfreeC
 const toMode = (environment?: string): 'sandbox' | 'production' =>
   (environment || 'SANDBOX').toUpperCase() === 'PRODUCTION' ? 'production' : 'sandbox';
 
+const mapCheckoutResult = (
+  result: any,
+  cfOrderId: string
+): CashfreeCheckoutResult => {
+  const error = result?.error || result?.paymentDetails?.error;
+  if (error) {
+    return {
+      status: 'FAILED',
+      orderId: cfOrderId,
+      message: typeof error === 'string' ? error : error?.message || 'Payment failed',
+    };
+  }
+
+  const paymentStatus = String(
+    result?.paymentDetails?.paymentStatus
+      || result?.paymentStatus
+      || result?.status
+      || ''
+  ).toUpperCase();
+
+  if (paymentStatus.includes('SUCCESS') || paymentStatus === 'PAID' || result?.paymentCompleted) {
+    return { status: 'COMPLETED', orderId: cfOrderId };
+  }
+  if (result?.redirect) {
+    return { status: 'UNKNOWN', orderId: cfOrderId, message: 'Redirected for payment — verifying with server' };
+  }
+  if (paymentStatus.includes('CANCEL') || paymentStatus.includes('USER_DROPPED') || result === undefined) {
+    return { status: 'UNKNOWN', orderId: cfOrderId, message: 'Checkout closed — verifying with server' };
+  }
+  return { status: 'UNKNOWN', orderId: cfOrderId };
+};
+
 /**
- * Web: Cashfree JS hosted checkout (modal). Domain must be whitelisted in Cashfree dashboard.
+ * Web: Cashfree JS hosted checkout.
+ * Prefer in-page `_modal` (reliable). Fall back to same-tab `_self` if the modal cannot open
+ * (popup blockers / Chrome device toolbar). Domain must be whitelisted in Cashfree dashboard.
  */
 export const openCashfreeCheckout = async (
   params: CashfreeCheckoutParams
@@ -20,35 +54,28 @@ export const openCashfreeCheckout = async (
     throw new Error('Cashfree web SDK failed to load');
   }
 
-  // Prefer a real browser tab — modal + in-app GPay often falls back to upi:// on desktop.
-  const result: any = await cashfree.checkout({
-    paymentSessionId,
-    redirectTarget: '_blank',
-  });
-
-  // SDK may return payment details or undefined depending on redirectTarget
-  const error = result?.error || result?.paymentDetails?.error;
-  if (error) {
-    return {
-      status: 'FAILED',
-      orderId: params.cfOrderId,
-      message: typeof error === 'string' ? error : error?.message || 'Payment failed',
-    };
+  let result: any;
+  try {
+    result = await cashfree.checkout({
+      paymentSessionId,
+      redirectTarget: '_modal',
+    });
+  } catch (modalError: any) {
+    // Modal blocked or SDK threw — continue payment in the same tab
+    console.warn('[Cashfree] modal checkout failed, falling back to _self', modalError);
+    result = await cashfree.checkout({
+      paymentSessionId,
+      redirectTarget: '_self',
+    });
   }
 
-  const paymentStatus = String(
-    result?.paymentDetails?.paymentStatus
-      || result?.paymentStatus
-      || result?.status
-      || ''
-  ).toUpperCase();
+  // Empty / blocked modal: try same-tab redirect once
+  if (result?.error && /popup|blocked|unable to open|could not open/i.test(String(result.error?.message || result.error))) {
+    result = await cashfree.checkout({
+      paymentSessionId,
+      redirectTarget: '_self',
+    });
+  }
 
-  if (paymentStatus.includes('SUCCESS') || paymentStatus === 'PAID' || result?.paymentCompleted) {
-    return { status: 'COMPLETED', orderId: params.cfOrderId };
-  }
-  if (paymentStatus.includes('CANCEL') || paymentStatus.includes('USER_DROPPED') || result === undefined) {
-    // Modal close without clear success → verify via backend status API
-    return { status: 'UNKNOWN', orderId: params.cfOrderId, message: 'Checkout closed — verifying with server' };
-  }
-  return { status: 'UNKNOWN', orderId: params.cfOrderId };
+  return mapCheckoutResult(result, params.cfOrderId);
 };
