@@ -20,9 +20,10 @@ export const openCashfreeCheckout = async (
     throw new Error('Cashfree web SDK failed to load');
   }
 
+  // Prefer a real browser tab — modal + in-app GPay often falls back to upi:// on desktop.
   const result: any = await cashfree.checkout({
     paymentSessionId,
-    redirectTarget: '_modal',
+    redirectTarget: '_blank',
   });
 
   // SDK may return payment details or undefined depending on redirectTarget

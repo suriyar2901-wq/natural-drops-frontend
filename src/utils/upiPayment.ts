@@ -117,12 +117,29 @@ export const buildAndroidGpayIntentUrl = (upiUrl: string): string => {
   return `intent://pay?${query}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
 };
 
-/** Open GPay via intent:// first, then plain upi:// fallback. */
+/** True when the browser is unlikely to handle upi:// (desktop / no UPI app). */
+export const isWebDesktopWithoutUpi = (): boolean => {
+  if (Platform.OS !== 'web' || typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  // Mobile browsers / WebViews can open GPay or another UPI app
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return false;
+  return true;
+};
+
+/** Open GPay via intent:// first, then plain upi:// fallback. Never navigate to upi:// on desktop web. */
 export const openUpiWithGpayIntent = async (upiUrl: string): Promise<boolean> => {
   const plain = (upiUrl || '').trim();
   if (!plain.startsWith('upi://pay?')) {
     throw new Error('Invalid UPI URL');
   }
+
+  // Desktop browsers have no UPI handler — window.location = upi:// shows "No Apps available".
+  if (isWebDesktopWithoutUpi()) {
+    throw new Error(
+      'GPay / UPI links only work on a phone. Use Pay online (Cashfree) or scan the QR code.'
+    );
+  }
+
   const intentUrl = buildAndroidGpayIntentUrl(plain);
   const candidates =
     Platform.OS === 'android' ? [intentUrl, plain] : [plain, intentUrl];
@@ -138,7 +155,10 @@ export const openUpiWithGpayIntent = async (upiUrl: string): Promise<boolean> =>
     }
   }
 
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    // Mobile web: try opening without trapping the current SPA in a dead upi:// page
+    const opened = window.open(plain, '_blank');
+    if (opened) return true;
     window.location.href = plain;
     return true;
   }

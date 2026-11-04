@@ -38,6 +38,7 @@ import {
   formatUpiAmount,
   logUpiPayUriDebug,
   maskUpiId,
+  isWebDesktopWithoutUpi,
   openUpiNoPrefill,
   openUpiPayment,
   openUpiWithGpayIntent,
@@ -419,6 +420,15 @@ export const BuyerPaymentsScreen = () => {
   };
 
   const openManualGpay = async () => {
+    if (isWebDesktopWithoutUpi()) {
+      if (selectedOrders.length === 1) {
+        await payWithCashfree();
+        return;
+      }
+      setShowUpiFallback(true);
+      showErrorToast('On desktop, use Pay online (Cashfree) or scan the QR with your phone.');
+      return;
+    }
     if (!upiId) {
       showErrorToast('Seller has not added a UPI ID yet');
       return;
@@ -440,16 +450,28 @@ export const BuyerPaymentsScreen = () => {
       showErrorToast('Select the unpaid bills you are paying');
       return;
     }
-    if (!upiId) {
-      showErrorToast('Seller has not added a UPI ID yet');
-      return;
-    }
     if (!(payAmount > 0)) {
       showErrorToast('Enter a valid amount');
       return;
     }
     if (payAmount > selectedBalance + 0.001) {
       showErrorToast(`The selected bills total ${formatCurrency(selectedBalance)}. Enter that or less.`);
+      return;
+    }
+
+    // Desktop web has no GPay/UPI app — open Cashfree checkout tab instead of upi://.
+    if (isWebDesktopWithoutUpi()) {
+      if (selectedOrders.length !== 1) {
+        showErrorToast('Select one bill to pay online with Cashfree, or scan the QR with your phone.');
+        setShowUpiFallback(true);
+        return;
+      }
+      await payWithCashfree();
+      return;
+    }
+
+    if (!upiId) {
+      showErrorToast('Seller has not added a UPI ID yet');
       return;
     }
     setOpeningUpi(true);
