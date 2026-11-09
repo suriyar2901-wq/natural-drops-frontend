@@ -735,7 +735,7 @@ export const AppNavigator = () => {
         <Stack.Screen
           name="SellerSubscriptionPay"
           component={SellerSubscriptionPayScreen}
-          options={{ title: 'Pay subscription' }}
+          options={{ title: 'Subscription' }}
         />
         <Stack.Screen
           name="SellerBillClaims"

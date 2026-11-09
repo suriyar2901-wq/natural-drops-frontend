@@ -201,6 +201,24 @@ export const shopApi = baseApi.injectEndpoints({
       query: () => '/shop/subscription',
       providesTags: ['Shop', 'PlatformAdmin'],
     }),
+    getMySubscriptionPayments: builder.query<
+      Array<{
+        id: number;
+        plan?: string;
+        amount?: number | string;
+        method?: string;
+        status?: string;
+        gatewayRef?: string;
+        note?: string;
+        paidAt?: string;
+        createdAt?: string;
+        transactionCode?: string;
+      }>,
+      void
+    >({
+      query: () => '/shop/subscription/payments',
+      providesTags: ['Shop', 'PlatformAdmin'],
+    }),
     subscribeSeller: builder.mutation<SellerSubscriptionAccess, { plan: string; method: string }>({
       query: (body) => ({
         url: '/shop/subscription',
@@ -247,6 +265,7 @@ export const {
   useGetShopInboxQuery,
   useMarkShopInboxReadMutation,
   useGetSellerSubscriptionQuery,
+  useGetMySubscriptionPaymentsQuery,
   useSubscribeSellerMutation,
   useGetShopProfileQuery,
   useSaveShopProfileMutation,
