@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useNavigation, useNavigationState } from '@react-navigation/native';
-import { CommonActions } from '@react-navigation/native';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import { Button } from './Button';
 import { Card } from './Card';
 import { colors, spacing, typography } from '../../theme';
@@ -18,15 +17,8 @@ const isOnSubscriptionPayRoute = (routeName?: string | null) =>
 export const SellerSubscriptionGate = () => {
   const { isSeller, isAuthenticated, logout } = useAuth();
   const navigation = useNavigation<any>();
-  const currentRouteName = useNavigationState((state) => {
-    if (!state) return null;
-    let route: any = state.routes[state.index];
-    while (route?.state?.index != null && route.state.routes) {
-      route = route.state.routes[route.state.index];
-    }
-    return route?.name as string | undefined;
-  });
   const sellerAuthed = isAuthenticated && isSeller();
+  const [currentRouteName, setCurrentRouteName] = useState<string | null>(null);
   const { data, isLoading, refetch } = useGetSellerSubscriptionQuery(undefined, {
     skip: !sellerAuthed,
     refetchOnMountOrArgChange: true,
@@ -34,6 +26,21 @@ export const SellerSubscriptionGate = () => {
   const [plan, setPlan] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
   const blocked = !!(sellerAuthed && !isLoading && data && !data.canWork);
   const onPayScreen = isOnSubscriptionPayRoute(currentRouteName);
+
+  // Gate sits beside the stack (not inside it), so avoid useNavigationState — use the root ref.
+  useEffect(() => {
+    const syncRoute = () => {
+      try {
+        if (!navigationRef.isReady()) return;
+        setCurrentRouteName(navigationRef.getCurrentRoute()?.name ?? null);
+      } catch {
+        setCurrentRouteName(null);
+      }
+    };
+    syncRoute();
+    const unsubscribe = navigationRef.addListener('state', syncRoute);
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     if (!blocked) return undefined;
@@ -52,9 +59,11 @@ export const SellerSubscriptionGate = () => {
 
   const openPay = (payMethod: 'ONLINE' | 'CASH') => {
     const params = { plan, payMethod, autoStart: true };
-    const parent = navigation.getParent();
+    const parent = navigation.getParent?.();
     if (parent) {
       parent.navigate('SellerSubscriptionPay', params);
+    } else if (navigationRef.isReady()) {
+      navigationRef.navigate('SellerSubscriptionPay' as never, params as never);
     } else {
       navigation.navigate('SellerSubscriptionPay', params);
     }
