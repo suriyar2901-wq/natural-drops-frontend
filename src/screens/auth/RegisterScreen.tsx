@@ -183,11 +183,12 @@ export const RegisterScreen = ({ navigation, route }: any) => {
             pincode: '',
           }));
         } else {
-          setPincodeError('Invalid pincode. Please enter a valid 6-digit pincode.');
+          // Soft warning only — 6-digit pincode is still valid for submit; fill city/district/state manually.
+          setPincodeError('Could not auto-fill from this pincode. Enter city, district, and state manually.');
         }
       } catch (error) {
         console.error('Error fetching pincode location:', error);
-        setPincodeError('Failed to fetch location. Please enter manually.');
+        setPincodeError('Location lookup failed. Enter city, district, and state manually.');
       } finally {
         setIsLoadingPincode(false);
       }
@@ -421,7 +422,22 @@ export const RegisterScreen = ({ navigation, route }: any) => {
       ]);
     } else {
       const errorMessage = result.error || 'Please try again';
-      Alert.alert('Registration Failed', errorMessage);
+      const alreadyExists = /already exists|go to login/i.test(errorMessage);
+      const networkish = /network|timeout|abort|failed to fetch|network request failed/i.test(errorMessage);
+      if (alreadyExists || networkish) {
+        Alert.alert(
+          alreadyExists ? 'Account may already exist' : 'Could not confirm registration',
+          alreadyExists
+            ? `${errorMessage}\n\nIf you just registered, go to Login with the same username and password.`
+            : 'The account may still have been created. Try logging in with this username and password. If login works, registration succeeded.',
+          [
+            { text: 'Try again' },
+            { text: 'Go to Login', onPress: () => navigation.replace('Login') },
+          ]
+        );
+      } else {
+        Alert.alert('Registration Failed', errorMessage);
+      }
     }
   };
 

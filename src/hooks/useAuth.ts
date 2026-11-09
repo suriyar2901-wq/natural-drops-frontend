@@ -111,11 +111,20 @@ export const useAuth = () => {
 
   const register = async (userData: RegisterRequest) => {
     try {
+      // Avoid sending a huge base64 photo echo back; still store it when provided.
       const user = await registerMutation(userData).unwrap();
       return { success: true, user };
     } catch (error: any) {
       console.error('Registration error:', error);
-      return { success: false, error: error.data?.message || error.message || 'Registration failed' };
+      const status = error?.status;
+      const message = error?.data?.message || error?.error || error?.message || 'Registration failed';
+      if (status === 'TIMEOUT_ERROR' || status === 'FETCH_ERROR' || /timeout|network|abort/i.test(String(message))) {
+        return {
+          success: false,
+          error: 'Network issue while registering. The account may already exist — try Login.',
+        };
+      }
+      return { success: false, error: message };
     }
   };
 

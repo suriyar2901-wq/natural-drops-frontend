@@ -14,13 +14,16 @@ import { navigationRef } from '../../navigation/navigationRef';
 export const SellerSubscriptionGate = () => {
   const { isSeller, isAuthenticated, logout } = useAuth();
   const navigation = useNavigation<any>();
+  const sellerAuthed = isAuthenticated && isSeller();
   const { data, isLoading } = useGetSellerSubscriptionQuery(undefined, {
-    skip: !isAuthenticated || !isSeller(),
+    skip: !sellerAuthed,
     refetchOnMountOrArgChange: true,
+    // While blocked, poll so admin "Cash received" / Cashfree activation clears this popup.
+    pollingInterval: sellerAuthed && data && !data.canWork ? 8000 : 0,
   });
   const [plan, setPlan] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
 
-  if (!isAuthenticated || !isSeller()) {
+  if (!sellerAuthed) {
     return null;
   }
 
@@ -31,8 +34,14 @@ export const SellerSubscriptionGate = () => {
 
   const amount = plan === 'YEARLY' ? moneyValue(data.yearlyAmount) : moneyValue(data.monthlyAmount);
 
-  const handleSubscribe = () => {
-    navigation.getParent()?.navigate('SellerSubscriptionPay') || navigation.navigate('SellerSubscriptionPay');
+  const openPay = (payMethod: 'ONLINE' | 'UPI' | 'CASH') => {
+    const parent = navigation.getParent();
+    const params = { plan, payMethod };
+    if (parent) {
+      parent.navigate('SellerSubscriptionPay', params);
+    } else {
+      navigation.navigate('SellerSubscriptionPay', params);
+    }
   };
 
   const handleLogout = async () => {
@@ -50,7 +59,7 @@ export const SellerSubscriptionGate = () => {
         <Card style={styles.card}>
           <Text style={styles.title}>Subscribe to continue</Text>
           <Text style={styles.copy}>
-            {data.reminderMessage || 'Seller accounts work only after a successful subscription.'}
+            {data.reminderMessage || 'Subscribe to activate your seller account. You can use the app only after a successful subscription.'}
           </Text>
           {!!data.expiryDate && data.status === 'Expired' && (
             <Text style={styles.meta}>Expired on {data.expiryDate}</Text>
@@ -62,8 +71,20 @@ export const SellerSubscriptionGate = () => {
             <Choice label={`Yearly ${formatCurrency(moneyValue(data.yearlyAmount))}`} active={plan === 'YEARLY'} onPress={() => setPlan('YEARLY')} />
           </View>
 
-          <Text style={styles.pay}>Pay {formatCurrency(amount)} to admin with UPI / QR</Text>
-          <Button title="Pay with admin QR" onPress={handleSubscribe} />
+          <Text style={styles.pay}>Pay {formatCurrency(amount)}</Text>
+          <Button title="Pay online (Cashfree)" onPress={() => openPay('ONLINE')} />
+          <Button
+            title="Paid by hand cash — request admin"
+            variant="outline"
+            onPress={() => openPay('CASH')}
+            style={styles.secondary}
+          />
+          <Button
+            title="Pay with admin UPI / QR"
+            variant="outline"
+            onPress={() => openPay('UPI')}
+            style={styles.secondary}
+          />
           <Button title="Logout" variant="outline" onPress={handleLogout} style={styles.logout} />
         </Card>
       </View>
@@ -111,5 +132,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
   },
+  secondary: { marginTop: spacing.sm },
   logout: { marginTop: spacing.sm },
 });

@@ -157,14 +157,18 @@ export const AdminPlatformPaymentScreen = () => {
                 }}
               />
               <Button
-                title="Confirm"
+                title={String(claim.method || '').toUpperCase() === 'CASH' ? 'Cash received' : 'Confirm'}
                 size="small"
                 style={styles.actionButton}
                 disabled={confirming || rejecting}
                 onPress={async () => {
                   try {
                     await confirmClaim(claim.id).unwrap();
-                    showSuccessToast('Subscription activated');
+                    showSuccessToast(
+                      String(claim.method || '').toUpperCase() === 'CASH'
+                        ? 'Cash received — subscription activated'
+                        : 'Subscription activated'
+                    );
                     refetchClaims();
                   } catch (error: any) {
                     showErrorToast(error?.data?.message || 'Could not confirm');

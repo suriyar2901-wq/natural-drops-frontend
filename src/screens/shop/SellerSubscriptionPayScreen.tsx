@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import QRCode from 'qrcode';
+import { useRoute } from '@react-navigation/native';
 import { Button, Card, Input, Loading } from '../../components/common';
 import { colors, spacing, typography } from '../../theme';
 import {
@@ -18,17 +19,26 @@ import { openCashfreeCheckout } from '../../utils/cashfreeCheckout';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-type PayMethod = 'ONLINE' | 'UPI';
+type PayMethod = 'ONLINE' | 'UPI' | 'CASH';
+
+type RouteParams = {
+  plan?: 'MONTHLY' | 'YEARLY';
+  payMethod?: PayMethod;
+};
 
 export const SellerSubscriptionPayScreen = () => {
+  const route = useRoute<any>();
+  const params = (route.params || {}) as RouteParams;
   const { data: platform, isLoading } = useGetPlatformPaymentQuery();
   const { data: access, refetch: refetchAccess } = useGetSellerSubscriptionQuery();
   const { data: claims = [], refetch } = useGetMySubscriptionClaimsQuery();
   const [claimPayment, { isLoading: saving }] = useClaimSubscriptionPaymentMutation();
   const [createCashfreeSubscription] = useCreateCashfreeSubscriptionOrderMutation();
   const [fetchCashfreeStatus] = useLazyGetCashfreeSubscriptionStatusQuery();
-  const [plan, setPlan] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
-  const [payMethod, setPayMethod] = useState<PayMethod>('ONLINE');
+  const [plan, setPlan] = useState<'MONTHLY' | 'YEARLY'>(params.plan === 'YEARLY' ? 'YEARLY' : 'MONTHLY');
+  const [payMethod, setPayMethod] = useState<PayMethod>(
+    params.payMethod === 'UPI' || params.payMethod === 'CASH' ? params.payMethod : 'ONLINE'
+  );
   const [upiReference, setUpiReference] = useState('');
   const [generatedQr, setGeneratedQr] = useState('');
   const [openingCashfree, setOpeningCashfree] = useState(false);
@@ -38,6 +48,15 @@ export const SellerSubscriptionPayScreen = () => {
   const amount = plan === 'YEARLY' ? yearly : monthly;
   const uploadedQr = platform?.qrCodeImage && platform.qrCodeImage.startsWith('data:image') ? platform.qrCodeImage : '';
   const upiId = (platform?.upiId || '').trim();
+
+  useEffect(() => {
+    if (params.plan === 'YEARLY' || params.plan === 'MONTHLY') {
+      setPlan(params.plan);
+    }
+    if (params.payMethod === 'ONLINE' || params.payMethod === 'UPI' || params.payMethod === 'CASH') {
+      setPayMethod(params.payMethod);
+    }
+  }, [params.plan, params.payMethod]);
 
   useEffect(() => {
     if (uploadedQr || !upiId || payMethod !== 'UPI') {
@@ -90,7 +109,7 @@ export const SellerSubscriptionPayScreen = () => {
 
   const payOnline = async () => {
     if (pending) {
-      showErrorToast('A UPI payment is already waiting for admin. Finish that first, or ask admin to reject it.');
+      showErrorToast('A payment is already waiting for admin. Finish that first, or ask admin to reject it.');
       return;
     }
     setOpeningCashfree(true);
@@ -125,7 +144,7 @@ export const SellerSubscriptionPayScreen = () => {
 
       const local = String(status?.status || '').toUpperCase();
       if (local === 'FAILED' || local === 'EXPIRED' || local === 'USER_DROPPED' || local === 'CANCELLED') {
-        showErrorToast('Payment was not completed. You can try online pay again or use UPI.');
+        showErrorToast('Payment was not completed. You can try online pay again or use UPI / cash.');
         return;
       }
 
@@ -140,26 +159,30 @@ export const SellerSubscriptionPayScreen = () => {
     }
   };
 
-  const saveUpiClaim = async () => {
+  const saveClaim = async (method: 'UPI' | 'CASH') => {
     if (pending) {
       showErrorToast('A payment is already waiting for admin confirmation');
       return;
     }
-    if (!upiId && !uploadedQr) {
+    if (method === 'UPI' && !upiId && !uploadedQr) {
       showErrorToast('Admin has not added a UPI ID or QR yet');
       return;
     }
     try {
       await claimPayment({
         plan,
-        method: 'UPI',
-        upiReference: upiReference.trim() || undefined,
+        method,
+        upiReference: method === 'UPI' ? (upiReference.trim() || undefined) : undefined,
       }).unwrap();
-      showSuccessToast('Payment sent. Admin will confirm after checking UPI.');
+      showSuccessToast(
+        method === 'CASH'
+          ? 'Cash request sent. Admin will mark cash received after collecting payment.'
+          : 'Payment sent. Admin will confirm after checking UPI.'
+      );
       setUpiReference('');
-      refetch();
+      await Promise.all([refetch(), refetchAccess()]);
     } catch (error: any) {
-      showErrorToast(error?.data?.message || 'Could not submit payment');
+      showErrorToast(error?.data?.message || 'Could not submit payment request');
     }
   };
 
@@ -181,9 +204,12 @@ export const SellerSubscriptionPayScreen = () => {
         </View>
 
         <Text style={styles.sectionLabel}>Payment method</Text>
-        <View style={styles.row}>
+        <View style={styles.rowWrap}>
           <TouchableOpacity style={[styles.chip, payMethod === 'ONLINE' && styles.chipActive]} onPress={() => setPayMethod('ONLINE')}>
             <Text style={[styles.chipText, payMethod === 'ONLINE' && styles.chipTextActive]}>Online (Cashfree)</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.chip, payMethod === 'CASH' && styles.chipActive]} onPress={() => setPayMethod('CASH')}>
+            <Text style={[styles.chipText, payMethod === 'CASH' && styles.chipTextActive]}>Hand cash</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.chip, payMethod === 'UPI' && styles.chipActive]} onPress={() => setPayMethod('UPI')}>
             <Text style={[styles.chipText, payMethod === 'UPI' && styles.chipTextActive]}>UPI to admin</Text>
@@ -203,7 +229,23 @@ export const SellerSubscriptionPayScreen = () => {
               disabled={openingCashfree || !!pending}
             />
             {!!pending && (
-              <Text style={styles.warn}>A UPI claim is waiting for admin. Online pay is blocked until that is cleared.</Text>
+              <Text style={styles.warn}>A claim is waiting for admin. Online pay is blocked until that is cleared.</Text>
+            )}
+          </>
+        ) : payMethod === 'CASH' ? (
+          <>
+            <Text style={styles.meta}>
+              Give cash to the admin by hand, then send a request. Admin marks &quot;Cash received&quot; to activate your subscription and remove the subscribe popup.
+            </Text>
+            <Button
+              title={saving ? 'Sending…' : pending ? 'Waiting for admin' : 'Request admin — I paid by cash'}
+              onPress={() => saveClaim('CASH')}
+              disabled={saving || !!pending}
+            />
+            {!!pending && (
+              <Text style={styles.warn}>
+                Waiting for admin. Once they mark cash received, this popup clears and you can use the seller app normally.
+              </Text>
             )}
           </>
         ) : (
@@ -224,7 +266,7 @@ export const SellerSubscriptionPayScreen = () => {
             />
             <Button
               title={saving ? 'Submitting…' : pending ? 'Waiting for admin' : 'I paid this amount'}
-              onPress={saveUpiClaim}
+              onPress={() => saveClaim('UPI')}
               disabled={saving || !!pending}
             />
           </>
@@ -237,9 +279,12 @@ export const SellerSubscriptionPayScreen = () => {
       ) : (
         claims.slice(0, 8).map((claim) => (
           <Card key={claim.id} style={styles.claimCard}>
-            <Text style={styles.claimTitle}>{claim.plan} · {formatCurrency(Number(claim.amount))} · {claim.status}</Text>
+            <Text style={styles.claimTitle}>
+              {claim.plan} · {formatCurrency(Number(claim.amount))} · {claim.method || 'UPI'} · {claim.status}
+            </Text>
             <Text style={styles.meta}>{claim.createdAt ? formatDateTime(claim.createdAt) : ''}</Text>
             {!!claim.upiReference && <Text style={styles.meta}>Ref {claim.upiReference}</Text>}
+            {!!claim.note && <Text style={styles.meta}>{claim.note}</Text>}
           </Card>
         ))
       )}
@@ -255,7 +300,8 @@ const styles = StyleSheet.create({
   meta: { color: colors.textSecondary, marginTop: 4, marginBottom: 4 },
   warn: { color: colors.warning, marginTop: spacing.sm },
   row: { flexDirection: 'row', gap: spacing.sm, marginVertical: spacing.sm },
-  chip: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: spacing.sm, alignItems: 'center' },
+  rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginVertical: spacing.sm },
+  chip: { flexGrow: 1, minWidth: '30%', borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: spacing.sm, alignItems: 'center' },
   chipActive: { borderColor: colors.primary, backgroundColor: '#E3F2FD' },
   chipText: { color: colors.textSecondary, textAlign: 'center' },
   chipTextActive: { color: colors.primary, fontWeight: typography.fontWeight.semibold },
