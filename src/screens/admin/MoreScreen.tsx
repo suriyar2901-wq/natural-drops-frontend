@@ -39,7 +39,7 @@ export const MoreScreen = ({ navigation }: any) => {
   if (isSeller()) {
     actions.push(
       { label: 'Profile', icon: 'person-outline', onPress: () => navigation.navigate('Profile') },
-      { label: 'Pay subscription', icon: 'card-outline', onPress: () => openParent('SellerSubscriptionPay') },
+      { label: 'Subscription', icon: 'card-outline', onPress: () => openParent('SellerSubscriptionPay') },
       { label: 'Buyer bill payments', icon: 'cash-outline', onPress: () => openParent('SellerBillClaims') },
       { label: 'Water can management', icon: 'water-outline', onPress: () => openParent('IssuedCans') },
       { label: 'Daily can collection', icon: 'calendar-outline', onPress: () => openParent('CanCollectionReport') },
