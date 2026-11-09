@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
@@ -15,20 +15,23 @@ export const SellerSubscriptionGate = () => {
   const { isSeller, isAuthenticated, logout } = useAuth();
   const navigation = useNavigation<any>();
   const sellerAuthed = isAuthenticated && isSeller();
-  const { data, isLoading } = useGetSellerSubscriptionQuery(undefined, {
+  const { data, isLoading, refetch } = useGetSellerSubscriptionQuery(undefined, {
     skip: !sellerAuthed,
     refetchOnMountOrArgChange: true,
-    // While blocked, poll so admin "Cash received" / Cashfree activation clears this popup.
-    pollingInterval: sellerAuthed && data && !data.canWork ? 8000 : 0,
   });
   const [plan, setPlan] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
+  const blocked = !!(sellerAuthed && !isLoading && data && !data.canWork);
 
-  if (!sellerAuthed) {
-    return null;
-  }
+  // While blocked, poll so admin "Cash received" / Cashfree activation clears this popup.
+  useEffect(() => {
+    if (!blocked) return undefined;
+    const timer = setInterval(() => {
+      refetch();
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [blocked, refetch]);
 
-  const blocked = !isLoading && data && !data.canWork;
-  if (!blocked) {
+  if (!sellerAuthed || !blocked || !data) {
     return null;
   }
 
