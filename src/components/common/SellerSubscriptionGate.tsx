@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useNavigationState } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import { Button } from './Button';
 import { Card } from './Card';
@@ -11,9 +11,21 @@ import { formatCurrency } from '../../utils/formatters';
 import { moneyValue } from '../../types/shop.types';
 import { navigationRef } from '../../navigation/navigationRef';
 
+/** Hide gate while seller is on the pay / waiting screen so Cashfree modal can open. */
+const isOnSubscriptionPayRoute = (routeName?: string | null) =>
+  routeName === 'SellerSubscriptionPay';
+
 export const SellerSubscriptionGate = () => {
   const { isSeller, isAuthenticated, logout } = useAuth();
   const navigation = useNavigation<any>();
+  const currentRouteName = useNavigationState((state) => {
+    if (!state) return null;
+    let route: any = state.routes[state.index];
+    while (route?.state?.index != null && route.state.routes) {
+      route = route.state.routes[route.state.index];
+    }
+    return route?.name as string | undefined;
+  });
   const sellerAuthed = isAuthenticated && isSeller();
   const { data, isLoading, refetch } = useGetSellerSubscriptionQuery(undefined, {
     skip: !sellerAuthed,
@@ -21,8 +33,8 @@ export const SellerSubscriptionGate = () => {
   });
   const [plan, setPlan] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
   const blocked = !!(sellerAuthed && !isLoading && data && !data.canWork);
+  const onPayScreen = isOnSubscriptionPayRoute(currentRouteName);
 
-  // While blocked, poll so admin "Cash received" / Cashfree activation clears this popup.
   useEffect(() => {
     if (!blocked) return undefined;
     const timer = setInterval(() => {
@@ -31,15 +43,16 @@ export const SellerSubscriptionGate = () => {
     return () => clearInterval(timer);
   }, [blocked, refetch]);
 
-  if (!sellerAuthed || !blocked || !data) {
+  // Pay screen owns the flow (Cashfree / waiting). Keep gate hidden so gateway is not covered.
+  if (!sellerAuthed || !blocked || !data || onPayScreen) {
     return null;
   }
 
   const amount = plan === 'YEARLY' ? moneyValue(data.yearlyAmount) : moneyValue(data.monthlyAmount);
 
-  const openPay = (payMethod: 'ONLINE' | 'UPI' | 'CASH') => {
+  const openPay = (payMethod: 'ONLINE' | 'CASH') => {
+    const params = { plan, payMethod, autoStart: true };
     const parent = navigation.getParent();
-    const params = { plan, payMethod };
     if (parent) {
       parent.navigate('SellerSubscriptionPay', params);
     } else {
@@ -80,12 +93,6 @@ export const SellerSubscriptionGate = () => {
             title="Paid by hand cash — request admin"
             variant="outline"
             onPress={() => openPay('CASH')}
-            style={styles.secondary}
-          />
-          <Button
-            title="Pay with admin UPI / QR"
-            variant="outline"
-            onPress={() => openPay('UPI')}
             style={styles.secondary}
           />
           <Button title="Logout" variant="outline" onPress={handleLogout} style={styles.logout} />
