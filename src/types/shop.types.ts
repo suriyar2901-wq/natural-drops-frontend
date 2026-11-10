@@ -178,3 +178,24 @@ export const orderBillPending = (order: {
   if (order.paymentStatus === 'PARTIALLY_PAID') return Math.max(0, total - paid);
   return total;
 };
+
+/** Amount already paid on the bill (Pay Now / partial / full). */
+export const orderBillPaid = (order: {
+  paymentStatus?: string | null;
+  total?: number | string | null;
+  finalBillAmount?: number | string | null;
+}) => {
+  const total = moneyValue(order.total);
+  if (order.paymentStatus === 'PAID') return total;
+  if (order.paymentStatus === 'PARTIALLY_PAID') {
+    return Math.min(total, Math.max(0, moneyValue(order.finalBillAmount)));
+  }
+  return 0;
+};
+
+export const orderPaymentStatusLabel = (paymentStatus?: string | null) => {
+  if (paymentStatus === 'PAID') return 'Fully paid';
+  if (paymentStatus === 'PARTIALLY_PAID') return 'Partially paid';
+  if (paymentStatus === 'UNPAID') return 'Unpaid';
+  return 'Unpaid';
+};

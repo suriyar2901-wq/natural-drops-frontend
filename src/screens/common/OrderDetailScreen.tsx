@@ -14,7 +14,7 @@ import {
 } from '../../store/api/orderApi';
 import { MenuItem, Order, OrderStatus } from '../../types';
 import { canEditOrderBill, formatCurrency, formatDateTime, formatOrderStatus } from '../../utils/formatters';
-import { orderBillPending } from '../../types/shop.types';
+import { orderBillPaid, orderBillPending, orderPaymentStatusLabel } from '../../types/shop.types';
 import { DeliverySlotBadge } from '../../components/common/DeliverySlotBadge';
 import { useAuth } from '../../hooks';
 import { storageService } from '../../services/storage.service';
@@ -41,7 +41,8 @@ export const OrderDetailScreen = () => {
   const [billModalVisible, setBillModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [sellerName, setSellerName] = useState('seller');
-  const { isAdmin, isBuyer } = useAuth();
+  const { isAdmin, isBuyer, isSeller } = useAuth();
+  const isStaff = () => isAdmin() || isSeller();
   const [downloadingBill, setDownloadingBill] = useState(false);
   const { data: menuItems, isLoading } = useGetMenuItemsQuery();
   const [updateOrderBill, { isLoading: updatingBill }] = useUpdateOrderBillMutation();
@@ -68,12 +69,14 @@ export const OrderDetailScreen = () => {
     loadSellerName();
   }, []);
 
-  const canEditBill = !!order && isAdmin() && canEditOrderBill(order);
+  const canEditBill = !!order && isStaff() && canEditOrderBill(order);
   const status = String(order?.status || '').toLowerCase();
   const isPending = status === OrderStatus.PENDING;
   const isConfirmed = status === OrderStatus.CONFIRMED || status === OrderStatus.PROCESSING;
   const acting = confirming || canceling || delivering || updatingOrder;
-  const canEditOrder = isAdmin() && (isPending || isConfirmed);
+  const canEditOrder = isStaff() && (isPending || isConfirmed);
+  const paidAmount = order ? orderBillPaid(order) : 0;
+  const balanceAmount = order ? orderBillPending(order) : 0;
 
   const downloadBill = async () => {
     if (!order || !isBuyer()) return;
@@ -152,15 +155,29 @@ export const OrderDetailScreen = () => {
 
   const handleCancel = () => {
     if (!order || acting) return;
-    showConfirmAlert('Cancel Order', 'Are you sure you want to cancel this order?', async () => {
-      try {
-        const updated = await cancelOrder({ id: order.id, data: { canceledBy: sellerName, reason: 'Canceled from order details' } }).unwrap();
-        applyUpdatedOrder(updated, OrderStatus.CANCELED);
-        showSuccessAlert('Order canceled.');
-      } catch (e: any) {
-        showErrorAlert(e?.data?.message || e?.message || 'Failed to cancel order');
+    const paid = orderBillPaid(order);
+    showConfirmAlert(
+      'Cancel Order',
+      paid > 0
+        ? `Buyer has paid ${formatCurrency(paid)}. Canceling refunds Cashfree online payments automatically. Continue?`
+        : 'Are you sure you want to cancel this order?',
+      async () => {
+        try {
+          const updated = await cancelOrder({
+            id: order.id,
+            data: { canceledBy: sellerName, reason: 'Canceled from order details' },
+          }).unwrap();
+          applyUpdatedOrder(updated, OrderStatus.CANCELED);
+          showSuccessAlert(
+            paid > 0
+              ? 'Order canceled. Online Cashfree payment refund initiated.'
+              : 'Order canceled.'
+          );
+        } catch (e: any) {
+          showErrorAlert(e?.data?.message || e?.message || 'Failed to cancel order');
+        }
       }
-    });
+    );
   };
 
   const handleDeliver = () => {
@@ -254,41 +271,47 @@ export const OrderDetailScreen = () => {
         {!!order.buyerPhone && <Text style={styles.muted}>{order.buyerPhone}</Text>}
         <Text style={styles.sectionLabel}>Delivery Address</Text>
         <Text style={styles.text}>{order.deliveryAddress || order.buyerAddress || 'Not specified'}</Text>
-        <Text style={styles.sectionLabel}>Bill total</Text>
+        <Text style={styles.sectionLabel}>Order total</Text>
         <Text style={styles.total}>{formatCurrency(order.total || (order as any).totalAmount || 0)}</Text>
         <Text style={styles.originalAmount}>
-          Paid {formatCurrency(Math.max(0, (Number(order.total) || 0) - orderBillPending(order)))}
+          Paid {formatCurrency(paidAmount)}
           {' · '}
-          Balance {formatCurrency(orderBillPending(order))}
+          Balance {formatCurrency(balanceAmount)}
         </Text>
         <DeliverySlotBadge order={order} />
         
-        {order.paymentStatus && (
-          <View style={[
-            styles.paymentStatusBadge,
-            order.paymentStatus === 'PAID' && styles.paymentStatusPaid,
-            order.paymentStatus === 'UNPAID' && styles.paymentStatusUnpaid,
-            order.paymentStatus === 'PARTIALLY_PAID' && styles.paymentStatusPartial,
-          ]}>
-            <Text style={styles.paymentStatusText}>
-              {order.paymentStatus === 'PAID' ? 'PAID' : 
-               order.paymentStatus === 'UNPAID' ? 'UNPAID' : 
-               'PARTIALLY PAID'}
-            </Text>
-          </View>
-        )}
+        <View style={[
+          styles.paymentStatusBadge,
+          order.paymentStatus === 'PAID' && styles.paymentStatusPaid,
+          order.paymentStatus === 'PARTIALLY_PAID' && styles.paymentStatusPartial,
+          (order.paymentStatus === 'UNPAID' || !order.paymentStatus) && styles.paymentStatusUnpaid,
+        ]}>
+          <Text style={styles.paymentStatusText}>
+            {orderPaymentStatusLabel(order.paymentStatus)}
+          </Text>
+        </View>
         
-        {(order.paymentStatus === 'UNPAID' || order.paymentStatus === 'PARTIALLY_PAID') && (
+        {isBuyer() && (order.paymentStatus === 'UNPAID' || order.paymentStatus === 'PARTIALLY_PAID' || !order.paymentStatus) && (
           <View style={styles.paymentPendingContainer}>
             <Text style={styles.paymentPendingText}>
-              Payment pending. Please contact seller or support.
+              {balanceAmount > 0
+                ? `Balance ${formatCurrency(balanceAmount)} still due. Pay from My Payments or contact the seller.`
+                : 'Payment pending. Please contact seller or support.'}
             </Text>
           </View>
         )}
 
-        {isAdmin() && order.paymentStatus === 'PAID' && (
+        {isStaff() && order.paymentStatus === 'PAID' && (
           <View style={styles.lockedBanner}>
             <Text style={styles.lockedText}>This bill is fully paid and cannot be edited.</Text>
+          </View>
+        )}
+
+        {isStaff() && order.paymentStatus === 'PARTIALLY_PAID' && (
+          <View style={styles.paymentPendingContainer}>
+            <Text style={styles.paymentPendingText}>
+              Buyer paid {formatCurrency(paidAmount)} online/confirmed. Balance to collect: {formatCurrency(balanceAmount)}.
+            </Text>
           </View>
         )}
         
@@ -309,7 +332,7 @@ export const OrderDetailScreen = () => {
             )}
           </View>
         )}
-        {isAdmin() && (isPending || isConfirmed || canEditBill) && (
+        {isStaff() && (isPending || isConfirmed || canEditBill) && (
           <View style={styles.buttonRow}>
             {canEditBill && (
               <TouchableOpacity style={[styles.actionButton, styles.billButton]} onPress={() => setBillModalVisible(true)} disabled={acting}>

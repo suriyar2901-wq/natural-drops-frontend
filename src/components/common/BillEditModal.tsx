@@ -3,8 +3,9 @@ import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, ScrollView,
 import { colors, typography, spacing } from '../../theme';
 import { Button } from './Button';
 import { Input } from './Input';
-import { Order, PaymentStatus } from '../../types';
+import { Order } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
+import { orderBillPaid, orderBillPending, orderPaymentStatusLabel } from '../../types/shop.types';
 import { DeliverySlotBadge } from './DeliverySlotBadge';
 
 interface BillEditModalProps {
@@ -55,6 +56,8 @@ export const BillEditModal: React.FC<BillEditModalProps> = ({
 
   const isPaid = order.paymentStatus === 'PAID';
   const isPartial = order.paymentStatus === 'PARTIALLY_PAID';
+  const alreadyPaid = orderBillPaid(order);
+  const balanceDue = orderBillPending(order);
   const amount = parseFloat(finalBillAmount) || 0;
   const isValid = !isNaN(amount) && amount > 0 && amount <= order.total && !isPaid;
 
@@ -86,7 +89,7 @@ export const BillEditModal: React.FC<BillEditModalProps> = ({
             {isPartial && (
               <View style={styles.infoBanner}>
                 <Text style={styles.infoText}>
-                  This bill is partially paid. Saving will send a message to the buyer. Once the amount matches the original total, the bill becomes fully paid and cannot be edited again.
+                  Buyer already paid {formatCurrency(alreadyPaid)} (online / confirmed). Balance due {formatCurrency(balanceDue)}. Saving bill changes notifies the buyer.
                 </Text>
               </View>
             )}
@@ -101,8 +104,23 @@ export const BillEditModal: React.FC<BillEditModalProps> = ({
             </View>
 
             <View style={styles.orderInfo}>
-              <Text style={styles.label}>Original Order Amount</Text>
+              <Text style={styles.label}>Order total</Text>
               <Text style={styles.originalAmount}>{formatCurrency(order.total)}</Text>
+            </View>
+
+            <View style={styles.orderInfo}>
+              <Text style={styles.label}>Already paid</Text>
+              <Text style={styles.value}>{formatCurrency(alreadyPaid)}</Text>
+            </View>
+
+            <View style={styles.orderInfo}>
+              <Text style={styles.label}>Balance due</Text>
+              <Text style={styles.value}>{formatCurrency(balanceDue)}</Text>
+            </View>
+
+            <View style={styles.orderInfo}>
+              <Text style={styles.label}>Payment status</Text>
+              <Text style={styles.value}>{orderPaymentStatusLabel(order.paymentStatus)}</Text>
             </View>
 
             <View style={styles.inputContainer}>
