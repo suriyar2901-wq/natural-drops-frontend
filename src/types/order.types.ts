@@ -32,6 +32,9 @@ export enum PaymentStatus {
   PARTIALLY_PAID = 'PARTIALLY_PAID',
 }
 
+/** Dual-payment checkout timing. Historical orders may be null. */
+export type PaymentTiming = 'PAY_NOW' | 'PAY_AFTER_DELIVERY';
+
 export interface Order {
   id: number;
   buyerId: number;
@@ -56,6 +59,8 @@ export interface Order {
   deliveryStartTimestamp?: number; // Epoch timestamp (seconds) when countdown started
   finalBillAmount?: number; // Final bill amount (can differ from total)
   paymentStatus?: PaymentStatus; // Payment status: PAID, UNPAID, PARTIALLY_PAID
+  /** Null/undefined on older orders — treat as PAY_AFTER_DELIVERY. */
+  paymentTiming?: PaymentTiming | null;
   billedBy?: string; // Username of seller who created/updated the bill
   billedAt?: string; // Timestamp when bill was created or last updated
   billingNotes?: string; // Optional notes about the billing
@@ -76,6 +81,8 @@ export interface CreateOrderRequest {
   total: number;
   scheduledDeliveryDate?: string;
   deliveryTime?: string;
+  /** Dual payment: PAY_NOW | PAY_AFTER_DELIVERY */
+  paymentTiming?: PaymentTiming;
   items: {
     menuItemId: number;
     itemName: string;

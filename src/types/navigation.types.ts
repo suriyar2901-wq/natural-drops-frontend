@@ -18,6 +18,14 @@ export type BuyerStackParamList = {
   ProductDetail: { product: MenuItem };
   Cart: undefined;
   Checkout: undefined;
+  CheckoutPaymentResult: {
+    orderId: number;
+    orderTotal?: number | string;
+    autoStart?: boolean;
+    outcome?: 'initiating' | 'success' | 'failed' | 'pending' | 'idle';
+    message?: string;
+    cfOrderId?: string;
+  };
   Orders: undefined;
   OrderDetail: { order: Order };
   Profile: undefined;

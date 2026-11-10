@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { colors, typography, spacing } from '../../theme';
 import { Card, Button, DeliverySlotFields } from '../../components/common';
@@ -9,9 +9,11 @@ import { useGetBuyerAccountSummaryQuery } from '../../store/api/buyerAccountApi'
 import { useGetPricingFeesQuery } from '../../store/api/settingsApi';
 import { formatClockAmPm, formatCurrency } from '../../utils/formatters';
 import { shopAvailability } from '../../utils/shopHours';
-import { CartItem, CreateOrderRequest } from '../../types';
+import { CartItem, CreateOrderRequest, PaymentTiming } from '../../types';
 import { useDispatch } from 'react-redux';
 import { calculateTotals } from '../../store/slices/cartSlice';
+
+type PaymentTimingChoice = PaymentTiming;
 
 const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -90,6 +92,13 @@ export const CartScreen = ({ navigation, route }: any) => {
   const [deliveryTime, setDeliveryTime] = useState('10:00');
   const [orderKind, setOrderKind] = useState<'normal' | 'regular'>(route?.params?.orderKind === 'regular' ? 'regular' : 'normal');
   const [weekDays, setWeekDays] = useState<number[]>([]);
+  /** Default Pay After Delivery for backward-compatible checkout. */
+  const [paymentTiming, setPaymentTiming] = useState<PaymentTimingChoice>('PAY_AFTER_DELIVERY');
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  /** After a successful place-order, skip empty-cart bounce to Shop. */
+  const skipEmptyCartRedirect = useRef(false);
+  /** Prevents creating a second order for the same Pay Now checkout attempt. */
+  const payNowOrderIdRef = useRef<number | null>(null);
 
   // Apply admin tax/platform fee + seller per-km delivery into the cart
   useEffect(() => {
@@ -203,6 +212,18 @@ export const CartScreen = ({ navigation, route }: any) => {
   const today = toDeliveryYmd(0);
   const scheduledDate = deliveryDateFor(deliveryChoice, customDate);
 
+  const navigateToOrderDetail = (order: { id: number } & Record<string, unknown>) => {
+    try {
+      navigation.navigate('OrderDetail', { order });
+      return;
+    } catch {}
+    try {
+      navigation.navigate('BuyerApp', { screen: 'Orders' });
+      return;
+    } catch {}
+    navigateToShop();
+  };
+
   const handleCheckout = () => {
     if (items.length === 0) {
       Alert.alert('Empty Cart', 'Please add items to cart before checkout');
@@ -211,6 +232,10 @@ export const CartScreen = ({ navigation, route }: any) => {
 
     if (!user) {
       Alert.alert('Not Logged In', 'Please login to place an order');
+      return;
+    }
+
+    if (isLoading || savingRegular || submittingOrder) {
       return;
     }
 
@@ -251,15 +276,11 @@ export const CartScreen = ({ navigation, route }: any) => {
   };
 
   const proceedWithOrder = async (address: string, latitude?: number, longitude?: number) => {
+    if (submittingOrder || isLoading || savingRegular) {
+      return;
+    }
+    setSubmittingOrder(true);
     try {
-      console.log('🛒 Starting checkout process...');
-      console.log('📦 Cart items:', items);
-      console.log('💰 Cart total:', total);
-      console.log('💰 Cart subtotal:', subtotal);
-      console.log('💰 Cart tax:', tax);
-      console.log('💰 Cart deliveryCharge:', deliveryCharge);
-      console.log('👤 User:', user);
-
       if (!user) {
         Alert.alert('Not Logged In', 'Please login to place an order');
         return;
@@ -339,6 +360,21 @@ export const CartScreen = ({ navigation, route }: any) => {
         ? longitude
         : undefined;
 
+      const selectedTiming: PaymentTiming =
+        paymentTiming === 'PAY_NOW' ? 'PAY_NOW' : 'PAY_AFTER_DELIVERY';
+
+      // Pay Now retry after order already created for this attempt — do not create another order.
+      if (selectedTiming === 'PAY_NOW' && payNowOrderIdRef.current) {
+        skipEmptyCartRedirect.current = true;
+        clearCart();
+        navigation.navigate('CheckoutPaymentResult', {
+          orderId: payNowOrderIdRef.current,
+          orderTotal: finalTotal,
+          autoStart: true,
+        });
+        return;
+      }
+
       const orderData: CreateOrderRequest = {
         buyerId: user.id,
         buyerName: user.username || 'Unknown',
@@ -350,34 +386,42 @@ export const CartScreen = ({ navigation, route }: any) => {
         total: finalTotal,
         scheduledDeliveryDate: scheduledDate,
         deliveryTime,
+        paymentTiming: selectedTiming,
         items: orderItems,
       };
 
-      console.log('📤 Order data to send:', JSON.stringify(orderData, null, 2));
-      console.log('✅ Final total value:', finalTotal, 'Type:', typeof finalTotal);
-
       const order = await createOrder(orderData).unwrap();
-      console.log('✅ Order created successfully:', order);
-      
+
+      skipEmptyCartRedirect.current = true;
       clearCart();
-      
-      // Redirect to Shop immediately after checkout (no "Browse Products" empty state)
-      navigateToShop();
+
+      if (selectedTiming === 'PAY_NOW') {
+        payNowOrderIdRef.current = order.id;
+        navigation.navigate('CheckoutPaymentResult', {
+          orderId: order.id,
+          orderTotal: order.total ?? finalTotal,
+          autoStart: true,
+        });
+        return;
+      }
+
+      payNowOrderIdRef.current = null;
       const hours = shopAvailability(account?.shopOpenTime, account?.shopCloseTime, account?.shopOpenDays, account?.shopLeaveDates);
       const placed = hours.openNow
         ? `Your order #${order.id} has been placed successfully!`
         : `Your order #${order.id} is received. The shop is closed now and opens next ${hours.nextLabel}. The seller has the order and will take it when the shop opens.`;
       Alert.alert(
         'Order Placed',
-        `${placed}\n\nDelivery: ${scheduledDate.split('-').reverse().join('/')} at ${formatClockAmPm(deliveryTime)}\nTotal: ${formatCurrency(total)}`
+        `${placed}\n\nPayment: After delivery / billing\nDelivery: ${scheduledDate.split('-').reverse().join('/')} at ${formatClockAmPm(deliveryTime)}\nTotal: ${formatCurrency(order.total ?? total)}`
       );
+      navigateToOrderDetail(order as any);
     } catch (error: any) {
-      console.error('❌ Order creation failed:', error);
-      console.error('❌ Error details:', JSON.stringify(error, null, 2));
       Alert.alert(
         'Order Failed',
         error?.data?.message || error?.message || 'Failed to place order. Please try again.'
       );
+    } finally {
+      setSubmittingOrder(false);
     }
   };
 
@@ -451,10 +495,13 @@ export const CartScreen = ({ navigation, route }: any) => {
     </Card>
   );
 
-  // If cart is empty, auto-redirect to Shop page
+  // If cart is empty, auto-redirect to Shop page (unless we just placed an order)
   useEffect(() => {
     if (items.length === 0) {
-      // Auto-bounce back to Shop if user reaches an empty Cart screen
+      if (skipEmptyCartRedirect.current) {
+        skipEmptyCartRedirect.current = false;
+        return;
+      }
       navigateToShop();
     }
   }, [items.length, navigation]);
@@ -463,6 +510,16 @@ export const CartScreen = ({ navigation, route }: any) => {
     // Avoid showing a flash of "redirecting" UI; navigation happens in the effect above.
     return null;
   }
+
+  const payNowSelected = orderKind === 'normal' && paymentTiming === 'PAY_NOW';
+  const checkoutBusy = isLoading || savingRegular || submittingOrder;
+  const checkoutDisabled = checkoutBusy;
+  const checkoutTitle =
+    orderKind === 'regular'
+      ? `Save regular order (${formatCurrency(total)})`
+      : payNowSelected
+        ? `Pay now (${formatCurrency(total)})`
+        : `Place order (${formatCurrency(total)})`;
 
   return (
     <View style={styles.container}>
@@ -588,6 +645,52 @@ export const CartScreen = ({ navigation, route }: any) => {
                   : 'Seller and you get an alert one day before.'}
               </Text>
             </Card>
+            {orderKind === 'normal' ? (
+              <Card style={styles.paymentCard}>
+                <Text style={styles.deliveryTitle}>How would you like to pay?</Text>
+                <TouchableOpacity
+                  style={[styles.paymentOption, paymentTiming === 'PAY_AFTER_DELIVERY' && styles.paymentOptionActive]}
+                  onPress={() => setPaymentTiming('PAY_AFTER_DELIVERY')}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: paymentTiming === 'PAY_AFTER_DELIVERY' }}
+                >
+                  <View style={styles.paymentOptionHeader}>
+                    <View style={[styles.radioOuter, paymentTiming === 'PAY_AFTER_DELIVERY' && styles.radioOuterActive]}>
+                      {paymentTiming === 'PAY_AFTER_DELIVERY' ? <View style={styles.radioInner} /> : null}
+                    </View>
+                    <Text style={[styles.paymentOptionTitle, paymentTiming === 'PAY_AFTER_DELIVERY' && styles.paymentOptionTitleActive]}>
+                      Pay After Delivery
+                    </Text>
+                  </View>
+                  <Text style={styles.paymentOptionDesc}>
+                    Place your order now and pay after receiving your delivery / final bill. Cash, UPI, or online later.
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.paymentOption, paymentTiming === 'PAY_NOW' && styles.paymentOptionActive]}
+                  onPress={() => setPaymentTiming('PAY_NOW')}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: paymentTiming === 'PAY_NOW' }}
+                >
+                  <View style={styles.paymentOptionHeader}>
+                    <View style={[styles.radioOuter, paymentTiming === 'PAY_NOW' && styles.radioOuterActive]}>
+                      {paymentTiming === 'PAY_NOW' ? <View style={styles.radioInner} /> : null}
+                    </View>
+                    <Text style={[styles.paymentOptionTitle, paymentTiming === 'PAY_NOW' && styles.paymentOptionTitleActive]}>
+                      Pay Now
+                    </Text>
+                  </View>
+                  <Text style={styles.paymentOptionDesc}>
+                    Pay securely now with Cashfree (UPI / cards available in Cashfree checkout). Your order stays unpaid until payment is verified.
+                  </Text>
+                  {paymentTiming === 'PAY_NOW' ? (
+                    <Text style={styles.paymentSoonNote}>
+                      After you place the order, Cashfree checkout opens. Success is shown only after server verification.
+                    </Text>
+                  ) : null}
+                </TouchableOpacity>
+              </Card>
+            ) : null}
           </View>
         }
       />
@@ -598,11 +701,13 @@ export const CartScreen = ({ navigation, route }: any) => {
           onPress={handleClearCart}
           variant="outline"
           style={styles.clearButton}
+          disabled={checkoutBusy}
         />
         <Button
-          title={orderKind === 'regular' ? `Save regular order (${formatCurrency(total)})` : `Checkout (${formatCurrency(total)})`}
+          title={checkoutTitle}
           onPress={handleCheckout}
-          loading={isLoading || savingRegular}
+          loading={checkoutBusy}
+          disabled={checkoutDisabled}
           style={styles.checkoutButton}
         />
       </View>
@@ -769,6 +874,72 @@ const styles = StyleSheet.create({
   },
   locationSection: {
     marginBottom: spacing.md,
+  },
+  paymentCard: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    alignSelf: 'stretch',
+  },
+  paymentOption: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: spacing.md,
+    backgroundColor: colors.white,
+    marginBottom: spacing.sm,
+  },
+  paymentOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.blue50 || colors.secondaryLight || colors.white,
+    borderWidth: 2,
+  },
+  paymentOptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  radioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  radioOuterActive: {
+    borderColor: colors.primary,
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  paymentOptionTitle: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.textPrimary,
+  },
+  paymentOptionTitleActive: {
+    color: colors.primary,
+  },
+  paymentOptionDesc: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginLeft: 28,
+  },
+  paymentSoonNote: {
+    marginTop: spacing.sm,
+    marginLeft: 28,
+    fontSize: typography.fontSize.sm,
+    color: colors.warning,
+    fontWeight: typography.fontWeight.medium,
   },
 });
 

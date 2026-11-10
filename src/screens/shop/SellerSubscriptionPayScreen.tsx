@@ -19,8 +19,12 @@ import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { moneyValue } from '../../types/shop.types';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
 import { openCashfreeCheckout } from '../../utils/cashfreeCheckout';
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+import {
+  clearCashfreeReturnQuery,
+  pollCashfreeFast,
+  readCashfreeReturnOrderId,
+  rememberCashfreeOrder,
+} from '../../utils/cashfreeReturn';
 
 type PayMethod = 'ONLINE' | 'CASH';
 
@@ -28,6 +32,7 @@ type RouteParams = {
   plan?: 'MONTHLY' | 'YEARLY';
   payMethod?: PayMethod | 'UPI';
   autoStart?: boolean;
+  cf_order?: string;
 };
 
 const formatDateOnly = (value?: string | null) => {
@@ -47,14 +52,9 @@ export const SellerSubscriptionPayScreen = () => {
   const needsActivation = !!params.autoStart;
 
   const { data: platform, isLoading: platformLoading } = useGetPlatformPaymentQuery();
-  const { data: access, isLoading: accessLoading, refetch: refetchAccess } = useGetSellerSubscriptionQuery(
-    undefined,
-    { pollingInterval: needsActivation || !access?.canWork ? 8000 : 0 }
-  );
+  const { data: access, isLoading: accessLoading, refetch: refetchAccess } = useGetSellerSubscriptionQuery();
   const { data: history = [], refetch: refetchHistory } = useGetMySubscriptionPaymentsQuery();
-  const { data: claims = [], refetch: refetchClaims } = useGetMySubscriptionClaimsQuery(undefined, {
-    pollingInterval: 8000,
-  });
+  const { data: claims = [], refetch: refetchClaims } = useGetMySubscriptionClaimsQuery();
   const [claimPayment, { isLoading: saving }] = useClaimSubscriptionPaymentMutation();
   const [createCashfreeSubscription] = useCreateCashfreeSubscriptionOrderMutation();
   const [fetchCashfreeStatus] = useLazyGetCashfreeSubscriptionStatusQuery();
@@ -64,7 +64,9 @@ export const SellerSubscriptionPayScreen = () => {
   const [openingCashfree, setOpeningCashfree] = useState(false);
   const [cashRequested, setCashRequested] = useState(false);
   const [showRenewForm, setShowRenewForm] = useState(!!params.autoStart);
+  const [verifyingReturn, setVerifyingReturn] = useState(false);
   const autoStartedRef = useRef(false);
+  const returnHandledRef = useRef(false);
 
   const monthly = Number(platform?.planMonthlyAmount || access?.monthlyAmount || 499);
   const yearly = Number(platform?.planYearlyAmount || access?.yearlyAmount || 5389.2);
@@ -73,6 +75,18 @@ export const SellerSubscriptionPayScreen = () => {
   const waitingForAdmin = !!(pending || cashRequested);
   const active = !!access?.canWork && !!access?.subscribed;
 
+  // Poll while waiting for Cashfree/admin — never reference `access` inside its own query options (TDZ crash).
+  useEffect(() => {
+    const shouldPoll = needsActivation || waitingForAdmin || (access != null && !access.canWork);
+    if (!shouldPoll) return undefined;
+    const timer = setInterval(() => {
+      refetchAccess();
+      refetchClaims();
+      refetchHistory();
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [needsActivation, waitingForAdmin, access, refetchAccess, refetchClaims, refetchHistory]);
+
   useEffect(() => {
     if (params.plan === 'YEARLY' || params.plan === 'MONTHLY') setPlan(params.plan);
     if (params.payMethod === 'CASH') setPayMethod('CASH');
@@ -80,30 +94,56 @@ export const SellerSubscriptionPayScreen = () => {
     if (params.autoStart) setShowRenewForm(true);
   }, [params.plan, params.payMethod, params.autoStart]);
 
-  const pollCashfreeUntilSettled = async (cfOrderId: string) => {
-    let last: CashfreeOrderStatusResponse | undefined;
-    for (let attempt = 0; attempt < 16; attempt += 1) {
-      if (attempt > 0) await sleep(1500);
-      try {
-        const status = await fetchCashfreeStatus(cfOrderId).unwrap();
-        last = status;
-        if (status?.paymentApplied || String(status?.cfOrderStatus || '').toUpperCase() === 'PAID') {
-          return status;
-        }
-        const local = String(status?.status || '').toUpperCase();
-        if (local === 'FAILED' || local === 'EXPIRED' || local === 'USER_DROPPED' || local === 'CANCELLED') {
-          return status;
-        }
-      } catch {
-        // keep polling
-      }
-    }
-    return last;
-  };
-
   const refreshAll = useCallback(async () => {
     await Promise.all([refetchAccess(), refetchHistory(), refetchClaims()]);
   }, [refetchAccess, refetchHistory, refetchClaims]);
+
+  const applyPaidResult = useCallback(async (status: CashfreeOrderStatusResponse | undefined, labelPlan: string) => {
+    if (status?.paymentApplied || String(status?.cfOrderStatus || '').toUpperCase() === 'PAID') {
+      showSuccessToast(`${labelPlan === 'YEARLY' ? 'Yearly' : 'Monthly'} subscription activated`);
+      setShowRenewForm(false);
+      setCashRequested(false);
+      await refreshAll();
+      return true;
+    }
+    const local = String(status?.status || '').toUpperCase();
+    if (local === 'FAILED' || local === 'EXPIRED' || local === 'USER_DROPPED' || local === 'CANCELLED') {
+      showErrorToast('Payment was not completed. Try again or send a hand-cash request.');
+      return false;
+    }
+    showErrorToast(
+      'Payment is still pending. If money was deducted, pull to refresh — status updates when Cashfree confirms PAID.'
+    );
+    await refreshAll();
+    return false;
+  }, [refreshAll]);
+
+  const verifyReturnedPayment = useCallback(async (cfOrderId: string) => {
+    setVerifyingReturn(true);
+    try {
+      const status = await pollCashfreeFast(
+        () => fetchCashfreeStatus(cfOrderId).unwrap(),
+        { maxAttempts: 14, gapMs: 400 }
+      );
+      await applyPaidResult(status, plan);
+    } catch (error: any) {
+      showErrorToast(error?.data?.message || error?.message || 'Could not verify payment');
+      await refreshAll();
+    } finally {
+      setVerifyingReturn(false);
+      clearCashfreeReturnQuery();
+    }
+  }, [applyPaidResult, fetchCashfreeStatus, plan, refreshAll]);
+
+  // Cashfree return_url lands here — verify immediately so the app unlocks without waiting on blank thank-you.
+  useEffect(() => {
+    if (returnHandledRef.current) return;
+    const fromParams = (params.cf_order || '').trim();
+    const cfOrderId = fromParams || readCashfreeReturnOrderId();
+    if (!cfOrderId) return;
+    returnHandledRef.current = true;
+    verifyReturnedPayment(cfOrderId);
+  }, [params.cf_order, verifyReturnedPayment]);
 
   const payOnline = useCallback(async () => {
     if (pending) {
@@ -118,11 +158,17 @@ export const SellerSubscriptionPayScreen = () => {
         throw new Error('Server did not return a Cashfree payment session');
       }
 
+      rememberCashfreeOrder(session.cfOrderId);
       const checkout = await openCashfreeCheckout({
         paymentSessionId: session.paymentSessionId,
         cfOrderId: session.cfOrderId,
         environment: session.environment,
       });
+
+      // Full-page redirect (_self) leaves this screen; return_url handler will finish verification.
+      if (checkout.status === 'UNKNOWN' && /redirect/i.test(checkout.message || '')) {
+        return;
+      }
 
       if (checkout.status === 'FAILED') {
         showErrorToast(checkout.message || 'Cashfree payment failed');
@@ -133,26 +179,12 @@ export const SellerSubscriptionPayScreen = () => {
         return;
       }
 
-      showSuccessToast('Verifying payment with server…');
-      const status = await pollCashfreeUntilSettled(session.cfOrderId);
-      if (status?.paymentApplied || String(status?.cfOrderStatus || '').toUpperCase() === 'PAID') {
-        showSuccessToast(`${plan === 'YEARLY' ? 'Yearly' : 'Monthly'} subscription activated`);
-        setShowRenewForm(false);
-        setCashRequested(false);
-        await refreshAll();
-        return;
-      }
-
-      const local = String(status?.status || '').toUpperCase();
-      if (local === 'FAILED' || local === 'EXPIRED' || local === 'USER_DROPPED' || local === 'CANCELLED') {
-        showErrorToast('Payment was not completed. Try again or send a hand-cash request.');
-        return;
-      }
-
-      showErrorToast(
-        'Payment is still pending. If money was deducted, wait a moment — status updates when Cashfree confirms PAID.'
+      showSuccessToast('Confirming payment…');
+      const status = await pollCashfreeFast(
+        () => fetchCashfreeStatus(session.cfOrderId).unwrap(),
+        { maxAttempts: 14, gapMs: 400 }
       );
-      await refreshAll();
+      await applyPaidResult(status, plan);
     } catch (error: any) {
       showErrorToast(error?.data?.message || error?.message || 'Could not start Cashfree payment');
     } finally {
@@ -164,7 +196,7 @@ export const SellerSubscriptionPayScreen = () => {
     createCashfreeSubscription,
     plan,
     fetchCashfreeStatus,
-    refreshAll,
+    applyPaidResult,
   ]);
 
   const requestCash = useCallback(async () => {
@@ -203,8 +235,13 @@ export const SellerSubscriptionPayScreen = () => {
     return undefined;
   }, [params.autoStart, platformLoading, accessLoading, access?.canWork, payMethod, payOnline, requestCash]);
 
-  if (platformLoading || accessLoading) {
-    return <Loading fullScreen message="Loading subscription..." />;
+  if (platformLoading || accessLoading || verifyingReturn) {
+    return (
+      <Loading
+        fullScreen
+        message={verifyingReturn ? 'Confirming payment… unlocking subscription' : 'Loading subscription...'}
+      />
+    );
   }
 
   const showWaiting =

@@ -32,6 +32,12 @@ import { Order } from '../../types';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
 import { openCashfreeCheckout } from '../../utils/cashfreeCheckout';
 import {
+  clearCashfreeReturnQuery,
+  pollCashfreeFast,
+  readCashfreeReturnOrderId,
+  rememberCashfreeOrder,
+} from '../../utils/cashfreeReturn';
+import {
   buildUpiPayUrl,
   buildUpiPayUrlVariant,
   extractUpiReference,
@@ -318,27 +324,36 @@ export const BuyerPaymentsScreen = () => {
     await Promise.all([refetch(), refetchClaims()]);
   };
 
-  const pollCashfreeUntilSettled = async (cfOrderId: string) => {
-    const delays = [800, 1500, 2500, 4000];
-    let last: CashfreeOrderStatusResponse | undefined;
-    for (const delay of delays) {
-      await sleep(delay);
+  const pollCashfreeUntilSettled = async (cfOrderId: string) =>
+    pollCashfreeFast(() => fetchCashfreeStatus(cfOrderId).unwrap(), { maxAttempts: 14, gapMs: 400 });
+
+  // After Cashfree return_url redirect, confirm bill payment immediately.
+  useEffect(() => {
+    const cfOrderId = readCashfreeReturnOrderId();
+    if (!cfOrderId) return undefined;
+    let cancelled = false;
+    (async () => {
       try {
-        const status = await fetchCashfreeStatus(cfOrderId).unwrap();
-        last = status;
-        if (status.paymentApplied || String(status.cfOrderStatus || '').toUpperCase() === 'PAID') {
-          return status;
-        }
-        const local = String(status.status || '').toUpperCase();
-        if (local === 'FAILED' || local === 'EXPIRED' || local === 'USER_DROPPED') {
-          return status;
+        showSuccessToast('Confirming payment…');
+        const status = await pollCashfreeUntilSettled(cfOrderId);
+        if (cancelled) return;
+        if (status?.paymentApplied || String(status?.cfOrderStatus || '').toUpperCase() === 'PAID') {
+          showSuccessToast('Payment confirmed');
+          await refreshAfterCashfreePaid();
+        } else {
+          await Promise.all([refetch(), refetchClaims()]);
         }
       } catch {
-        // keep polling — webhook may still apply
+        // leave bills as-is; user can refresh
+      } finally {
+        clearCashfreeReturnQuery();
       }
-    }
-    return last;
-  };
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const payWithCashfree = async () => {
     const parts = allocateOldestFirst();
@@ -367,12 +382,16 @@ export const BuyerPaymentsScreen = () => {
         throw new Error('Server did not return a Cashfree payment session');
       }
 
+      rememberCashfreeOrder(session.cfOrderId);
       const checkout = await openCashfreeCheckout({
         paymentSessionId: session.paymentSessionId,
         cfOrderId: session.cfOrderId,
         environment: session.environment,
       });
 
+      if (checkout.status === 'UNKNOWN' && /redirect/i.test(checkout.message || '')) {
+        return;
+      }
       if (checkout.status === 'FAILED') {
         showErrorToast(checkout.message || 'Cashfree payment failed');
         return;
@@ -382,7 +401,7 @@ export const BuyerPaymentsScreen = () => {
         return;
       }
 
-      showSuccessToast('Verifying payment with server…');
+      showSuccessToast('Confirming payment…');
       const status = await pollCashfreeUntilSettled(session.cfOrderId);
       if (status?.paymentApplied || String(status?.cfOrderStatus || '').toUpperCase() === 'PAID') {
         const paidAmt = Number(status?.amount ?? session.amount ?? amountToPay);

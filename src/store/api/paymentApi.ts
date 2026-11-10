@@ -128,11 +128,14 @@ export const paymentApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Shop', 'Order', 'BuyerAccount'],
     }),
-    createCashfreeOrder: builder.mutation<CashfreeCreateOrderResponse, { orderId: number; amount: string }>({
-      query: (body) => ({
+    /** Amount is optional — omit it so the server charges the live unpaid balance. */
+    createCashfreeOrder: builder.mutation<CashfreeCreateOrderResponse, { orderId: number; amount?: string }>({
+      query: ({ orderId, amount }) => ({
         url: '/payments/cashfree/orders',
         method: 'POST',
-        body,
+        body: amount != null && String(amount).trim() !== ''
+          ? { orderId, amount: String(amount).trim() }
+          : { orderId },
       }),
     }),
     getCashfreeOrderStatus: builder.query<CashfreeOrderStatusResponse, string>({

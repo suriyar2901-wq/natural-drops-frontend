@@ -81,6 +81,7 @@ import { ProfileScreen } from '../screens/buyer/ProfileScreen';
 import { MoreScreen } from '../screens/admin/MoreScreen';
 import { QRScannerScreen } from '../screens/buyer/QRScannerScreen';
 import { BuyerPaymentsScreen } from '../screens/buyer/BuyerPaymentsScreen';
+import { CheckoutPaymentResultScreen } from '../screens/buyer/CheckoutPaymentResultScreen';
 import { BuyerEmptyCansScreen } from '../screens/buyer/BuyerEmptyCansScreen';
 import { ShopCustomersScreen } from '../screens/shop/ShopCustomersScreen';
 import { AddShopCustomerScreen } from '../screens/shop/AddShopCustomerScreen';
@@ -647,6 +648,11 @@ export const AppNavigator = () => {
           name="Cart"
           component={CartScreen}
           options={{ title: 'Cart' }}
+        />
+        <Stack.Screen
+          name="CheckoutPaymentResult"
+          component={CheckoutPaymentResultScreen}
+          options={{ title: 'Payment' }}
         />
         <Stack.Screen
           name="NotificationHistory"
