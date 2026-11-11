@@ -193,8 +193,19 @@ const customBaseQuery: BaseQueryFn<
             data: undefined,
           };
         }
-        // This is a wrapped successful response, unwrap it
-        result.data = backendResponse.data;
+        // Unwrap data; keep API message on object payloads for success toasts (e.g. cancel+refund).
+        const data = backendResponse.data;
+        if (
+          data != null
+          && typeof data === 'object'
+          && !Array.isArray(data)
+          && typeof backendResponse.message === 'string'
+          && backendResponse.message.trim()
+        ) {
+          result.data = { ...(data as object), _apiMessage: backendResponse.message };
+        } else {
+          result.data = data;
+        }
       }
     }
     

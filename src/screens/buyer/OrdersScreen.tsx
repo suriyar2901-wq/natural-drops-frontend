@@ -15,6 +15,7 @@ import {
 import { useGetSupportContactsQuery } from '../../store/api/settingsApi';
 import { MenuItem, Order, OrderStatus } from '../../types';
 import { formatCurrency, formatDateTime, formatDeliverySlot, formatOrderStatus } from '../../utils/formatters';
+import { orderPaymentStatusLabel, orderRefundedAmount } from '../../types/shop.types';
 import { showErrorToast, showSuccessToast } from '../../utils/toast';
 import { API_BASE_URL } from '../../utils/constants';
 import { storageService } from '../../services/storage.service';
@@ -365,15 +366,28 @@ export const OrdersScreen = ({ navigation }: any) => {
   };
 
   const cancelPendingOrder = (item: Order) => {
-    Alert.alert('Cancel order', 'Cancel this order before the seller confirms it?', [
+    const paidOnline = item.paymentStatus === 'PAID' || item.paymentStatus === 'PARTIALLY_PAID';
+    Alert.alert(
+      'Cancel order',
+      paidOnline
+        ? 'Seller has not confirmed yet. Online payment will be refunded if you cancel. Continue?'
+        : 'Cancel this order before the seller confirms it?',
+      [
       { text: 'Keep order', style: 'cancel' },
       {
         text: 'Cancel order',
         style: 'destructive',
         onPress: async () => {
           try {
-            await cancelPending(item.id).unwrap();
-            showSuccessToast('Order canceled');
+            const updated = await cancelPending(item.id).unwrap();
+            const apiMessage = (updated as Order & { _apiMessage?: string })._apiMessage;
+            const refunded = orderRefundedAmount(updated);
+            showSuccessToast(
+              apiMessage
+                || (refunded > 0
+                  ? `Order canceled. ₹${refunded.toFixed(2)} refund started.`
+                  : 'Order canceled')
+            );
           } catch (error: any) {
             showErrorToast(error?.data?.message || 'Could not cancel this order');
           }
@@ -395,6 +409,7 @@ export const OrdersScreen = ({ navigation }: any) => {
     const paid = item.paymentStatus === 'PAID';
     const partial = item.paymentStatus === 'PARTIALLY_PAID';
     const unpaid = item.paymentStatus === 'UNPAID';
+    const refunded = item.paymentStatus === 'REFUNDED';
     const isPending = item.status === OrderStatus.PENDING || item.status === 'pending';
     const isConfirmed =
       item.status === OrderStatus.CONFIRMED
@@ -533,18 +548,31 @@ export const OrdersScreen = ({ navigation }: any) => {
                 paid && styles.paymentStatusPaid,
                 unpaid && styles.paymentStatusUnpaid,
                 partial && styles.paymentStatusPartial,
+                refunded && styles.paymentStatusRefunded,
               ]}>
                 <Text style={[
                   styles.paymentStatusText,
                   paid && styles.paymentTextPaid,
                   unpaid && styles.paymentTextUnpaid,
                   partial && styles.paymentTextPartial,
+                  refunded && styles.paymentTextRefunded,
                 ]}>
-                  {paid ? 'Paid' : unpaid ? 'Unpaid' : 'Partial'}
+                  {refunded
+                    ? orderPaymentStatusLabel(item.paymentStatus, item.refundedAmount)
+                    : paid
+                      ? 'Paid'
+                      : unpaid
+                        ? 'Unpaid'
+                        : 'Partial'}
                 </Text>
               </View>
             )}
-            {(unpaid || partial) && (
+            {refunded && orderRefundedAmount(item) > 0 && (
+              <Text style={styles.paymentPendingText}>
+                Online refund of {formatCurrency(orderRefundedAmount(item))} started (usually 3–7 bank days).
+              </Text>
+            )}
+            {!refunded && (unpaid || partial) && (
               <Text style={styles.paymentPendingText}>Payment is still due for this order.</Text>
             )}
 
@@ -1325,6 +1353,9 @@ const styles = StyleSheet.create({
   paymentStatusPartial: {
     backgroundColor: '#FFF3E0',
   },
+  paymentStatusRefunded: {
+    backgroundColor: '#E3F2FD',
+  },
   paymentStatusText: {
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.bold,
@@ -1332,6 +1363,7 @@ const styles = StyleSheet.create({
   paymentTextPaid: { color: colors.success },
   paymentTextUnpaid: { color: colors.error },
   paymentTextPartial: { color: colors.warning },
+  paymentTextRefunded: { color: '#1565C0' },
   paymentPendingText: {
     fontSize: typography.fontSize.sm,
     color: colors.warning,

@@ -171,7 +171,7 @@ export const orderBillPending = (order: {
   total?: number | string | null;
   finalBillAmount?: number | string | null;
 }) => {
-  if (order.status === 'canceled') return 0;
+  if (order.status === 'canceled' || order.paymentStatus === 'REFUNDED') return 0;
   const total = moneyValue(order.total);
   const paid = Math.min(total, Math.max(0, moneyValue(order.finalBillAmount)));
   if (order.paymentStatus === 'PAID') return 0;
@@ -185,6 +185,7 @@ export const orderBillPaid = (order: {
   total?: number | string | null;
   finalBillAmount?: number | string | null;
 }) => {
+  if (order.paymentStatus === 'REFUNDED') return 0;
   const total = moneyValue(order.total);
   if (order.paymentStatus === 'PAID') return total;
   if (order.paymentStatus === 'PARTIALLY_PAID') {
@@ -193,7 +194,22 @@ export const orderBillPaid = (order: {
   return 0;
 };
 
-export const orderPaymentStatusLabel = (paymentStatus?: string | null) => {
+export const orderRefundedAmount = (order: {
+  paymentStatus?: string | null;
+  refundedAmount?: number | string | null;
+}) => {
+  if (order.paymentStatus !== 'REFUNDED') return 0;
+  return Math.max(0, moneyValue(order.refundedAmount));
+};
+
+export const orderPaymentStatusLabel = (
+  paymentStatus?: string | null,
+  refundedAmount?: number | string | null,
+) => {
+  if (paymentStatus === 'REFUNDED') {
+    const amount = moneyValue(refundedAmount);
+    return amount > 0 ? `Refunded ₹${amount.toFixed(2)}` : 'Refunded';
+  }
   if (paymentStatus === 'PAID') return 'Fully paid';
   if (paymentStatus === 'PARTIALLY_PAID') return 'Partially paid';
   if (paymentStatus === 'UNPAID') return 'Unpaid';

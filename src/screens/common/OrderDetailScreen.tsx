@@ -13,8 +13,8 @@ import {
   useUpdateOrderMutation,
 } from '../../store/api/orderApi';
 import { MenuItem, Order, OrderStatus } from '../../types';
-import { canEditOrderBill, formatCurrency, formatDateTime, formatOrderStatus } from '../../utils/formatters';
-import { orderBillPaid, orderBillPending, orderPaymentStatusLabel } from '../../types/shop.types';
+import { canEditOrderBill, canEditOrderItems, formatCurrency, formatDateTime, formatOrderStatus } from '../../utils/formatters';
+import { orderBillPaid, orderBillPending, orderPaymentStatusLabel, orderRefundedAmount } from '../../types/shop.types';
 import { DeliverySlotBadge } from '../../components/common/DeliverySlotBadge';
 import { useAuth } from '../../hooks';
 import { storageService } from '../../services/storage.service';
@@ -74,7 +74,7 @@ export const OrderDetailScreen = () => {
   const isPending = status === OrderStatus.PENDING;
   const isConfirmed = status === OrderStatus.CONFIRMED || status === OrderStatus.PROCESSING;
   const acting = confirming || canceling || delivering || updatingOrder;
-  const canEditOrder = isStaff() && (isPending || isConfirmed);
+  const canEditOrder = isStaff() && !!order && canEditOrderItems(order);
   const paidAmount = order ? orderBillPaid(order) : 0;
   const balanceAmount = order ? orderBillPending(order) : 0;
 
@@ -156,11 +156,16 @@ export const OrderDetailScreen = () => {
   const handleCancel = () => {
     if (!order || acting) return;
     const paid = orderBillPaid(order);
+    const stillPending =
+      order.status === OrderStatus.PENDING || String(order.status).toLowerCase() === 'pending';
+    const refundWillHappen = paid > 0 && stillPending;
     showConfirmAlert(
       'Cancel Order',
-      paid > 0
-        ? `Buyer has paid ${formatCurrency(paid)}. Canceling refunds Cashfree online payments automatically. Continue?`
-        : 'Are you sure you want to cancel this order?',
+      refundWillHappen
+        ? `Buyer paid ${formatCurrency(paid)} online. Order is still pending — cancel will refund Cashfree automatically. Continue?`
+        : paid > 0
+          ? `Buyer paid ${formatCurrency(paid)} online. This order is already confirmed — cancel will NOT refund. Continue?`
+          : 'Are you sure you want to cancel this order?',
       async () => {
         try {
           const updated = await cancelOrder({
@@ -168,10 +173,15 @@ export const OrderDetailScreen = () => {
             data: { canceledBy: sellerName, reason: 'Canceled from order details' },
           }).unwrap();
           applyUpdatedOrder(updated, OrderStatus.CANCELED);
+          const apiMessage = (updated as Order & { _apiMessage?: string })._apiMessage;
+          const refunded = orderRefundedAmount(updated);
           showSuccessAlert(
-            paid > 0
-              ? 'Order canceled. Online Cashfree payment refund initiated.'
-              : 'Order canceled.'
+            apiMessage
+              || (refunded > 0
+                ? `Order canceled. ₹${refunded.toFixed(2)} online payment refund started.`
+                : paid > 0 && !stillPending
+                  ? 'Order canceled. Online payment was not refunded (already confirmed).'
+                  : 'Order canceled.')
           );
         } catch (e: any) {
           showErrorAlert(e?.data?.message || e?.message || 'Failed to cancel order');
@@ -273,25 +283,40 @@ export const OrderDetailScreen = () => {
         <Text style={styles.text}>{order.deliveryAddress || order.buyerAddress || 'Not specified'}</Text>
         <Text style={styles.sectionLabel}>Order total</Text>
         <Text style={styles.total}>{formatCurrency(order.total || (order as any).totalAmount || 0)}</Text>
-        <Text style={styles.originalAmount}>
-          Paid {formatCurrency(paidAmount)}
-          {' · '}
-          Balance {formatCurrency(balanceAmount)}
-        </Text>
+        {order.paymentStatus === 'REFUNDED' ? (
+          <Text style={styles.originalAmount}>
+            Refunded {formatCurrency(orderRefundedAmount(order))}
+          </Text>
+        ) : (
+          <Text style={styles.originalAmount}>
+            Paid {formatCurrency(paidAmount)}
+            {' · '}
+            Balance {formatCurrency(balanceAmount)}
+          </Text>
+        )}
         <DeliverySlotBadge order={order} />
         
         <View style={[
           styles.paymentStatusBadge,
           order.paymentStatus === 'PAID' && styles.paymentStatusPaid,
           order.paymentStatus === 'PARTIALLY_PAID' && styles.paymentStatusPartial,
+          order.paymentStatus === 'REFUNDED' && styles.paymentStatusRefunded,
           (order.paymentStatus === 'UNPAID' || !order.paymentStatus) && styles.paymentStatusUnpaid,
         ]}>
           <Text style={styles.paymentStatusText}>
-            {orderPaymentStatusLabel(order.paymentStatus)}
+            {orderPaymentStatusLabel(order.paymentStatus, order.refundedAmount)}
           </Text>
         </View>
+
+        {order.paymentStatus === 'REFUNDED' && (
+          <View style={styles.paymentPendingContainer}>
+            <Text style={styles.paymentPendingText}>
+              Cashfree online refund of {formatCurrency(orderRefundedAmount(order))} started to the original payment method (usually 3–7 bank days).
+            </Text>
+          </View>
+        )}
         
-        {isBuyer() && (order.paymentStatus === 'UNPAID' || order.paymentStatus === 'PARTIALLY_PAID' || !order.paymentStatus) && (
+        {isBuyer() && order.paymentStatus !== 'REFUNDED' && (order.paymentStatus === 'UNPAID' || order.paymentStatus === 'PARTIALLY_PAID' || !order.paymentStatus) && (
           <View style={styles.paymentPendingContainer}>
             <Text style={styles.paymentPendingText}>
               {balanceAmount > 0
@@ -570,6 +595,9 @@ const styles = StyleSheet.create({
   },
   paymentStatusPaid: {
     backgroundColor: '#E8F5E9',
+  },
+  paymentStatusRefunded: {
+    backgroundColor: '#E3F2FD',
   },
   paymentStatusUnpaid: {
     backgroundColor: '#FFEBEE',

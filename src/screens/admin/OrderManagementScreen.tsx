@@ -20,8 +20,8 @@ import {
   useMarkAdminNotificationAsReadMutation
 } from '../../store/api/notificationApi';
 import { Order, OrderStatus } from '../../types';
-import { canEditOrderBill, formatCurrency, formatDateTime, formatDeliverySlot, formatOrderStatus, formatYmdDisplay } from '../../utils/formatters';
-import { orderBillPaid, orderBillPending, orderPaymentStatusLabel } from '../../types/shop.types';
+import { canEditOrderBill, canEditOrderItems, formatCurrency, formatDateTime, formatDeliverySlot, formatOrderStatus, formatYmdDisplay } from '../../utils/formatters';
+import { orderBillPaid, orderBillPending, orderPaymentStatusLabel, orderRefundedAmount } from '../../types/shop.types';
 import { showAlert, showSuccessAlert, showErrorAlert, showConfirmAlert } from '../../utils/alert';
 import { useAuth } from '../../hooks';
 import { useGetShopBuyersQuery } from '../../store/api/shopApi';
@@ -408,9 +408,12 @@ export const OrderManagementScreen = () => {
       console.log('✅ Cancel order success:', result);
       console.log('📊 Updated order status:', result.status);
       
-      // Show success message
+      const apiMessage = (result as Order & { _apiMessage?: string })._apiMessage;
       showSuccessAlert(
-        'Order canceled. If the buyer paid online (Cashfree), that amount is refunded automatically. Notification sent to buyer.'
+        apiMessage
+          || (orderRefundedAmount(result) > 0
+            ? `Order canceled. ₹${orderRefundedAmount(result).toFixed(2)} online payment refund started.`
+            : 'Order canceled successfully')
       );
       
       // Refetch orders to get updated list with new status
@@ -434,6 +437,14 @@ export const OrderManagementScreen = () => {
   };
 
   const handleEditOrderClick = (order: Order) => {
+    if (!canEditOrderItems(order)) {
+      showErrorAlert(
+        order.paymentStatus === 'PAID'
+          ? 'This order is fully paid online. Items and bill cannot be edited.'
+          : 'This order cannot be edited.'
+      );
+      return;
+    }
     setEditingOrder(order);
     setEditModalVisible(true);
   };
@@ -589,10 +600,14 @@ export const OrderManagementScreen = () => {
   const getOrderTotal = (order: Order) => formatCurrency(Number(order.total) || 0);
   const getPaidAmount = (order: Order) => formatCurrency(orderBillPaid(order));
   const paymentBadgeStyle = (order: Order) => {
+    if (order.paymentStatus === 'REFUNDED') return styles.paymentStatusRefunded;
     if (order.paymentStatus === 'PAID') return styles.paymentStatusPaid;
     if (order.paymentStatus === 'PARTIALLY_PAID') return styles.paymentStatusPartial;
     return styles.paymentStatusUnpaid;
   };
+
+  const paymentStatusText = (order: Order) =>
+    orderPaymentStatusLabel(order.paymentStatus, order.refundedAmount);
 
   const renderOrder = ({ item }: { item: Order }) => {
     // Normalize status for comparison
@@ -601,7 +616,7 @@ export const OrderManagementScreen = () => {
     const isConfirmed = normalizedStatus === normalizeStatus(OrderStatus.CONFIRMED);
     const isProcessing = normalizedStatus === normalizeStatus(OrderStatus.PROCESSING);
     const isConfirmedOrProcessing = isConfirmed || isProcessing;
-    const isEditable = isPending || isConfirmed;
+    const isEditable = canEditOrderItems(item);
     const expanded = expandedOrderId === item.id;
     const callLink = contactLinks(item.buyerPhone).call;
     const orderNote = item.billingNotes?.trim();
@@ -644,12 +659,14 @@ export const OrderManagementScreen = () => {
                 {getDeliveryLabel(item)}
               </Text>
               <Text style={styles.orderAmountHighlight} numberOfLines={1}>
-                {orderBillPending(item) > 0
-                  ? `Balance ${getCollectAmount(item)}`
-                  : `Paid ${getPaidAmount(item)}`}
+                {item.paymentStatus === 'REFUNDED'
+                  ? paymentStatusText(item)
+                  : orderBillPending(item) > 0
+                    ? `Balance ${getCollectAmount(item)}`
+                    : `Paid ${getPaidAmount(item)}`}
               </Text>
               <View style={[styles.paymentStatusBadge, paymentBadgeStyle(item)]}>
-                <Text style={styles.paymentStatusText}>{orderPaymentStatusLabel(item.paymentStatus)}</Text>
+                <Text style={styles.paymentStatusText}>{paymentStatusText(item)}</Text>
               </View>
             </View>
           </TouchableOpacity>
@@ -742,8 +759,13 @@ export const OrderManagementScreen = () => {
               <Text style={styles.collectAmount}>{getCollectAmount(item)}</Text>
             </View>
             <View style={[styles.paymentStatusBadge, paymentBadgeStyle(item), { alignSelf: 'flex-start', marginBottom: spacing.sm }]}>
-              <Text style={styles.paymentStatusText}>{orderPaymentStatusLabel(item.paymentStatus)}</Text>
+              <Text style={styles.paymentStatusText}>{paymentStatusText(item)}</Text>
             </View>
+            {item.paymentStatus === 'REFUNDED' && orderRefundedAmount(item) > 0 && (
+              <Text style={styles.refundNoteText}>
+                Cashfree online refund of {formatCurrency(orderRefundedAmount(item))} started (usually 3–7 bank days).
+              </Text>
+            )}
 
             {!!orderNote && (
               <View style={styles.noteBanner}>
@@ -840,9 +862,14 @@ export const OrderManagementScreen = () => {
                 if (processingOrderId === item.id) return;
                 showConfirmAlert(
                   'Cancel Order',
-                  orderBillPaid(item) > 0
-                    ? `This order has ${getPaidAmount(item)} paid online/confirmed. Canceling will refund Cashfree online payments automatically. Continue?`
-                    : 'Are you sure you want to cancel this order?',
+                  (() => {
+                    const paid = orderBillPaid(item);
+                    if (paid <= 0) return 'Are you sure you want to cancel this order?';
+                    if (isPending) {
+                      return `This order has ${getPaidAmount(item)} paid online. Still pending — cancel will refund Cashfree automatically. Continue?`;
+                    }
+                    return `This order has ${getPaidAmount(item)} paid online. Already confirmed — cancel will NOT refund. Continue?`;
+                  })(),
                   () => handleCancelOrder(item.id),
                   () => {}
                 );
@@ -1979,9 +2006,17 @@ const styles = StyleSheet.create({
   paymentStatusPartial: {
     backgroundColor: '#FFF3E0',
   },
+  paymentStatusRefunded: {
+    backgroundColor: '#E3F2FD',
+  },
   paymentStatusText: {
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.bold,
+  },
+  refundNoteText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
   },
   actionButtonsContainer: {
     flexDirection: 'row',

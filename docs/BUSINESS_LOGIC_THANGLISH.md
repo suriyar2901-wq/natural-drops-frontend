@@ -169,7 +169,7 @@ Cashfree / UPI claim both amount ≤ outstanding enforce pannum.
 4. Partial bill change → buyer notify (existing behaviour).  
 5. Final bill amount original order total-ku **over** poga koodathu (validation).
 
-**Pay Now full pay aana:** order already `PAID` → seller bill edit lock — prepaid business rule.
+**Pay Now full pay aana:** order already `PAID` → seller **cannot edit items or bill** (UI + API lock). Change thevai na cancel → Cashfree refund path use pannanum.
 
 ---
 
@@ -208,7 +208,24 @@ Ithu buyer order payment-oda mix aaga koodathu.
 - Confirmed / processing / delivered — buyer cancel limit (seller/admin path).
 - Canceled order **pay panna koodathu**.
 
+### 12.1 Cancel + Cashfree refund (when / when not)
+
+| Situation | Auto Cashfree refund? |
+|-----------|------------------------|
+| Buyer **pending** cancel (seller confirm pannala) + online paid | **Yes** — amount refund |
+| Seller/admin cancel while still **pending** + online paid | **Yes** |
+| Seller **already confirmed** (or processing) aprm cancel | **No** — paid amount stay; no auto refund |
+| Seller-UPI manual claim | Auto-refund illa (same as before) |
+
+**After successful online refund (pending cancel only):**
+- Order `paymentStatus` = **`REFUNDED`** + `refundedAmount` = refunded ₹.
+- **Buyer:** push/in-app — “Order #X canceled. ₹Y refund started… (usually 3–7 bank days).” My Orders badge **Refunded ₹Y**.
+- **Seller:** cancel toast-la exact ₹; list/detail **Refunded ₹Y**; seller inbox record.
+- Unpaid cancel / confirmed cancel → no REFUNDED badge from this path.
+- Bank credit timing Cashfree/bank side — app instant bank credit show panna mudiyathu.
+
 ---
+
 
 ## 13) Security / trust rules (business + tech)
 
@@ -284,5 +301,5 @@ Subscription $     ≠ Order bill $
 
 ---
 
-**Last updated:** Dual payment Phases 1–3 (paymentTiming + Cart Pay Now/After + Cashfree verify) live in source.  
+**Last updated:** Auto Cashfree refund only before seller confirm (pending cancel); confirmed cancel = no refund.  
 Share this file as-is with business stakeholders; technical deep dive thevai na readiness analysis padunga.

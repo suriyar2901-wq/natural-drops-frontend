@@ -30,6 +30,7 @@ export enum PaymentStatus {
   PAID = 'PAID',
   UNPAID = 'UNPAID',
   PARTIALLY_PAID = 'PARTIALLY_PAID',
+  REFUNDED = 'REFUNDED',
 }
 
 /** Dual-payment checkout timing. Historical orders may be null. */
@@ -58,7 +59,9 @@ export interface Order {
   deliveryTotalSeconds?: number; // Total delivery time in seconds
   deliveryStartTimestamp?: number; // Epoch timestamp (seconds) when countdown started
   finalBillAmount?: number; // Final bill amount (can differ from total)
-  paymentStatus?: PaymentStatus; // Payment status: PAID, UNPAID, PARTIALLY_PAID
+  paymentStatus?: PaymentStatus; // Payment status: PAID, UNPAID, PARTIALLY_PAID, REFUNDED
+  /** Cashfree amount refunded after cancel (when paymentStatus is REFUNDED). */
+  refundedAmount?: number | null;
   /** Null/undefined on older orders — treat as PAY_AFTER_DELIVERY. */
   paymentTiming?: PaymentTiming | null;
   billedBy?: string; // Username of seller who created/updated the bill

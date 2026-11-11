@@ -4,9 +4,23 @@ export const canEditOrderBill = (order: {
   paymentStatus?: string;
 } | null | undefined): boolean => {
   if (!order || order.status === 'canceled') return false;
-  if (order.paymentStatus === 'PAID') return false;
+  if (order.paymentStatus === 'PAID' || order.paymentStatus === 'REFUNDED') return false;
   if (order.paymentStatus === 'PARTIALLY_PAID' || order.paymentStatus === 'UNPAID') return true;
   return order.status === 'confirmed' || order.status === 'processing';
+};
+
+/**
+ * Seller/admin may edit pending/confirmed order items only when not fully paid online.
+ * Fully paid (Pay Now / full settlement) locks quantity and bill edits.
+ */
+export const canEditOrderItems = (order: {
+  status?: string;
+  paymentStatus?: string;
+} | null | undefined): boolean => {
+  if (!order || order.status === 'canceled' || order.status === 'delivered') return false;
+  if (order.paymentStatus === 'PAID' || order.paymentStatus === 'REFUNDED') return false;
+  const status = String(order.status || '').toLowerCase();
+  return status === 'pending' || status === 'confirmed';
 };
 
 // Currency formatter

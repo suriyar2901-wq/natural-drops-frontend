@@ -120,7 +120,7 @@ export const BillEditModal: React.FC<BillEditModalProps> = ({
 
             <View style={styles.orderInfo}>
               <Text style={styles.label}>Payment status</Text>
-              <Text style={styles.value}>{orderPaymentStatusLabel(order.paymentStatus)}</Text>
+              <Text style={styles.value}>{orderPaymentStatusLabel(order.paymentStatus, order.refundedAmount)}</Text>
             </View>
 
             <View style={styles.inputContainer}>
