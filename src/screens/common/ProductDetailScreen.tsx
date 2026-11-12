@@ -6,6 +6,7 @@ import { Card, Loading, ProductPhotoPlaceholder } from '../../components/common'
 import { useGetMenuItemByIdQuery, useDeleteMenuItemMutation } from '../../store/api/menuApi';
 import { useAuth, useCart } from '../../hooks';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { showSuccessToast } from '../../utils/toast';
 import { API_BASE_URL } from '../../utils/constants';
 import { navigate } from '../../navigation/navigationRef';
 import { UserRole } from '../../types';
@@ -362,21 +363,33 @@ export const ProductDetailScreen = ({ navigation }: any) => {
                 <TouchableOpacity
                   style={styles.primaryBtn}
                   onPress={() => {
-                    if (qty === 0) addToCart(product as any, 1);
+                    if (!product) return;
+                    // Always add +1 (cart slice increments when item already exists)
+                    addToCart(product as any, 1);
+                    showSuccessToast(
+                      qty === 0
+                        ? 'Added to cart'
+                        : `Cart updated (${qty + 1})`
+                    );
                   }}
                   activeOpacity={0.85}
+                  accessibilityLabel={qty === 0 ? 'Add to cart' : 'Add one more to cart'}
                 >
-                  <Text style={styles.primaryBtnText}>Add to Cart</Text>
+                  <Text style={styles.primaryBtnText}>
+                    {qty === 0 ? 'Add to Cart' : 'Add more'}
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.secondaryBtn}
                   onPress={() => {
+                    if (!product) return;
                     if (qty === 0) addToCart(product as any, 1);
                     const parentNav = navigation?.getParent?.();
                     if (parentNav?.navigate) parentNav.navigate('Cart');
                     else navigation.navigate('Cart');
                   }}
                   activeOpacity={0.85}
+                  accessibilityLabel="Buy now"
                 >
                   <Text style={styles.secondaryBtnText}>Buy Now</Text>
                 </TouchableOpacity>

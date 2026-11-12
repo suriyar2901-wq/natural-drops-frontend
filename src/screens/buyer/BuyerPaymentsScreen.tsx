@@ -559,7 +559,12 @@ export const BuyerPaymentsScreen = () => {
       refetch();
       refetchClaims();
     } catch (error: any) {
-      showErrorToast(error?.data?.message || 'Could not submit payment');
+      const apiMessage =
+        error?.data?.message
+        || error?.error
+        || error?.message
+        || 'Could not submit payment';
+      showErrorToast(apiMessage);
     }
   };
 

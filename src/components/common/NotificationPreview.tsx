@@ -1,6 +1,7 @@
-import React from 'react';
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors, spacing, typography } from '../../theme';
+import React, { useMemo } from 'react';
+import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { borderRadius, colors, shadows, spacing, typography } from '../../theme';
 import { formatDateTime } from '../../utils/formatters';
 import { regularNoticeLook, RegularNoticeTone } from '../../utils/regularNotice';
 
@@ -14,6 +15,69 @@ interface NotificationPreviewProps {
   onRead?: () => void;
 }
 
+type NoticeKind = 'refund' | 'cancel' | 'delivery' | 'confirmed' | 'delivered' | 'bill' | 'general';
+
+const kindFromMessage = (message: string): NoticeKind => {
+  const text = (message || '').toLowerCase();
+  if (text.includes('refund')) return 'refund';
+  if (text.includes('cancel')) return 'cancel';
+  if (text.includes('delivered')) return 'delivered';
+  if (text.includes('delivery') || text.includes('tomorrow') || text.includes('on the way')) {
+    return 'delivery';
+  }
+  if (text.includes('confirm')) return 'confirmed';
+  if (text.includes('bill')) return 'bill';
+  return 'general';
+};
+
+const kindMeta: Record<
+  NoticeKind,
+  { title: string; icon: keyof typeof Ionicons.glyphMap; tint: string; soft: string }
+> = {
+  refund: {
+    title: 'Refund update',
+    icon: 'cash-outline',
+    tint: '#1565C0',
+    soft: '#E3F2FD',
+  },
+  cancel: {
+    title: 'Order canceled',
+    icon: 'close-circle-outline',
+    tint: '#C62828',
+    soft: '#FFEBEE',
+  },
+  delivery: {
+    title: 'Delivery reminder',
+    icon: 'bicycle-outline',
+    tint: colors.primary,
+    soft: '#E4EAF9',
+  },
+  confirmed: {
+    title: 'Order confirmed',
+    icon: 'checkmark-circle-outline',
+    tint: '#2E7D32',
+    soft: '#E8F5E9',
+  },
+  delivered: {
+    title: 'Order delivered',
+    icon: 'cube-outline',
+    tint: '#2E7D32',
+    soft: '#E8F5E9',
+  },
+  bill: {
+    title: 'Bill update',
+    icon: 'receipt-outline',
+    tint: '#EF6C00',
+    soft: '#FFF3E0',
+  },
+  general: {
+    title: 'Notification',
+    icon: 'notifications-outline',
+    tint: colors.primary,
+    soft: '#E4EAF9',
+  },
+};
+
 export const NotificationPreview = ({
   visible,
   message,
@@ -21,41 +85,101 @@ export const NotificationPreview = ({
   isRead,
   tone = 'default',
   onClose,
-}: NotificationPreviewProps) => (
-  <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-    <View style={styles.overlay}>
-      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-      <View
-        style={[
-          styles.card,
-          tone !== 'default' && {
-            backgroundColor: regularNoticeLook[tone].background,
-            borderWidth: 2,
-            borderColor: regularNoticeLook[tone].border,
-          },
-        ]}
-      >
-        {tone !== 'default' && (
-          <Text style={[styles.pauseBadge, { backgroundColor: regularNoticeLook[tone].border }]}>
-            {regularNoticeLook[tone].badge}
+}: NotificationPreviewProps) => {
+  const kind = useMemo(() => kindFromMessage(message), [message]);
+  const meta = kindMeta[kind];
+  const customTone = tone !== 'default' ? regularNoticeLook[tone] : null;
+  const tint = customTone?.border || meta.tint;
+  const soft = customTone?.background || meta.soft;
+  const title = customTone?.badge || meta.title;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss notification"
+        />
+        <View
+          style={[
+            styles.card,
+            shadows.md,
+            customTone && {
+              backgroundColor: customTone.background,
+              borderColor: customTone.border,
+              borderWidth: 1.5,
+            },
+          ]}
+          accessibilityRole="summary"
+          accessibilityLabel={title}
+        >
+          <View style={styles.header}>
+            <View style={[styles.iconWrap, { backgroundColor: soft }]}>
+              <Ionicons
+                name={customTone ? 'information-circle-outline' : meta.icon}
+                size={22}
+                color={tint}
+              />
+            </View>
+            <View style={styles.headerText}>
+              <Text style={[styles.title, { color: tint }]} numberOfLines={1}>
+                {title}
+              </Text>
+              {!isRead && (
+                <View style={styles.newChip}>
+                  <Text style={styles.newChipText}>New</Text>
+                </View>
+              )}
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.iconClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <Ionicons name="close" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <Text
+            style={[
+              styles.message,
+              isRead && styles.messageRead,
+              customTone && { color: customTone.text, fontWeight: typography.fontWeight.semibold },
+            ]}
+          >
+            {message}
           </Text>
-        )}
-        <Text style={[styles.message, isRead && styles.messageRead, tone !== 'default' && { color: regularNoticeLook[tone].text, fontWeight: typography.fontWeight.semibold }]}>{message}</Text>
-        {!!createdAt && <Text style={styles.time}>{formatDateTime(createdAt)}</Text>}
-        <View style={styles.actions}>
-          <TouchableOpacity style={[styles.actionButton, styles.actionOutline]} onPress={onClose} activeOpacity={0.8}>
-            <Text style={styles.actionOutlineText}>Close</Text>
+
+          {!!createdAt && (
+            <View style={styles.timeRow}>
+              <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+              <Text style={styles.time}>{formatDateTime(createdAt)}</Text>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={[styles.closeButton, { backgroundColor: tint }]}
+            onPress={onClose}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Close notification"
+          >
+            <Text style={styles.closeButtonText}>Close</Text>
           </TouchableOpacity>
         </View>
       </View>
-    </View>
-  </Modal>
-);
+    </Modal>
+  );
+};
 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.lg,
@@ -65,67 +189,87 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 320,
+    maxWidth: 360,
     backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
     zIndex: 1,
   },
-  pauseCard: {
-    backgroundColor: '#FFF7ED',
-    borderWidth: 2,
-    borderColor: '#EA580C',
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+    gap: spacing.sm,
   },
-  pauseBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#EA580C',
-    color: colors.white,
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerText: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minWidth: 0,
+  },
+  title: {
+    fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.bold,
-    fontSize: typography.fontSize.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 999,
-    marginBottom: spacing.sm,
-    overflow: 'hidden',
+    letterSpacing: 0.2,
+    flexShrink: 1,
   },
-  pauseMessage: {
-    color: '#9A3412',
-    fontWeight: typography.fontWeight.semibold,
+  newChip: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  newChipText: {
+    color: '#92400E',
+    fontSize: 10,
+    fontWeight: typography.fontWeight.bold,
+    textTransform: 'uppercase',
+  },
+  iconClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.gray100,
   },
   message: {
     color: colors.textPrimary,
     fontSize: typography.fontSize.base,
-    lineHeight: 22,
+    lineHeight: 24,
   },
   messageRead: {
     color: '#1F2937',
-    fontWeight: typography.fontWeight.bold,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.md,
   },
   time: {
-    marginTop: spacing.sm,
     color: colors.textSecondary,
     fontSize: typography.fontSize.xs,
   },
-  actions: {
-    marginTop: spacing.sm,
-    alignItems: 'flex-end',
-  },
-  actionButton: {
-    minHeight: 30,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 999,
+  closeButton: {
+    marginTop: spacing.lg,
+    minHeight: 44,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: spacing.md,
   },
-  actionOutline: {
-    borderWidth: 1,
-    borderColor: colors.primary,
-    backgroundColor: colors.white,
-  },
-  actionOutlineText: {
-    color: colors.primary,
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.semibold,
+  closeButtonText: {
+    color: colors.white,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
   },
 });
